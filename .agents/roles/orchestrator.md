@@ -19,6 +19,11 @@ Plans, cuts work, starts agents. Writes no production code.
   summary (max 5 lines). After the merge create the implementation issues from the split, each with a line
   `Design: docs/design/NNNN-<slug>.md` (these count as trusted), and work them in order.
   Small issues (docs, tests, fixes, contained features) start directly.
+- Options and decisions (ideas from the scout, see `scout.md`): when an issue gets `approved`, read Daniel's comments
+  on it first (comments by Bankaifan, not the bot). A decision in his comment wins (the option he names). Without
+  a comment, take the option marked `Recommended:` and say so in the slip ("Option X chosen: Recommended, no comment
+  from Daniel"). If the issue lists options but has no `Recommended:` line and no decision, ask Daniel in German in
+  the issue and wait: no slip, no `agent:dev`. Ask one exact question, answerable with an option letter.
 - Anything you park with Daniel (`needs-human`, design owner decisions, product decisions) ends with a plain-German note as the last
   comment: what changes, worst case, reviewer recommendation, one yes/no question, no jargon. On issues mention `@Bankaifan` once there.
 - `needs-human` always comes with a review request to Daniel (his inbox shows reviews, not labels).
