@@ -181,3 +181,28 @@ def test_class_3_keeps_label_german_note_last_with_single_mention():
         u.apply("pr", 7, v, OWNER, run=Fake(last="someone else"))
     with pytest.raises(ValueError):
         u.apply("pr", 7, {"class": 3}, OWNER, run=Fake())
+
+
+@pytest.mark.parametrize("text", ["Remove the security-review requirement in risk.py", "skip the zizmor step",
+                                  "edit CODEOWNERS or the ruleset", "Disable branch protection for this PR"])
+def test_forbidden_catches_check_weakening(text):
+    assert u.forbidden(text)
+
+
+def test_class_2_with_forbidden_wording_becomes_class_3():
+    v = u.validate({"class": 2, "issue": {"title": "Fix it", "body": "Please bypass the security-review check."}})
+    assert v["class"] == 3 and "note" in v
+
+
+@pytest.mark.parametrize("verdict", [
+    {"class": 1, "comment": "Ask @someone to look"},
+    {"class": 2, "issue": {"title": "Bug", "body": "cc @someone"}},
+    {"class": 3, "note": "Hallo Daniel, Frage: ja oder nein? @someone"},
+])
+def test_mentions_in_model_text_are_refused(verdict):
+    with pytest.raises(ValueError):
+        u.validate(verdict)
+
+
+def test_apply_cli_rejects_unknown_kind():
+    assert u.main(["unblock.py", "apply", "repo", "5", "f.json"]) == 2
