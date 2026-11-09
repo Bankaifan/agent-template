@@ -26,6 +26,7 @@ import re
 import subprocess
 import sys
 
+import liveness
 from agent_guard import add_labels, same_login, tail_text
 from restart import close_superseded, superseded
 
@@ -234,8 +235,7 @@ def rebase_candidates(prs, main_runs, pr_runs, owner):
 def escalate(kind, number, why, owner, run=gh):
     thing = "pr" if kind == "pr" else "issue"
     safe_labels(thing, number, ["needs-human"], run)
-    safe(run, thing, "comment", str(number), "--body",
-         f"Status run: {why} Labelled needs-human; Daniel is asked to look at it.")
+    liveness.post_comment(thing, number, f"Status run: {why} Labelled needs-human; Daniel is asked to look at it.", run)
     if kind == "pr":
         author = safe(run, "pr", "view", str(number), "--json", "author")
         if author and not same_login(json.loads(author)["author"]["login"], owner):  # nobody reviews their own PR
@@ -280,7 +280,17 @@ def section(heading, rows):
     return "\n".join([f"## {heading}", *(rows or ["- none"])])
 
 
-def build_body(runs, prs, issues, ages, orchestrator, ideas, actions, now, owner):
+def scheduled_rows(successes, now):
+    late = set(liveness.overdue_runs(successes, now))
+    rows = []
+    for wf, (label, _) in liveness.SCHEDULED.items():
+        last = successes.get(wf)
+        when = f"[{age(last['createdAt'], now)} ago]({last['url']})" if last else "never"
+        rows.append(f"- {label}: {when}" + (" OVERDUE" if label in late else ""))
+    return rows
+
+
+def build_body(runs, prs, issues, ages, orchestrator, ideas, actions, now, owner, scheduled=None):
     run_rows = [f"- [{r['workflowName']}]({r['url']}) {r.get('displayTitle', '')} ({r['status']}, "
                 f"{age(r['createdAt'], now)})" for r in runs]
     pr_rows = [pr_line(p, owner) for p in prs]
@@ -294,7 +304,10 @@ def build_body(runs, prs, issues, ages, orchestrator, ideas, actions, now, owner
     parts = [f"Updated {now.strftime('%Y-%m-%d %H:%M')} UTC by the status run (no model).",
              section("Running agent jobs", run_rows), section("Pull requests", pr_rows),
              section("Issues with agent:dev", issue_rows), section("Last orchestrator run", [orch]),
-             section("Open ideas", idea_rows), section("Actions of this run", [f"- {a}" for a in actions])]
+             section("Open ideas", idea_rows)]
+    if scheduled is not None:
+        parts.append(section("Last successful scheduled runs", scheduled_rows(scheduled, now)))
+    parts.append(section("Actions of this run", [f"- {a}" for a in actions]))
     return "\n\n".join(parts) + "\n"
 
 
@@ -307,6 +320,7 @@ def update_issue(body, run=gh):
         run("issue", "edit", number, "--body", body)
     else:
         number = run("issue", "create", "--title", TITLE, "--body", body).strip().rsplit("/", 1)[-1]
+    liveness.verify_body("issue", number, body, run)
     safe(run, "issue", "pin", number)  # already pinned or no permission: not fatal
     return number
 
@@ -401,7 +415,11 @@ def run_status(env, now, run=gh):
         for p in conflict_prs(prs)[:1]:
             actions.append(f"conflict PR #{p['number']}: {handle_conflict(p, owner, run)}")
     ages = {i["number"]: age(labeled_at(i), now) for i in issues}
-    number = update_issue(build_body(runs, prs, issues, ages, orch, ideas, actions, now, owner), run)
+    successes = safe(liveness.last_successes, run)
+    if successes is not None:
+        late, new = liveness.flag_overdue(successes, now, run)
+        actions += [f"overdue run: {label}" for label in late] + [f"opened overdue issue #{n}" for n in new]
+    number = update_issue(build_body(runs, prs, issues, ages, orch, ideas, actions, now, owner, successes), run)
     print(f"status issue #{number}; actions: {len(actions)}")
     for a in actions:
         print(a)
@@ -413,7 +431,11 @@ def main(argv):
     if argv[1:] == ["gate"]:
         return gate(os.environ, now)
     if len(argv) == 1:
-        return run_status(os.environ, now)
+        try:
+            return run_status(os.environ, now)
+        except liveness.ReadbackError as e:
+            print(f"read-back failed: {e}", file=sys.stderr)
+            return 1
     print(__doc__, file=sys.stderr)
     return 2
 

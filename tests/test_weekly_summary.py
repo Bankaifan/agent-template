@@ -1,10 +1,23 @@
+import datetime
 import importlib.util
+import json
 import pathlib
+import subprocess
 
 _path = pathlib.Path(__file__).parent.parent / "tools" / "weekly_summary.py"
 _spec = importlib.util.spec_from_file_location("weekly_summary", _path)
 mod = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(mod)
+
+NOW = datetime.datetime(2026, 11, 9, 12, 0, tzinfo=datetime.UTC)
+
+
+def status_runs(created_at):
+    """Fake gh: `gh run list` returns the given status run (or none)."""
+    def run(*args):
+        assert args[:2] == ("run", "list")
+        return json.dumps([{"createdAt": created_at, "url": "u"}] if created_at else [])
+    return run
 
 
 def test_build_body_lists_rows_and_none():
@@ -58,3 +71,31 @@ def test_metrics_row_and_append_idempotent(tmp_path):
     assert mod.append_metrics(path, row) is False
     lines = path.read_text().splitlines()
     assert lines[0] == ",".join(mod.COLUMNS) and len(lines) == 2
+
+
+def test_status_run_stale_fresh_stale_and_none():
+    liveness = mod.liveness
+    assert liveness.status_run_stale(status_runs("2026-11-09T11:00:00+00:00"), NOW) is False
+    assert liveness.status_run_stale(status_runs("2026-11-09T08:00:00+00:00"), NOW) is True
+    assert liveness.status_run_stale(status_runs(None), NOW) is True
+
+
+def test_status_stale_safe_skips_warning_when_gh_fails():
+    def failing(*args):
+        raise subprocess.CalledProcessError(1, "gh")
+
+    assert mod.status_stale_safe(failing) is False
+
+
+def test_build_body_warns_when_status_stale():
+    body = mod.build_body([], [], [], [], "2026-11-09", status_stale=True)
+    assert "## Warning" in body and "last 3 hours" in body
+    assert "## Warning" not in mod.build_body([], [], [], [], "2026-11-09", status_stale=False)
+
+
+def test_run_main_exits_nonzero_on_readback_failure(monkeypatch):
+    def boom():
+        raise mod.liveness.ReadbackError("issue #1: body not as written after update")
+
+    monkeypatch.setattr(mod, "main", boom)
+    assert mod.run_main() == 1
