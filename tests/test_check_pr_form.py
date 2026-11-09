@@ -10,7 +10,7 @@ _spec.loader.exec_module(mod)
 
 
 def run(monkeypatch, env):
-    for k in ("PR_TITLE", "PR_BODY", "GITHUB_EVENT_NAME", "GITHUB_REF_NAME", "PR_HEAD_REF"):
+    for k in ("PR_TITLE", "PR_BODY", "PR_NUMBER", "GITHUB_EVENT_NAME", "GITHUB_REF_NAME", "PR_HEAD_REF"):
         monkeypatch.delenv(k, raising=False)
     for k, v in env.items():
         monkeypatch.setenv(k, v)
