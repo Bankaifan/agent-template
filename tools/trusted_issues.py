@@ -13,13 +13,15 @@ import re
 import subprocess
 import sys
 
+from agent_guard import same_login  # logins compare as `x`, `app/x` and `x[bot]` alike
+
 GATED = ("approved", "auto-ok")
 _DESIGN = re.compile(r"^Design: (docs/design/\d{4}-[a-z0-9-]+\.md)\s*$", re.MULTILINE)
 
 
 def design_ref(issue, author_bot, exists):
     """Path of the merged design an orchestrator-created issue refers to, else None."""
-    if not author_bot or (issue.get("author") or {}).get("login") != author_bot:
+    if not same_login((issue.get("author") or {}).get("login"), author_bot):
         return None
     if any(lab["name"] == "idea" for lab in issue.get("labels", [])):
         return None
@@ -33,14 +35,14 @@ def label_set_by(events, label, actor):
     for e in events:
         if e.get("event") in ("labeled", "unlabeled") and (e.get("label") or {}).get("name") == label:
             last = e
-    return bool(last) and last["event"] == "labeled" and (last.get("actor") or {}).get("login") == actor
+    return bool(last) and last["event"] == "labeled" and same_login((last.get("actor") or {}).get("login"), actor)
 
 
 def classify(issue, events, owner, author_bot="", exists=os.path.isfile):
     """Return a dict for a trusted issue, or None. `events` is only needed for gated labels."""
     labels = {lab["name"] for lab in issue.get("labels", [])}
     by_owner = {g for g in GATED if g in labels and label_set_by(events, g, owner)}
-    authored = (issue.get("author") or {}).get("login") == owner
+    authored = same_login((issue.get("author") or {}).get("login"), owner)
     design = design_ref(issue, author_bot, exists)
     if not authored and not by_owner and not design:
         return None

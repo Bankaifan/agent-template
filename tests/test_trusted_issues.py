@@ -1,6 +1,8 @@
 import importlib.util
 import pathlib
 
+import pytest
+
 _path = pathlib.Path(__file__).parent.parent / "tools" / "trusted_issues.py"
 _spec = importlib.util.spec_from_file_location("trusted_issues", _path)
 mod = importlib.util.module_from_spec(_spec)
@@ -100,6 +102,17 @@ def test_missing_body_is_dropped():
     d = derived()
     d["body"] = None
     assert mod.classify(d, [], "Bankaifan", BOT, exists) is None
+
+
+@pytest.mark.parametrize("form", ["author-app", "app/author-app", "author-app[bot]"])
+def test_design_issue_author_in_any_login_form(form):
+    assert mod.classify(derived(author=form), [], "Bankaifan", BOT, exists)["design"]
+
+
+@pytest.mark.parametrize("form", ["Bankaifan", "app/Bankaifan", "Bankaifan[bot]"])
+def test_owner_in_any_login_form(form):
+    assert mod.classify(issue(form), [], "Bankaifan")["authored_by_owner"]
+    assert mod.label_set_by([ev("labeled", "approved", form)], "approved", "Bankaifan")
 
 
 def test_auto_ok_only_counts_from_owner():

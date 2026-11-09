@@ -13,9 +13,6 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
-concurrency:
-  group: orchestrator
-  cancel-in-progress: false
 jobs:
   orchestrate:
     if: >-
@@ -24,6 +21,10 @@ jobs:
        (github.event.workflow_run.conclusion == 'success' &&
         github.event.workflow_run.event == 'push' &&
         github.event.workflow_run.head_branch == 'main'))
+    # Job level on purpose: runs skipped by `if` (validate on a PR branch) must not take over the group.
+    concurrency:
+      group: orchestrator
+      cancel-in-progress: false
     runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 30
     env:
@@ -33,7 +34,7 @@ jobs:
       - id: app
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
-          app-id: ${{ secrets.AUTHOR_APP_ID }}
+          client-id: ${{ vars.AUTHOR_CLIENT_ID }}
           private-key: ${{ secrets.AUTHOR_APP_KEY }}
       - name: Skip merges that only touch HANDOVER.md
         id: gate
@@ -95,9 +96,11 @@ jobs:
                Oldest first; issues authored_by_owner and issues with approved=true before the rest; an issue
                with auto_ok=true may be started by you, an `idea` with neither approved nor auto_ok never.
                Write a clear task slip as an issue comment
-               (goal, files touched, acceptance criteria; slips must touch disjoint files), then add the label
-               agent:dev. Add model:sonnet only for core, security or architecture work. Never exceed 2 open
-               issues labeled agent:dev. Keep at most 3 open PRs.
+               (goal, files touched, acceptance criteria; slips must touch disjoint files), then add the labels:
+               first model:sonnet (only for core, security or architecture work), then agent:dev last, so the
+               model label is already set when the agent:dev run starts. Never exceed 2 open
+               issues labeled agent:dev. Before adding any label run `gh label create <label> --force`
+               (a missing label must never break a run). Keep at most 3 open PRs.
                Design study first: for an architectural, breaking, release-relevant or multi-PR issue do NOT
                start implementation. Write a slip for a design task instead (output docs/design/NNNN-<slug>.md as
                described in .agents/roles/orchestrator.md). Small issues (docs, tests, fixes, contained
@@ -123,4 +126,4 @@ jobs:
             --model sonnet
             --max-turns 40
             --setting-sources user
-            --allowedTools "Read,Glob,Grep,Edit,Write,Bash(gh issue list:*),Bash(gh issue view:*),Bash(gh issue comment:*),Bash(gh issue create:*),Bash(gh issue edit:*),Bash(gh pr list:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr edit:*),Bash(gh pr comment:*),Bash(gh run list:*),Bash(git checkout -b agent/orchestrator-handover-:*),Bash(git add:*),Bash(git commit:*),Bash(git push origin agent/orchestrator-handover-:*),Bash(gh pr create:*),Bash(make check),Bash(date:*)"
+            --allowedTools "Read,Glob,Grep,Edit,Write,Bash(gh issue list:*),Bash(gh issue view:*),Bash(gh issue comment:*),Bash(gh issue create:*),Bash(gh issue edit:*),Bash(gh label create:*),Bash(gh pr list:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr edit:*),Bash(gh pr comment:*),Bash(gh run list:*),Bash(git checkout -b agent/orchestrator-handover-:*),Bash(git add:*),Bash(git commit:*),Bash(git push origin agent/orchestrator-handover-:*),Bash(gh pr create:*),Bash(make check),Bash(date:*)"

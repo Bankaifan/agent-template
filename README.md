@@ -46,10 +46,11 @@ Quota is scarce: `ORCHESTRATOR_ENABLED` and `IDEAS_PER_WEEK` control the autonom
    - Author: Contents, Pull requests, Issues, Actions and Workflows: read and write (Workflows to push `.github/workflows`;
      Actions to read run logs and dispatch `validate`).
    - Approver: Pull requests: read and write, Contents and Issues: read.
-3. **Add 5 secrets in every repo** (*Settings > Secrets and variables > Actions*; they are not inherited from the template): `CLAUDE_CODE_OAUTH_TOKEN` (from `claude setup-token`),
-   `AUTHOR_APP_ID`, `AUTHOR_APP_KEY`, `APPROVER_APP_ID`, `APPROVER_APP_KEY` (the `.pem` content).
-   Two required **variables** (same page, *Variables* tab): `AUTHOR_BOT` and `APPROVER_BOT`, the apps' bot logins (e.g. `my-author[bot]`,
-   `my-approver[bot]`). They replace any `allowed_bots: '*'`; `agent-fix` also needs the review to come from `APPROVER_BOT`.
+3. **Add 3 secrets in every repo** (*Settings > Secrets and variables > Actions*; they are not inherited from the template): `CLAUDE_CODE_OAUTH_TOKEN` (from `claude setup-token`),
+   `AUTHOR_APP_KEY`, `APPROVER_APP_KEY` (the `.pem` content).
+   Four required **variables** (same page, *Variables* tab): `AUTHOR_CLIENT_ID` and `APPROVER_CLIENT_ID` (the apps' client IDs, not secret;
+   `app-id` is deprecated in `actions/create-github-app-token`), and `AUTHOR_BOT` and `APPROVER_BOT`, the apps' bot logins (e.g. `my-author[bot]`,
+   `my-approver[bot]`; the forms `x`, `app/x` and `x[bot]` are treated alike). They replace any `allowed_bots: '*'`; `agent-fix` also needs the review to come from `APPROVER_BOT`.
    Optional variable: `RUNNER` (default `ubuntu-latest`, e.g. `self-hosted`).
 4. **Import the ruleset**: *Settings > Rules > Rulesets > New > Import* with `.github/rulesets/main.json`.
    Re-import it whenever that file changes (it is not applied automatically); delete the old ruleset first.
@@ -65,7 +66,7 @@ Then fill in `AGENTS.md` (one sentence about the project) and replace the placeh
 On PRs touching `.github/workflows/`, `.github/actions/` or `tools/ci/`, the required check `agent-smoke` creates both
 app tokens with the PR's workflow versions, calls `gh api /installation/repositories` with each and checks the Claude
 OAuth secret exists (no model call). It is skipped (= success) when no such path changed. Dependabot PRs get no
-Actions secrets: set the five secrets (and the variables `AUTHOR_BOT`, `APPROVER_BOT`) also as **Dependabot secrets**;
+Actions secrets: set the three secrets also as **Dependabot secrets** (Actions variables are readable in Dependabot runs);
 until then `agent-smoke` fails on them with a clear message. `setup` reports whether they exist (best effort).
 Re-import the ruleset after this change.
 

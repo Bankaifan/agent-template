@@ -2,20 +2,22 @@
 <!-- Overwrite, do not append. History lives in git and CHANGELOG. Max 60 lines. -->
 
 ## Goal
-Issue #19: template sync. This PR is the design study only (`docs/design/0001-template-sync.md`), no implementation.
+Two threads in flight: #19 template sync (design study merged in `docs/design/0001-template-sync.md`) and #22
+(no silent agent runs, labels never missing, client IDs, login normalization, job-level concurrency).
 
 ## Current state
-Design on branch `agent/19-template-sync-design`, fix round 1 after review feedback:
-- `EXTRA_INSTALL` moved from `.agents/project.env` (read from the PR branch, unsafe) to repo variable `vars.EXTRA_INSTALL`.
-- Sync fails loudly when the compare response has 300 or more files (possible truncation).
-- Template detection rule: `template` equals `GH_REPO`. `template.json` example moved to the README, not committed here.
-- Owner decisions: two (author app on the template repo; widened trust for `Template sync` issues). Needs Daniel.
+- #19: design merged; two owner decisions open (author app on the template repo; widened trust for `Template sync`
+  issues). After Daniel's decision the orchestrator creates the four implementation issues with a `Design:` line.
+- #22: PR on branch `agent/22-silent-runs-labels-logins`. `tools/agent_guard.py` (login normalization, label
+  create-then-add, silent dev/fix/review detection -> comment, `needs-human`, Daniel). agent-dev/fix/review end with an
+  `if: always()` step; concurrency only on dev/fix jobs; label adds via guard copy from main; all app tokens via `client-id` (`AUTHOR_CLIENT_ID` / `APPROVER_CLIENT_ID`,
+  already set by Daniel).
 
 ## Open decisions
-- Whether the author app can read a private template repo is not verified (open, owner decision 1).
-- The sync flow was not run end to end (open).
+- #19: whether the author app can read a private template repo is not verified; sync not run end to end.
+- #22: developer may now run read-only `gh release view/list` (release notes for major updates); nothing broader.
 
 ## Next 3 steps
-1. Daniel decides the two owner decisions in section 9 (PR gets `needs-human`).
-2. After approval the orchestrator creates the four implementation issues with a `Design:` line.
-3. Work them in order (1 and 2 may run in parallel).
+1. Daniel decides the two #19 owner decisions.
+2. Merge #22 after review; watch the first run with an escalation step.
+3. Orchestrator creates the #19 implementation issues.

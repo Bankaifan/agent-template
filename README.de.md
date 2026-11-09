@@ -18,7 +18,7 @@ Leitidee: Regeln, die ein Skript prüfen kann, gehören in CI, nicht in Prompts.
 
 1. Template nutzen (privat), Auto-Merge aktivieren, nur Rebase-Merge erlauben.
 2. Zwei GitHub-Apps anlegen und installieren (Autor: Contents, Pull requests, Issues, Actions und Workflows schreiben; Approver: Pull requests schreiben).
-3. Fünf Secrets, in jedem Repo neu zu setzen (werden nicht vom Template geerbt): `CLAUDE_CODE_OAUTH_TOKEN` (`claude setup-token`), `AUTHOR_APP_ID`, `AUTHOR_APP_KEY`, `APPROVER_APP_ID`, `APPROVER_APP_KEY`. Dazu zwei Variablen: `AUTHOR_BOT` und `APPROVER_BOT` (Bot-Logins der Apps, z. B. `my-author[bot]`); `setup` prüft sie.
+3. Drei Secrets, in jedem Repo neu zu setzen (werden nicht vom Template geerbt): `CLAUDE_CODE_OAUTH_TOKEN` (`claude setup-token`), `AUTHOR_APP_KEY`, `APPROVER_APP_KEY`. Dazu vier Variablen: `AUTHOR_CLIENT_ID` und `APPROVER_CLIENT_ID` (Client-IDs der Apps, nicht geheim), `AUTHOR_BOT` und `APPROVER_BOT` (Bot-Logins der Apps, z. B. `my-author[bot]`); `setup` prüft sie.
 4. Ruleset `.github/rulesets/main.json` importieren (nach jeder Änderung der Datei erneut importieren).
 5. Workflow `setup` manuell starten: legt die Labels an und listet fehlende Secrets (nur Namen).
 6. Ersten Auftrag als Issue mit Label `agent:dev` anlegen (oder Kommentar `/dev`; `model:sonnet` für Kernarbeit).

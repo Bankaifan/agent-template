@@ -1,5 +1,5 @@
 name: setup
-# Manual, no model. Creates the labels the workflows use (idempotent) and checks the 5 secrets and the 2 variables.
+# Manual, no model. Creates the labels the workflows use (idempotent) and checks the 3 secrets and the 4 variables.
 # Secret values are never printed; only the names of missing ones.
 on:
   workflow_dispatch:
@@ -13,31 +13,31 @@ jobs:
       - id: check
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          AUTHOR_APP_ID: ${{ secrets.AUTHOR_APP_ID }}
           AUTHOR_APP_KEY: ${{ secrets.AUTHOR_APP_KEY }}
-          APPROVER_APP_ID: ${{ secrets.APPROVER_APP_ID }}
           APPROVER_APP_KEY: ${{ secrets.APPROVER_APP_KEY }}
           AUTHOR_BOT: ${{ vars.AUTHOR_BOT }}
           APPROVER_BOT: ${{ vars.APPROVER_BOT }}
+          AUTHOR_CLIENT_ID: ${{ vars.AUTHOR_CLIENT_ID }}
+          APPROVER_CLIENT_ID: ${{ vars.APPROVER_CLIENT_ID }}
         run: |
           missing=""
-          for name in CLAUDE_CODE_OAUTH_TOKEN AUTHOR_APP_ID AUTHOR_APP_KEY APPROVER_APP_ID APPROVER_APP_KEY; do
+          for name in CLAUDE_CODE_OAUTH_TOKEN AUTHOR_APP_KEY APPROVER_APP_KEY; do
             if [ -z "${!name}" ]; then missing="$missing $name"; fi
           done
           echo "missing=${missing# }" >> "$GITHUB_OUTPUT"
           missing_vars=""
-          for name in AUTHOR_BOT APPROVER_BOT; do
+          for name in AUTHOR_BOT APPROVER_BOT AUTHOR_CLIENT_ID APPROVER_CLIENT_ID; do
             if [ -z "${!name}" ]; then missing_vars="$missing_vars $name"; fi
           done
           echo "missing_vars=${missing_vars# }" >> "$GITHUB_OUTPUT"
-          if [ -n "$AUTHOR_APP_ID" ] && [ -n "$AUTHOR_APP_KEY" ]; then
+          if [ -n "$AUTHOR_CLIENT_ID" ] && [ -n "$AUTHOR_APP_KEY" ]; then
             echo "author=true" >> "$GITHUB_OUTPUT"
           fi
       - id: app
         if: steps.check.outputs.author == 'true'
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
-          app-id: ${{ secrets.AUTHOR_APP_ID }}
+          client-id: ${{ vars.AUTHOR_CLIENT_ID }}
           private-key: ${{ secrets.AUTHOR_APP_KEY }}
       - name: Create labels
         if: steps.check.outputs.author == 'true'
@@ -59,13 +59,13 @@ jobs:
             exit 0
           fi
           missing=""
-          for name in CLAUDE_CODE_OAUTH_TOKEN AUTHOR_APP_ID AUTHOR_APP_KEY APPROVER_APP_ID APPROVER_APP_KEY; do
+          for name in CLAUDE_CODE_OAUTH_TOKEN AUTHOR_APP_KEY APPROVER_APP_KEY; do
             printf '%s\n' "$names" | grep -qx "$name" || missing="$missing $name"
           done
           if [ -n "$missing" ]; then
             echo "::warning::Missing Dependabot secrets:$missing (agent-smoke fails on Dependabot PRs until set)"
           else
-            echo "All five Dependabot secrets exist."
+            echo "All three Dependabot secrets exist."
           fi
       - name: Fail if secrets or variables are missing
         if: steps.check.outputs.missing != '' || steps.check.outputs.missing_vars != ''
@@ -74,6 +74,6 @@ jobs:
           MISSING_VARS: ${{ steps.check.outputs.missing_vars }}
         run: |
           [ -z "$MISSING" ] || echo "::error::Missing secrets: $MISSING"
-          [ -z "$MISSING_VARS" ] || echo "::error::Missing variables: $MISSING_VARS (bot logins of the apps, e.g. my-author[bot])"
+          [ -z "$MISSING_VARS" ] || echo "::error::Missing variables: $MISSING_VARS (bot logins of the apps, e.g. my-author[bot]; client IDs of the apps)"
           echo "Set secrets and variables in Settings > Secrets and variables > Actions, then run this workflow again."
           exit 1
