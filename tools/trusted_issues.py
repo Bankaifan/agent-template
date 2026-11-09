@@ -2,14 +2,29 @@
 
 Trusted: authored by OWNER, or labelled `approved` / `auto-ok` where the latest label event
 on the issue timeline was made by OWNER. Everything else is never shown to the agent.
-Needs the gh CLI (GH_TOKEN, GH_REPO). Environment: OWNER (default Bankaifan).
+Also trusted: an issue created by the orchestrator (author AUTHOR_BOT) from a merged design study. Its body
+has a line `Design: docs/design/NNNN-slug.md` naming a file that exists on the checked-out `main`, and it
+is not an `idea`. Authorship cannot be forged; a stranger's "Design:" line counts for nothing.
+Needs the gh CLI (GH_TOKEN, GH_REPO). Environment: OWNER (default Bankaifan), AUTHOR_BOT (login of the author app).
 """
 import json
 import os
+import re
 import subprocess
 import sys
 
 GATED = ("approved", "auto-ok")
+_DESIGN = re.compile(r"^Design: (docs/design/\d{4}-[a-z0-9-]+\.md)\s*$", re.MULTILINE)
+
+
+def design_ref(issue, author_bot, exists):
+    """Path of the merged design an orchestrator-created issue refers to, else None."""
+    if not author_bot or (issue.get("author") or {}).get("login") != author_bot:
+        return None
+    if any(lab["name"] == "idea" for lab in issue.get("labels", [])):
+        return None
+    m = _DESIGN.search(issue.get("body") or "")
+    return m.group(1) if m and exists(m.group(1)) else None
 
 
 def label_set_by(events, label, actor):
@@ -21,12 +36,13 @@ def label_set_by(events, label, actor):
     return bool(last) and last["event"] == "labeled" and (last.get("actor") or {}).get("login") == actor
 
 
-def classify(issue, events, owner):
+def classify(issue, events, owner, author_bot="", exists=os.path.isfile):
     """Return a dict for a trusted issue, or None. `events` is only needed for gated labels."""
     labels = {lab["name"] for lab in issue.get("labels", [])}
     by_owner = {g for g in GATED if g in labels and label_set_by(events, g, owner)}
     authored = (issue.get("author") or {}).get("login") == owner
-    if not authored and not by_owner:
+    design = design_ref(issue, author_bot, exists)
+    if not authored and not by_owner and not design:
         return None
     return {
         "number": issue["number"],
@@ -34,6 +50,7 @@ def classify(issue, events, owner):
         "authored_by_owner": authored,
         "approved": "approved" in by_owner,
         "auto_ok": "auto-ok" in by_owner,
+        "design": design,
         "labels": sorted((labels - set(GATED)) | by_owner),
     }
 
@@ -50,14 +67,15 @@ def timeline(number, repo):
 
 def main() -> int:
     owner = os.environ.get("OWNER", "Bankaifan")
+    author_bot = os.environ.get("AUTHOR_BOT", "")
     repo = os.environ["GH_REPO"]
     issues = json.loads(gh("issue", "list", "--state", "open", "--limit", "200",
-                           "--json", "number,title,author,labels"))
+                           "--json", "number,title,author,labels,body"))
     result = []
     for issue in issues:
         names = {lab["name"] for lab in issue["labels"]}
         events = timeline(issue["number"], repo) if names & set(GATED) else []
-        item = classify(issue, events, owner)
+        item = classify(issue, events, owner, author_bot)
         if item:
             result.append(item)
     print(json.dumps(result, separators=(",", ":")))

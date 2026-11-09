@@ -17,7 +17,13 @@ Idea: **rules a script can check live in CI, not in prompts.** The agents get a 
   A red-CI fix on a PR that touches `.github/` or `tools/` always uses sonnet.
   After the developer pushes, a script step makes sure `validate` runs on the head SHA (else `gh workflow run validate.yml`).
 - Dependabot PRs are not reviewed by AI: a model-free workflow approves patch/minor once `validate` is green and
-  enables auto-merge; majors get `needs-human`.
+  enables auto-merge; majors get `needs-human`. The update type comes from `dependabot/fetch-metadata` (grouped PRs: highest type wins),
+  falling back to the title ("Update x requirement from A to B" is parsed too); unknown means major.
+- Every `needs-human` on a PR also requests Daniel's review (`gh pr edit --add-reviewer Bankaifan`, skipped if he is the author), so it shows up under "Needs your review".
+- Design study before big work: architectural, breaking, release-relevant or multi-PR issues first get a `docs/design/NNNN-<slug>.md` PR
+  (see `docs/design/README.md`), reviewed by a design reviewer (`.agents/roles/design-reviewer.md`). Only the section *Owner decisions* needs Daniel;
+  if it is empty the design merges without him. Afterwards the orchestrator creates the implementation issues (body line `Design: docs/design/...`;
+  `tools/trusted_issues.py` trusts them when `AUTHOR_BOT` wrote them and the file exists on `main`).
 - `.github/CODEOWNERS`: `@Bankaifan` owns `AGENTS.md`, `CLAUDE.md`, `.agents/`, `.github/`, `.claude/`, `.mcp.json`, `tools/check/`.
 - A weekly rule keeper that opens one PR proposing rule removals, new checks and contradiction fixes (Daniel merges).
 - A daily `branch-cleanup` that deletes `agent/*` branches with a closed PR, or no PR and no commit for 7 days (dry-run input on manual runs).

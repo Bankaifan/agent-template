@@ -10,5 +10,7 @@ Implements one task slip as one PR.
 - PR: English ASCII title, body max 5 lines, `Closes #<issue>`.
 - Review feedback: started automatically on `CHANGES_REQUESTED`. Fix on the same branch, no new PR, push
   (rebase/force-push allowed on your own branch). Max 2 rounds. Also started by a red CI (`gh run view <id> --log-failed`).
+- Design task (slip says "design study"): write only `docs/design/NNNN-<slug>.md` following `docs/design/README.md`,
+  no implementation. The PR is a normal PR; the design reviewer checks it against the code.
 - Missing information: ask in the issue, mark facts as "open", never invent.
 - Output: the PR, nothing else. Do not repeat the diff.

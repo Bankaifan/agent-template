@@ -31,7 +31,8 @@ Project: <one sentence>. Current state: HANDOVER.md. Decisions: docs/decisions/.
 
 ## Review rounds
 Developer -> CI -> reviewer (only on green CI) -> at most 2 fix rounds (started automatically on `CHANGES_REQUESTED`
-or on a red CI). Then the PR gets `needs-human` and waits for the orchestrator or Daniel. Do not start a third round.
+or on a red CI). Then the PR gets `needs-human` plus a review request to Daniel (a label alone is not in his inbox) and waits for the orchestrator or Daniel. Do not start a third round.
+Big work (architectural, breaking, release-relevant, multi-PR) starts with a design study in `docs/design/` (see its README); only its *Owner decisions* go to Daniel.
 Only trusted input drives agents: issues by Daniel or labelled `approved`/`auto-ok` by Daniel; the reviewer never runs PR code.
 
 ## Models (subscription quota is scarce)

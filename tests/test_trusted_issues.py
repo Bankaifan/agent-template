@@ -53,6 +53,55 @@ def test_idea_approved_by_owner():
     assert r["approved"] and not r["auto_ok"] and "approved" in r["labels"]
 
 
+BOT = "author-app[bot]"
+DESIGN = "Part 1 of 3.\n\nDesign: docs/design/0001-big-thing.md\n"
+
+
+def derived(author=BOT, body=DESIGN, labels=("agent:dev",)):
+    d = issue(author, *labels)
+    d["body"] = body
+    return d
+
+
+def exists(path):
+    return path == "docs/design/0001-big-thing.md"
+
+
+def test_design_derived_issue_is_trusted():
+    r = mod.classify(derived(), [], "Bankaifan", BOT, exists)
+    assert r["design"] == "docs/design/0001-big-thing.md"
+    assert not r["authored_by_owner"] and not r["approved"] and not r["auto_ok"]
+
+
+def test_design_ref_from_stranger_is_dropped():
+    assert mod.classify(derived(author="mallory"), [], "Bankaifan", BOT, exists) is None
+
+
+def test_design_ref_without_configured_bot_is_dropped():
+    assert mod.classify(derived(), [], "Bankaifan", "", exists) is None
+
+
+def test_design_ref_to_missing_file_is_dropped():
+    body = "Design: docs/design/0002-other.md\n"
+    assert mod.classify(derived(body=body), [], "Bankaifan", BOT, exists) is None
+
+
+def test_design_ref_must_be_its_own_line_in_docs_design():
+    for body in ("see Design: docs/design/0001-big-thing.md", "Design: ../docs/design/0001-big-thing.md",
+                 "Design: docs/design/0001-big-thing.md/../../x.md", "no ref"):
+        assert mod.classify(derived(body=body), [], "Bankaifan", BOT, lambda p: True) is None
+
+
+def test_bot_idea_with_design_line_is_not_trusted():
+    assert mod.classify(derived(labels=("idea",)), [], "Bankaifan", BOT, exists) is None
+
+
+def test_missing_body_is_dropped():
+    d = derived()
+    d["body"] = None
+    assert mod.classify(d, [], "Bankaifan", BOT, exists) is None
+
+
 def test_auto_ok_only_counts_from_owner():
     scout = [ev("labeled", "auto-ok", "author-app[bot]")]
     assert mod.classify(issue("author-app[bot]", "idea", "auto-ok"), scout, "Bankaifan") is None

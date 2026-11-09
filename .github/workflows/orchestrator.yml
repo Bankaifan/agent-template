@@ -59,6 +59,7 @@ jobs:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           GH_REPO: ${{ github.repository }}
           OWNER: Bankaifan
+          AUTHOR_BOT: ${{ vars.AUTHOR_BOT }}
         run: echo "list=$(python3 tools/trusted_issues.py)" >> "$GITHUB_OUTPUT"
       - name: Count work (no model)
         id: pre
@@ -97,7 +98,19 @@ jobs:
                (goal, files touched, acceptance criteria; slips must touch disjoint files), then add the label
                agent:dev. Add model:sonnet only for core, security or architecture work. Never exceed 2 open
                issues labeled agent:dev. Keep at most 3 open PRs.
-            2. For each PR labeled needs-human: if its issue slip was not rewritten yet, rewrite the slip once
+               Design study first: for an architectural, breaking, release-relevant or multi-PR issue do NOT
+               start implementation. Write a slip for a design task instead (output docs/design/NNNN-<slug>.md as
+               described in .agents/roles/orchestrator.md). Small issues (docs, tests, fixes, contained
+               features) start directly. Issues in the list with a non-null `design` come from a merged design:
+               work them in the order of the design's split.
+            1b. Merged design PR (docs/design/ only): create the implementation issues from its split with
+               `gh issue create`, each body containing the line `Design: docs/design/NNNN-<slug>.md` and the
+               slip; do this once (check `gh issue list --search "Design: docs/design/NNNN"` first).
+            1c. Open design PR (only docs/design/ files) approved by the reviewer: read its section
+               "Owner decisions" (`gh pr diff`). If empty, leave it to auto-merge. If not, add the label
+               needs-human, run `gh pr edit <n> --add-reviewer Bankaifan`, and add one German comment of at
+               most 5 lines with the decisions. Such a PR is Daniel's: skip it in step 2.
+            2. For each other PR labeled needs-human: if its issue slip was not rewritten yet, rewrite the slip once
                (new issue comment starting with "Rewritten slip:") and re-add agent:dev; otherwise comment in the
                issue asking Daniel for a decision. Do not touch it a third time.
             3. If HANDOVER.md is stale: run `gh pr list --state open --search "head:agent/orchestrator-handover"`
@@ -110,4 +123,4 @@ jobs:
             --model sonnet
             --max-turns 40
             --setting-sources user
-            --allowedTools "Read,Glob,Grep,Edit,Write,Bash(gh issue list:*),Bash(gh issue view:*),Bash(gh issue comment:*),Bash(gh issue create:*),Bash(gh issue edit:*),Bash(gh pr list:*),Bash(gh pr view:*),Bash(gh run list:*),Bash(git checkout -b agent/orchestrator-handover-:*),Bash(git add:*),Bash(git commit:*),Bash(git push origin agent/orchestrator-handover-:*),Bash(gh pr create:*),Bash(make check),Bash(date:*)"
+            --allowedTools "Read,Glob,Grep,Edit,Write,Bash(gh issue list:*),Bash(gh issue view:*),Bash(gh issue comment:*),Bash(gh issue create:*),Bash(gh issue edit:*),Bash(gh pr list:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr edit:*),Bash(gh pr comment:*),Bash(gh run list:*),Bash(git checkout -b agent/orchestrator-handover-:*),Bash(git add:*),Bash(git commit:*),Bash(git push origin agent/orchestrator-handover-:*),Bash(gh pr create:*),Bash(make check),Bash(date:*)"
