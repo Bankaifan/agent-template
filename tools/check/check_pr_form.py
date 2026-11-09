@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Check PR form: title is printable ASCII (English), body is not empty.
 
 Reads PR_TITLE and PR_BODY from the environment (pull_request events). On workflow_dispatch it reads
