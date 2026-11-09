@@ -2,22 +2,20 @@
 <!-- Overwrite, do not append. History lives in git and CHANGELOG. Max 60 lines. -->
 
 ## Goal
-Issue #18: review requests for `needs-human`, design study before big work, better dependabot classification.
+Issue #19: template sync. This PR is the design study only (`docs/design/0001-template-sync.md`), no implementation.
 
 ## Current state
-PR on branch `agent/18-review-requests-design-study`. ADR: `docs/decisions/0006-*.md`.
-- `agent-fix`, `agent-review`, `dependabot-automerge` add `--add-reviewer Bankaifan` next to `needs-human`.
-- New role `.agents/roles/design-reviewer.md` (picked by `agent-review` when only `docs/design/` changed); template `docs/design/README.md`.
-- `tools/trusted_issues.py` trusts `Design:`-line issues written by `AUTHOR_BOT` (file must exist on main); the orchestrator gets `AUTHOR_BOT`.
-- `tools/dependabot_update_type.py` takes fetch-metadata JSON (highest type wins), parses range titles.
-- Tests: `tests/test_dependabot_update_type.py`, `tests/test_trusted_issues.py`.
+Design on branch `agent/19-template-sync-design`, fix round 1 after review feedback:
+- `EXTRA_INSTALL` moved from `.agents/project.env` (read from the PR branch, unsafe) to repo variable `vars.EXTRA_INSTALL`.
+- Sync fails loudly when the compare response has 300 or more files (possible truncation).
+- Template detection rule: `template` equals `GH_REPO`. `template.json` example moved to the README, not committed here.
+- Owner decisions: two (author app on the template repo; widened trust for `Template sync` issues). Needs Daniel.
 
 ## Open decisions
-- Whether `dependabot/fetch-metadata` (v3.1.0, pinned) works from a `workflow_run` event is not verified; the step is `continue-on-error` and the title is the fallback (open).
-- The design flow was not run end to end (open).
-- `agent-review.yml` was touched too (not in the slip's file list) because it adds `needs-human` at the round limit.
+- Whether the author app can read a private template repo is not verified (open, owner decision 1).
+- The sync flow was not run end to end (open).
 
 ## Next 3 steps
-1. Daniel reviews and merges once CI is green.
-2. Watch the first dependabot major/grouped PR: the log shows `PR #n: <kind>`.
-3. Try the design flow on the next big issue.
+1. Daniel decides the two owner decisions in section 9 (PR gets `needs-human`).
+2. After approval the orchestrator creates the four implementation issues with a `Design:` line.
+3. Work them in order (1 and 2 may run in parallel).
