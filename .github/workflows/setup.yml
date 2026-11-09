@@ -1,5 +1,5 @@
 name: setup
-# Manual, no model. Creates the labels the workflows use (idempotent) and checks the 5 secrets.
+# Manual, no model. Creates the labels the workflows use (idempotent) and checks the 5 secrets and the 2 variables.
 # Secret values are never printed; only the names of missing ones.
 on:
   workflow_dispatch:
@@ -17,12 +17,19 @@ jobs:
           AUTHOR_APP_KEY: ${{ secrets.AUTHOR_APP_KEY }}
           APPROVER_APP_ID: ${{ secrets.APPROVER_APP_ID }}
           APPROVER_APP_KEY: ${{ secrets.APPROVER_APP_KEY }}
+          AUTHOR_BOT: ${{ vars.AUTHOR_BOT }}
+          APPROVER_BOT: ${{ vars.APPROVER_BOT }}
         run: |
           missing=""
           for name in CLAUDE_CODE_OAUTH_TOKEN AUTHOR_APP_ID AUTHOR_APP_KEY APPROVER_APP_ID APPROVER_APP_KEY; do
             if [ -z "${!name}" ]; then missing="$missing $name"; fi
           done
           echo "missing=${missing# }" >> "$GITHUB_OUTPUT"
+          missing_vars=""
+          for name in AUTHOR_BOT APPROVER_BOT; do
+            if [ -z "${!name}" ]; then missing_vars="$missing_vars $name"; fi
+          done
+          echo "missing_vars=${missing_vars# }" >> "$GITHUB_OUTPUT"
           if [ -n "$AUTHOR_APP_ID" ] && [ -n "$AUTHOR_APP_KEY" ]; then
             echo "author=true" >> "$GITHUB_OUTPUT"
           fi
@@ -38,14 +45,16 @@ jobs:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          for l in agent:dev agent:review model:sonnet review:1 review:2 needs-human idea auto-ok approved; do
+          for l in agent:dev agent:review model:sonnet review:1 review:2 review:3 needs-human idea auto-ok approved; do
             gh label create "$l" --force
           done
-      - name: Fail if secrets are missing
-        if: steps.check.outputs.missing != ''
+      - name: Fail if secrets or variables are missing
+        if: steps.check.outputs.missing != '' || steps.check.outputs.missing_vars != ''
         env:
           MISSING: ${{ steps.check.outputs.missing }}
+          MISSING_VARS: ${{ steps.check.outputs.missing_vars }}
         run: |
-          echo "::error::Missing secrets: $MISSING"
-          echo "Set them in Settings > Secrets and variables > Actions, then run this workflow again."
+          [ -z "$MISSING" ] || echo "::error::Missing secrets: $MISSING"
+          [ -z "$MISSING_VARS" ] || echo "::error::Missing variables: $MISSING_VARS (bot logins of the apps, e.g. my-author[bot])"
+          echo "Set secrets and variables in Settings > Secrets and variables > Actions, then run this workflow again."
           exit 1

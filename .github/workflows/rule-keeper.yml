@@ -40,6 +40,9 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ steps.app.outputs.token }}
+          bot_id: "476059"
+          bot_name: "Bankaifan"
+          allowed_bots: ${{ vars.AUTHOR_BOT }}
           prompt: |
             You are the rule keeper of ${{ github.repository }}. Read AGENTS.md, .agents/roles/*.md, tools/check/,
             the last 30 merged PRs with reviews and comments (gh pr list --state merged --limit 30; gh pr view --comments)
@@ -56,4 +59,5 @@ jobs:
           claude_args: >-
             --model ${{ env.MODEL }}
             --max-turns 30
+            --setting-sources user
             --allowedTools "Read,Glob,Grep,Edit,Write,Bash(gh pr list:*),Bash(gh pr view:*),Bash(git checkout -b agent/rule-keeper-:*),Bash(git add:*),Bash(git commit:*),Bash(git push origin agent/rule-keeper-:*),Bash(gh pr create:*),Bash(make check),Bash(date:*)"
