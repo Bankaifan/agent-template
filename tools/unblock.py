@@ -42,6 +42,7 @@ _FORBIDDEN = re.compile(
     r"\b(?:disable|skip|bypass|ignore|override|instructions?)\b|"
     r"\b(?:curl|wget|sudo|chmod|chown|base64|bash|sh|eval|exec|rm|git|gh)\b",
     re.IGNORECASE)
+_SECRET_SHAPE = re.compile(r"gh[pousr]_\w{10,}|github_pat_\w+|[A-Za-z0-9+/=_-]{32,}")
 _SAFE_SHAPE = re.compile(r"[A-Za-z0-9 .,;:'()/_#=+-]+")
 _GERMAN_HINT = re.compile(r"\b(?:Daniel|Frage|ja|nein|Soll|Schlimmster)\b")
 
@@ -122,9 +123,10 @@ def validate(verdict):
         if len(issue["title"]) > MAX_TITLE or not (issue["title"] + issue["body"]).isascii() or len(issue["body"]) > 3000:
             raise ValueError("issue must be ASCII, title <= 100, body <= 3000")
         out["issue"] = {"title": issue["title"].strip(), "body": issue["body"].strip()}
-        bad = _FORBIDDEN.search(f"{out['issue']['title']} {out['issue']['body']}")
+        text2 = f"{out['issue']['title']} {out['issue']['body']}"
+        bad = _FORBIDDEN.search(text2) or _SECRET_SHAPE.search(text2)
         if bad:
-            out = {"class": 3, "reason": f"class 2 issue asked for a forbidden action ({bad.group(0)}); owner decision",
+            out = {"class": 3, "reason": "class 2 issue asked for a forbidden action or secret-like text; owner decision",
                    "note": NOTE_SECURITY}
     for key in ("comment", "note"):
         if "@" in (out.get(key) or ""):
@@ -141,6 +143,10 @@ def validate(verdict):
             out.setdefault("note", NOTE_SECURITY)
     if out["class"] == 3 and "note" in out and not _GERMAN_HINT.search(out["note"]):
         raise ValueError("note must be the German note for Daniel")
+    for key, val in (("reason", out["reason"]), ("comment", out.get("comment")), ("note", out.get("note")),
+                     *((f"issue.{k}", v) for k, v in (out.get("issue") or {}).items())):
+        if val and _SECRET_SHAPE.search(val):  # every outgoing string: a prompt-injected run must not leak a token
+            raise ValueError(f"{key} looks like a secret")
     return out
 
 

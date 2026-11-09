@@ -162,7 +162,9 @@ jobs:
                most 5 lines with the decisions. Such a PR is Daniel's: skip it in step 2.
             2. For each other PR labeled needs-human: if its issue slip was not rewritten yet, rewrite the slip once
                (new issue comment starting with "Rewritten slip:") and re-add agent:dev; otherwise comment in the
-               issue asking Daniel for a decision. Do not touch it a third time.
+               issue asking Daniel for a decision. Do not touch it a third time. Skip a PR whose issue or PR has the
+               label `unblock:1`, or an `<!-- unblocker -->` comment newer than its needs-human label: the unblocker
+               owns it (design 0002, section 4.7).
             3. If HANDOVER.md is stale: run `gh pr list --state open --search "head:agent/orchestrator-handover"`
                and skip if one is open. Else you are already on branch ${{ steps.handover.outputs.branch }}
                (created from main; do not create or switch branches). Overwrite HANDOVER.md (max 60 lines, facts

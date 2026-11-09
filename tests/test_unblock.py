@@ -204,5 +204,20 @@ def test_mentions_in_model_text_are_refused(verdict):
         u.validate(verdict)
 
 
+_TOKEN = "sk-ant-oat01-" + "AbC123dEf456GhI789jKl012"
+_NOTE = "Hallo Daniel, Frage: ja oder nein?"
+
+
+@pytest.mark.parametrize("verdict", [
+    {"class": 1, "comment": "Try this " + _TOKEN},
+    {"class": 3, "note": _NOTE + " " + _TOKEN},
+    {"class": 3, "reason": _TOKEN, "note": _NOTE},
+    {"class": 3, "note": _NOTE + " ghs_A1b2C3d4E5f6G7h8"},
+])
+def test_secret_shaped_text_is_refused_in_every_outgoing_string(verdict):
+    with pytest.raises(ValueError, match="secret"):
+        u.validate(verdict)
+
+
 def test_apply_cli_rejects_unknown_kind():
     assert u.main(["unblock.py", "apply", "repo", "5", "f.json"]) == 2
