@@ -9,6 +9,7 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 SETTINGS = ROOT / ".github" / "claude-judge-settings.json"
 JUDGING = ["agent-review.yml", "agent-security-review.yml", "scout.yml"]
+ACTING = ["agent-dev.yml", "agent-fix.yml", "orchestrator.yml", "rule-keeper.yml"]
 TOOLS = ["Read", "Glob", "Grep"]
 REQUIRED = ["/proc", "/etc", "/root", "/run", "/var", "/home/runner/work/_temp"]
 
@@ -34,6 +35,22 @@ def test_workspace_not_denied():
 def test_step_passes_settings(name):
     text = (ROOT / ".github" / "workflows" / name).read_text(encoding="utf-8")
     assert "--settings .github/claude-judge-settings.json" in text
+
+
+@pytest.mark.parametrize("name", ACTING)
+def test_acting_step_passes_settings(name):
+    text = (ROOT / ".github" / "workflows" / name).read_text(encoding="utf-8")
+    assert "--settings .github/claude-judge-settings.json" in text
+
+
+def test_every_claude_code_action_workflow_is_covered():
+    """A new workflow using claude-code-action must be listed above, so it cannot skip the deny settings."""
+    users = {
+        p.name
+        for p in (ROOT / ".github" / "workflows").glob("*.yml")
+        if "anthropics/claude-code-action" in p.read_text(encoding="utf-8")
+    }
+    assert users == set(JUDGING) | set(ACTING)
 
 
 @pytest.mark.parametrize("name", JUDGING)

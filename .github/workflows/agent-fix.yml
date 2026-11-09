@@ -228,6 +228,7 @@ jobs:
             --model ${{ env.MODEL }}
             --max-turns 60
             --setting-sources user
+            --settings .github/claude-judge-settings.json
             --allowedTools "Read,Edit,Write,Glob,Grep,Bash(git:*),Bash(make:*),Bash(python3:*),Bash(pytest:*),Bash(ruff:*),Bash(actionlint:*),Bash(zizmor:*),Bash(gh issue view:*),Bash(gh pr view:*),Bash(gh run view:*),Bash(gh release view:*),Bash(gh release list:*)"
       # Deterministic, fixed flags: the agent only writes the file, it never runs `gh pr edit`.
       # Only after a successful agent run. The file must be a regular file (no symlink) and pass the checks below.

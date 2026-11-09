@@ -76,4 +76,5 @@ jobs:
             --model ${{ env.MODEL }}
             --max-turns 30
             --setting-sources user
+            --settings .github/claude-judge-settings.json
             --allowedTools "Read,Glob,Grep,Edit,Write,Bash(gh pr list:*),Bash(gh pr view:*),Bash(git checkout -b agent/rule-keeper-:*),Bash(git add:*),Bash(git commit:*),Bash(git push origin agent/rule-keeper-:*),Bash(gh pr create:*),Bash(make check),Bash(date:*)"
