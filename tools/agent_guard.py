@@ -27,11 +27,20 @@ import re
 import subprocess
 import sys
 
+# Execution-file helpers live in exec_log.py; re-exported here so `agent_guard.X` keeps working.
+from exec_log import (  # noqa: F401
+    _SECRET,
+    MAX_DENIALS,
+    TAIL_CHARS,
+    TAIL_LINES,
+    _records,
+    count_denials,
+    denied_calls,
+    read_exec,
+    tail_text,
+)
+
 OWNER_DEFAULT = "Bankaifan"
-TAIL_LINES = 15
-TAIL_CHARS = 1500
-MAX_DENIALS = 10
-_SECRET = re.compile(r"(gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-ant-[A-Za-z0-9_-]{20,})")
 
 
 def norm_login(login):
@@ -106,47 +115,6 @@ def fix_produced(head_before, head_after, body_before, body_after):
     if head_moved(head_before, head_after):
         return True
     return body_before is not None and body_hash(body_before) != body_hash(body_after)
-
-
-def tail_text(text, lines=TAIL_LINES, chars=TAIL_CHARS):
-    """Last lines of the execution file, secret-looking tokens masked, fences neutralized, length capped."""
-    out = "\n".join(text.splitlines()[-lines:])[-chars:].replace("```", "'''")
-    return _SECRET.sub("***", out)
-
-
-def _records(text):
-    """Execution file = JSON array of messages (or JSON lines); return every dict."""
-    try:
-        data = json.loads(text)
-    except ValueError:
-        data = []
-        for line in text.splitlines():
-            try:
-                data.append(json.loads(line))
-            except ValueError:
-                pass
-    return [d for d in (data if isinstance(data, list) else [data]) if isinstance(d, dict)]
-
-
-def denied_calls(text, limit=MAX_DENIALS):
-    """One line per denied tool call (tool + command/path) from `permission_denials`; secrets masked."""
-    lines = []
-    for rec in _records(text):
-        for d in rec.get("permission_denials") or []:
-            if not isinstance(d, dict):
-                continue
-            inp = d.get("tool_input")
-            inp = inp if isinstance(inp, dict) else {}
-            what = inp.get("command") or inp.get("file_path") or inp.get("path") or inp.get("pattern") or ""
-            text_ = _SECRET.sub("***", " ".join(str(what).split()))[:150]  # mask first, then cut
-            lines.append(f"{d.get('tool_name') or '?'}: {text_}".replace("`", "'"))
-    more = len(lines) - limit
-    return lines[:limit] + ([f"... and {more} more"] if more > 0 else [])
-
-
-def count_denials(text):
-    """Number of permission denials in the execution file (all of them, not only the listed ones)."""
-    return sum(len([d for d in rec.get("permission_denials") or [] if isinstance(d, dict)]) for rec in _records(text))
 
 
 def _after(ts, since):
@@ -229,14 +197,6 @@ def report(kind, what, run_url, exec_text):
         detail = f"Last lines of the execution file (no denied tool calls found):\n```\n{tail}\n```\n"
     return (f"agent-{kind} run finished silently: {what}.\n\nRun: {run_url or '(unknown)'}\n\n{detail}"
             "Labelled needs-human; Daniel is asked to look at it.")
-
-
-def read_exec(path):
-    try:
-        with open(path, encoding="utf-8", errors="replace") as f:
-            return f.read()
-    except (OSError, TypeError):
-        return ""
 
 
 def read_body_before(path):
