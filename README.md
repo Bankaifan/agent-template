@@ -85,7 +85,8 @@ Projects created from this template get later template changes through a weekly 
 open issue `Template sync <short sha>` (labels `agent:dev`, `model:sonnet`), or edits it if one is already open.
 Files you list under `overrides` are shown separately with your `why`. The issue ends with `Template-Sync: <40 hex>`; the
 orchestrator trusts it only when the author app (`AUTHOR_BOT`) wrote it. The developer ports `clean` files as they are,
-ports `overridden` files by hand keeping their intent, sets `synced_sha` to that SHA and opens one PR with
+ports `overridden` files by hand keeping their intent (agent-dev downloads the template at that SHA into the
+untracked `.template/` first, so the developer can read it), sets `synced_sha` to that SHA and opens one PR with
 `Closes #<sync issue>`. The PR touches `.github/`, so Daniel must approve as code owner.
 
 Example `.agents/template.json` for a project (add it once by hand; it is not part of the template, so new projects do not
