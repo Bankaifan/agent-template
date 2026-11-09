@@ -27,6 +27,7 @@ import subprocess
 import sys
 
 from agent_guard import add_labels, same_login, tail_text
+from restart import close_superseded, superseded
 
 TITLE = "Agent status"
 OWNER_DEFAULT = "Bankaifan"
@@ -351,7 +352,7 @@ def run_status(env, now, run=gh):
     runs = [r for r in runs if r["workflowName"] in AGENT_WORKFLOWS]
     prs = jlist(run, "pr", "list", "--state", "open", "--limit", str(PR_LIMIT), "--json",
                 "number,title,url,headRefName,headRefOid,labels,reviewDecision,reviewRequests,statusCheckRollup,"
-                "mergeStateStatus,isCrossRepository,author,commits,createdAt")
+                "mergeStateStatus,isCrossRepository,author,commits,createdAt,body")
     issues = jlist(run, "issue", "list", "--state", "open", "--label", "agent:dev", "--limit", "50",
                    "--json", "number,title,labels,createdAt")
     ideas = jlist(run, "issue", "list", "--state", "open", "--label", "idea", "--limit", "50",
@@ -377,6 +378,10 @@ def run_status(env, now, run=gh):
                     "-f", "update_method=rebase")
         actions.append(f"rebased PR #{p['number']} onto green main" if done is not None
                        else f"rebase of PR #{p['number']} failed")
+
+    for old, new in safe(close_superseded, prs, run) or []:  # a newer agent PR for the same issue replaces the older
+        actions.append(f"closed PR #{old}: superseded by #{new}")
+    prs = [p for p in prs if p["number"] not in {o for o, _ in superseded(prs)}]
 
     for rid in held_run_ids(held, prs, bot):
         if safe(run, "api", "-X", "POST", f"repos/{repo}/actions/runs/{rid}/approve") is not None:
