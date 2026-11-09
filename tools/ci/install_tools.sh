@@ -9,6 +9,9 @@ pip install "ruff==$RUFF" "zizmor==$ZIZMOR" pytest pytest-timeout
 for f in requirements.txt requirements_test.txt; do
   if [ -f "$f" ]; then pip install -r "$f"; fi
 done
+# Project-specific extra command: only from the environment (repo variable vars.EXTRA_INSTALL), never from a file in the
+# checkout, because a PR branch must not be able to change what runs here.
+if [ -n "${EXTRA_INSTALL:-}" ]; then bash -c "$EXTRA_INSTALL"; fi
 dir="${RUNNER_TEMP:-/tmp}/actionlint"
 mkdir -p "$dir"
 curl -fsSL "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT}/actionlint_${ACTIONLINT}_linux_amd64.tar.gz" \

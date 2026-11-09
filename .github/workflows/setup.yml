@@ -1,5 +1,7 @@
 name: setup
 # Manual, no model. Creates the labels the workflows use (idempotent) and checks the 3 secrets and the 4 variables.
+# Optional variables (names only, never required): PYTHON_VERSION (default 3.x), EXTRA_INSTALL (shell command run by
+# tools/ci/install_tools.sh), TEMPLATE_SYNC.
 # Secret values are never printed; only the names of missing ones.
 on:
   workflow_dispatch:
