@@ -104,3 +104,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ steps.pr.outputs.num }}
         run: python3 tools/ci/risk.py verdict "$PR" "$SHA"
+      # Whichever of agent-review / agent-security-review finishes last marks the PR for Daniel (idempotent).
+      - name: Mark an approved PR that waits for Daniel
+        if: ${{ always() && steps.claude.conclusion != 'skipped' }}
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          PR: ${{ steps.pr.outputs.num }}
+        run: python3 tools/ci/risk.py wait "$PR" "$SHA"

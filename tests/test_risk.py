@@ -85,7 +85,12 @@ def test_codeowner_paths_wait_for_owner():
     assert not risk.waits_for_owner("infra", ["tools/status.py"], co, "Bankaifan")
 
 
-def _stub(calls, reviews, files, comments, diff_text):
+GREEN_RUNS = [{"name": n, "status": "completed", "conclusion": "success"} for n in ("validate", "agent-smoke")] + [
+    {"name": "risk", "status": "completed", "conclusion": "failure"}]
+SEC_OK = [{"context": "security-review", "state": "success"}]
+
+
+def _stub(calls, reviews, files, comments, diff_text, runs=GREEN_RUNS, statuses=SEC_OK, user="agent-bot"):
     def run(*a):
         calls.append(a)
         if a[0] == "api" and a[-1].endswith("/reviews"):
@@ -94,39 +99,67 @@ def _stub(calls, reviews, files, comments, diff_text):
             return json.dumps([[{"filename": f} for f in files]])
         if a[0] == "api" and a[-1].endswith("/comments"):
             return json.dumps([comments])
+        if a[0] == "api" and a[-1].endswith("/check-runs"):
+            return json.dumps({"check_runs": runs})
+        if a[0] == "api" and a[-1].endswith("/statuses"):
+            return json.dumps(statuses)
+        if a[0] == "api" and "/pulls/" in a[-1]:
+            return json.dumps({"head": {"sha": "abc"}, "user": {"login": user}, "body": "Adds a gate.\nCloses #65"})
         if a[:2] == ("pr", "diff"):
             return diff_text
         return ""
     return run
 
 
-def test_run_wait_labels_and_comments_once(monkeypatch, tmp_path):
+def _wait_env(monkeypatch, tmp_path):
     monkeypatch.setenv("GH_REPO", "o/r")
     monkeypatch.setenv("APPROVER_BOT", "appr")
     monkeypatch.chdir(tmp_path)
     (tmp_path / ".github").mkdir()
     (tmp_path / ".github" / "CODEOWNERS").write_text("/AGENTS.md @Bankaifan\n")
     monkeypatch.setattr(risk.subprocess, "run", lambda *a, **k: None)
-    rev = [{"user": {"login": "appr[bot]"}, "state": "APPROVED", "commit_id": "abc"}]
+
+
+REV = [{"user": {"login": "appr[bot]"}, "state": "APPROVED", "commit_id": "abc", "body": "Looks right."}]
+
+
+def test_run_wait_all_green_labels_and_comments_once(monkeypatch, tmp_path):
+    _wait_env(monkeypatch, tmp_path)
     calls = []
-    run = _stub(calls, rev, ["AGENTS.md"], [], diff("AGENTS.md", "+x"))
+    run = _stub(calls, REV, ["AGENTS.md"], [], diff("AGENTS.md", "+x"))
     assert risk.run_wait("5", "abc", run) == 0
     assert ("pr", "edit", "5", "--add-label", "needs-human") in calls
-    assert any(c[:3] == ("pr", "comment", "5") and "Hallo Daniel" in c[-1] for c in calls)
+    notes = [c[-1] for c in calls if c[:3] == ("pr", "comment", "5")]
+    assert len(notes) == 1 and "Hallo Daniel" in notes[0] and "Adds a gate." in notes[0] and "abc" in notes[0]
     calls.clear()
-    run = _stub(calls, rev, ["AGENTS.md"], [{"body": risk.NOTE}], diff("AGENTS.md", "+x"))
+    run = _stub(calls, REV, ["AGENTS.md"], [{"body": notes[0]}], diff("AGENTS.md", "+x"))
     risk.run_wait("5", "abc", run)
-    assert not any(c[:2] == ("pr", "comment") for c in calls)
+    assert not any(c[:2] == ("pr", "comment") or "--add-label" in c for c in calls)
+
+
+def test_run_wait_security_review_pending_or_failed_sets_nothing(monkeypatch, tmp_path):
+    _wait_env(monkeypatch, tmp_path)
+    for st in ([{"context": "security-review", "state": "pending"}],
+               [{"context": "security-review", "state": "failure"}], []):
+        calls = []
+        risk.run_wait("5", "abc", _stub(calls, REV, ["AGENTS.md"], [], diff("AGENTS.md", "+x"), statuses=st))
+        assert not any(c[:2] in (("pr", "edit"), ("pr", "comment")) for c in calls), st
+
+
+def test_run_wait_red_or_missing_check_sets_nothing(monkeypatch, tmp_path):
+    _wait_env(monkeypatch, tmp_path)
+    bad = [dict(r, conclusion="failure") if r["name"] == "agent-smoke" else r for r in GREEN_RUNS]
+    for runs in (bad, GREEN_RUNS[1:], [dict(r, status="in_progress") for r in GREEN_RUNS]):
+        calls = []
+        risk.run_wait("5", "abc", _stub(calls, REV, ["AGENTS.md"], [], diff("AGENTS.md", "+x"), runs=runs))
+        assert not any(c[:2] in (("pr", "edit"), ("pr", "comment")) for c in calls)
 
 
 def test_run_wait_ignores_other_heads_and_plain_prs(monkeypatch, tmp_path):
-    monkeypatch.setenv("GH_REPO", "o/r")
-    monkeypatch.setenv("APPROVER_BOT", "appr")
-    monkeypatch.chdir(tmp_path)
-    rev = [{"user": {"login": "appr"}, "state": "APPROVED", "commit_id": "abc"}]
+    _wait_env(monkeypatch, tmp_path)
     for sha, files in (("zzz", ["AGENTS.md"]), ("abc", ["src/a.py"])):
         calls = []
-        risk.run_wait("5", sha, _stub(calls, rev, files, [], diff("src/a.py", "+x")))
+        risk.run_wait("5", sha, _stub(calls, REV, files, [], diff("src/a.py", "+x")))
         assert not any(c[:2] == ("pr", "edit") for c in calls)
 
 
