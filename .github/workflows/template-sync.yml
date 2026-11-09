@@ -9,7 +9,7 @@ permissions:
   contents: read
 jobs:
   sync:
-    if: vars.TEMPLATE_SYNC != 'off'
+    if: (vars.TEMPLATE_SYNC || 'on') != 'off'
     # Job level on purpose: a skipped run must not take over the group.
     concurrency:
       group: template-sync
