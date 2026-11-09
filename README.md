@@ -119,6 +119,13 @@ name in `workflow_run.workflows` (GitHub allows no expressions there). It is `[v
 `agent-review.yml`, `dependabot-automerge.yml` and `orchestrator.yml`. A project whose CI workflow has another name
 (for example `Validate`) edits those lines and lists the files under `overrides`.
 
+**Scout ideas for the template.** `scout.yml` opens each idea through `tools/idea_route.py` (no model). If every file of an
+idea is under `managed` in `.agents/template.json`, the issue goes to the template repo (label `idea`, body ends with
+`Found in: <project>#<context>`, no duplicate of an open template idea); otherwise, or without `template.json`, it stays in
+the project. This uses a second author-app token limited to the template repo with `issues: write`; it is in the
+environment of the scout step, but only `tools/idea_route.py` uses it (the one allowed scout command). The tool accepts only the
+labels `prio:2` and `prio:3` (allowlist, so never `approved` or `auto-ok`), reads the body only from `/tmp` and strips `@` mentions.
+
 Rationale: [docs/decisions/0007-template-sync.md](docs/decisions/0007-template-sync.md).
 
 ## Limits
