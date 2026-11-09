@@ -24,7 +24,7 @@ jobs:
       - name: Install pinned tools
         run: bash tools/ci/install_tools.sh
       - name: Secret scan
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
         env:
           GITHUB_TOKEN: ${{ github.token }}
       - name: Checks (ruff, pytest, actionlint, zizmor, repo checks)
