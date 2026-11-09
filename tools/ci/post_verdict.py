@@ -4,8 +4,10 @@
 
 The final reply must contain a line `security-review: approve|changes <SHA>`; that line and everything after it is
 posted as one PR comment (secrets masked). A `changes` verdict also gets a request-changes review by the same app and the
-round label review:N is bumped, so agent-fix starts a normal fix round. No verdict: the denied tool calls are printed and the exit code is 1.
+round label review:N is bumped, so agent-fix starts a normal fix round. An `approve` dismisses the app's own open
+"Security review asks for changes" reviews (env APPROVER_BOT names the app; unset: nothing is dismissed). No verdict: the denied tool calls are printed and the exit code is 1.
 """
+import json
 import os
 import re
 import subprocess
@@ -17,6 +19,7 @@ import agent_guard
 
 LINE = re.compile(r"^\s*`?security-review: (approve|changes) ([0-9a-f]{7,40})`?\s*$", re.IGNORECASE | re.MULTILINE)
 MAX_CHARS = 6000
+REQUEST_PREFIX = "Security review asks for changes"
 
 
 def final_text(exec_text):
@@ -60,6 +63,35 @@ def bump_round(number, run=gh):
     return True
 
 
+def dismiss_own_requests(number, sha, run=gh, approver=None):
+    """After an approve: dismiss the approver app's own open CHANGES_REQUESTED reviews whose body starts with
+    REQUEST_PREFIX. Reviews by anyone else, with other bodies or in other states are never touched. A failure here
+    must not turn the approve into a crash."""
+    approver = approver if approver is not None else os.environ.get("APPROVER_BOT", "")
+    if not approver:
+        return 0
+    try:
+        repo = os.environ.get("GH_REPO") or run("repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner").strip()
+        reviews = json.loads(run("api", "--paginate", "--slurp", f"repos/{repo}/pulls/{number}/reviews") or "[]")
+        reviews = [r for page in reviews for r in (page if isinstance(page, list) else [page])]
+    except (subprocess.CalledProcessError, OSError, ValueError) as e:
+        print(f"post_verdict: could not list reviews for #{number}: {type(e).__name__}")
+        return 0
+    done = 0
+    for r in reviews:
+        if not (isinstance(r, dict) and r.get("state") == "CHANGES_REQUESTED"
+                and agent_guard.same_login((r.get("user") or {}).get("login"), approver)
+                and (r.get("body") or "").startswith(REQUEST_PREFIX) and r.get("id")):
+            continue
+        try:
+            run("api", "-X", "PUT", f"repos/{repo}/pulls/{number}/reviews/{r['id']}/dismissals",
+                "-f", f"message=Security review approved {sha[:7]}")
+            done += 1
+        except (subprocess.CalledProcessError, OSError) as e:
+            print(f"post_verdict: could not dismiss review {r['id']} on #{number}: {type(e).__name__}")
+    return done
+
+
 def post(number, sha, exec_text, run=gh, tmpdir=None):
     got = extract(final_text(exec_text), sha)
     if not got:
@@ -75,6 +107,8 @@ def post(number, sha, exec_text, run=gh, tmpdir=None):
     if kind == "changes" and bump_round(number, run):
         run("pr", "review", str(number), "--request-changes", "--body",
             f"Security review asks for changes at {sha[:7]}: see the `security-review: changes` comment.")
+    if kind == "approve":
+        dismiss_own_requests(number, sha, run)
     print(f"post_verdict: {kind} posted for #{number}")
     return 0
 
