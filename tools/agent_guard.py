@@ -14,6 +14,8 @@ CLI (needs the gh CLI with GH_TOKEN and GH_REPO):
                                              after agent-review: no approver review for SHA (and BODYHASH) -> escalate
   agent_guard.py silent orchestrator - SINCE after the orchestrator model step: denials, or STARTABLE=true and no visible action
                                              by AUTHOR_BOT since SINCE -> comment on STATUS_ISSUE (default 57), exit 1; 2nd in 24 h -> prio:1 issue
+`silent` ignores extra trailing arguments (the guard runs from main, the workflow from the PR branch: no version drift).
+A usage error or exception in `silent` escalates with reason "guard error" and exits 1; it never fails quietly.
 Escalate = comment (run URL, denied tool calls from the execution file, else its last lines), label needs-human, request OWNER's review.
 Environment for escalation: RUN_URL, EXEC_FILE (path of the action's execution file), OWNER (default Bankaifan).
 """
@@ -270,6 +272,56 @@ def reviews_of(pr, run=gh):
     return [r for page in pages for r in page]
 
 
+class UsageError(ValueError):
+    pass
+
+
+def silent_check(args, owner):
+    """One `silent KIND NUMBER ...` check. Extra trailing arguments are ignored (workflow/guard version drift:
+    the guard runs from main, the workflow from the PR branch). Too few arguments or an unknown KIND: UsageError."""
+    if len(args) < 2:
+        raise UsageError("silent needs KIND and NUMBER")
+    kind, number = args[0], args[1]
+    if kind == "dev" and len(args) >= 3:
+        prs = json.loads(gh("pr", "list", "--state", "all", "--limit", "100", "--json", "headRefName,createdAt"))
+        if not dev_has_pr(prs, number, args[2]):
+            escalate("dev", number, False, f"no PR was produced for the agent/{number}-* branch", owner)
+    elif kind == "fix" and len(args) >= 3:
+        now = json.loads(gh("pr", "view", number, "--json", "headRefOid,body"))
+        before = read_body_before(args[3]) if len(args) >= 4 else None
+        if not fix_produced(args[2], now["headRefOid"], before, now.get("body")):
+            escalate("fix", number, True, "no fix was produced (no new commit, PR body unchanged)", owner)
+    elif kind == "review" and len(args) >= 3:
+        bh = args[3] if len(args) >= 4 else None
+        if not has_review(reviews_of(number), os.environ.get("APPROVER_BOT", ""), args[2], bh):
+            escalate("review", number, True, "no review by the approver app exists for the head commit", owner)
+    elif kind == "orchestrator" and len(args) >= 3:
+        return silent_orchestrator(args[2])
+    else:
+        raise UsageError(f"bad arguments for silent {kind}: {len(args) - 1} after the kind")
+    return 0
+
+
+def silent_guarded(args, owner, check=silent_check):
+    """A silent-run guard never fails quietly: a usage error or an exception escalates ("guard error"), exit 1."""
+    try:
+        return check(args, owner)
+    except Exception as exc:  # noqa: BLE001 - the whole point is to catch everything
+        detail = _SECRET.sub("***", " ".join(f"{type(exc).__name__}: {exc}".split()))[:200]
+        print(f"guard error: {detail}", file=sys.stderr)
+        kind, number = (args + ["", ""])[:2]
+        why = f"guard error ({detail})"
+        try:
+            if kind == "orchestrator" or not number.isdigit():
+                escalate_orchestrator(why, os.environ.get("STATUS_ISSUE", "57"), os.environ.get("GH_REPO", ""),
+                                      os.environ.get("AUTHOR_BOT", ""))
+            else:
+                escalate(kind if kind in ("dev", "fix", "review") else "guard", number, kind != "dev", why, owner)
+        except Exception as exc2:  # noqa: BLE001
+            print(f"escalation failed: {type(exc2).__name__}", file=sys.stderr)
+        return 1
+
+
 def main(argv):
     owner = os.environ.get("OWNER", OWNER_DEFAULT)
     cmd, args = (argv[1], argv[2:]) if len(argv) > 1 else ("", [])
@@ -287,25 +339,8 @@ def main(argv):
     elif cmd == "reviewed" and len(args) in (2, 3):
         bh = args[2] if len(args) == 3 else None
         return 0 if has_review(reviews_of(args[0]), os.environ.get("APPROVER_BOT", ""), args[1], bh) else 1
-    elif cmd == "silent" and len(args) >= 2:
-        kind, number = args[0], args[1]
-        if kind == "dev" and len(args) == 3:
-            prs = json.loads(gh("pr", "list", "--state", "all", "--limit", "100", "--json", "headRefName,createdAt"))
-            if not dev_has_pr(prs, number, args[2]):
-                escalate("dev", number, False, f"no PR was produced for the agent/{number}-* branch", owner)
-        elif kind == "fix" and len(args) in (3, 4):
-            now = json.loads(gh("pr", "view", number, "--json", "headRefOid,body"))
-            before = read_body_before(args[3]) if len(args) == 4 else None
-            if not fix_produced(args[2], now["headRefOid"], before, now.get("body")):
-                escalate("fix", number, True, "no fix was produced (no new commit, PR body unchanged)", owner)
-        elif kind == "review" and len(args) in (3, 4):
-            bh = args[3] if len(args) == 4 else None
-            if not has_review(reviews_of(number), os.environ.get("APPROVER_BOT", ""), args[2], bh):
-                escalate("review", number, True, "no review by the approver app exists for the head commit", owner)
-        elif kind == "orchestrator" and len(args) == 3:
-            return silent_orchestrator(args[2])
-        else:
-            return 2
+    elif cmd == "silent":
+        return silent_guarded(args, owner)
     else:
         print(__doc__, file=sys.stderr)
         return 2

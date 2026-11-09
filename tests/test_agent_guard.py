@@ -170,7 +170,33 @@ def test_cli_label_creates_then_adds(stub_gh):
 
 def test_cli_unknown_command_fails():
     assert g.main(["g", "bogus"]) == 2
-    assert g.main(["g", "silent", "dev", "22"]) == 2
+
+
+def test_silent_wrong_arg_count_escalates_and_fails(stub_gh):
+    assert g.main(["g", "silent", "fix", "5"]) == 1
+    log = stub_gh()
+    assert any(c.startswith("pr comment 5") for c in log) and "pr edit 5 --add-label needs-human" in log
+    assert g.main(["g", "silent", "dev", "22"]) == 1
+    assert any(c.startswith("issue comment 22") for c in stub_gh())
+
+
+def test_silent_guard_error_comment_names_the_reason(stub_gh):
+    assert g.silent_guarded(["fix", "5"], "Bankaifan", g.silent_check) == 1
+    assert any(c.startswith("pr comment 5") and "guard error" in c for c in stub_gh())
+
+
+def test_silent_exception_in_guard_escalates(stub_gh):
+    def boom(args, owner):
+        raise RuntimeError("kaboom ghp_" + "d" * 30)
+    assert g.silent_guarded(["review", "5", "sha"], "Bankaifan", boom) == 1
+    assert any(c.startswith("pr comment 5") for c in stub_gh())
+
+
+def test_silent_extra_args_are_ignored(stub_gh):
+    assert g.main(["g", "silent", "fix", "5", "old", "/nonexistent", "extra"]) == 0  # head moved: quiet
+    assert not any(c.startswith("pr comment") for c in stub_gh())
+    assert g.main(["g", "silent", "dev", "22", T0, "extra"]) == 0  # no PR: normal escalation, not a guard error
+    assert any(c.startswith("issue comment 22") for c in stub_gh())
 
 
 def test_silent_dev_escalates_without_new_pr(stub_gh, monkeypatch):
