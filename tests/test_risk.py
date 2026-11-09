@@ -2,6 +2,8 @@ import importlib.util
 import json
 import pathlib
 
+import pytest
+
 _path = pathlib.Path(__file__).parent.parent / "tools" / "ci" / "risk.py"
 _spec = importlib.util.spec_from_file_location("risk", _path)
 risk = importlib.util.module_from_spec(_spec)
@@ -90,9 +92,15 @@ GREEN_RUNS = [{"name": n, "status": "completed", "conclusion": "success"} for n 
 SEC_OK = [{"context": "security-review", "state": "success"}]
 
 
-def _stub(calls, reviews, files, comments, diff_text, runs=GREEN_RUNS, statuses=SEC_OK, user="agent-bot"):
+def _stub(calls, reviews, files, comments, diff_text, runs=GREEN_RUNS, statuses=SEC_OK, user="agent-bot", lossy=False):
+    posted = []
+
     def run(*a):
         calls.append(a)
+        if a[:2] == ("pr", "comment") and not lossy:
+            posted.append({"body": a[a.index("--body") + 1]})
+        if a[:2] == ("pr", "view") and "comments" in a:
+            return json.dumps({"comments": posted})
         if a[0] == "api" and a[-1].endswith("/reviews"):
             return json.dumps([reviews])
         if a[0] == "api" and a[-1].endswith("/files"):
@@ -135,6 +143,13 @@ def test_run_wait_all_green_labels_and_comments_once(monkeypatch, tmp_path):
     run = _stub(calls, REV, ["AGENTS.md"], [{"body": notes[0]}], diff("AGENTS.md", "+x"))
     risk.run_wait("5", "abc", run)
     assert not any(c[:2] == ("pr", "comment") or "--add-label" in c for c in calls)
+
+
+def test_run_wait_fails_loudly_when_note_missing(monkeypatch, tmp_path):
+    _wait_env(monkeypatch, tmp_path)
+    run = _stub([], REV, ["AGENTS.md"], [], diff("AGENTS.md", "+x"), lossy=True)
+    with pytest.raises(risk.liveness.ReadbackError):
+        risk.run_wait("5", "abc", run)
 
 
 def test_run_wait_security_review_pending_or_failed_sets_nothing(monkeypatch, tmp_path):

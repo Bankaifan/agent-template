@@ -27,6 +27,8 @@ import re
 import subprocess
 import sys
 
+import liveness
+
 # Execution-file helpers live in exec_log.py; re-exported here so `agent_guard.X` keeps working.
 from exec_log import (  # noqa: F401
     _SECRET,
@@ -158,7 +160,7 @@ def escalate_orchestrator(why, status_issue, repo, author_bot, run=gh, now=None)
     earlier = recent_failures([c for p in pages for c in p], author_bot, day_ago)
     body = report("orchestrator", why, os.environ.get("RUN_URL", ""), read_exec(os.environ.get("EXEC_FILE", "")))
     body = body.split("Labelled needs-human")[0] + "The run is marked failed."  # no needs-human here: the status issue is not a task
-    run("issue", "comment", str(status_issue), "--body", body)
+    liveness.post_comment("issue", status_issue, body, run)
     if earlier:
         open_ = json.loads(run("issue", "list", "--state", "open", "--search", f'"{ORCH_REPEAT_TITLE}" in:title',
                                "--json", "title"))
@@ -212,7 +214,7 @@ def escalate(kind, number, is_pr, what, owner, run=gh):
     body = report(kind, what, os.environ.get("RUN_URL", ""), read_exec(os.environ.get("EXEC_FILE", "")))
     thing = "pr" if is_pr else "issue"
     add_labels(thing, number, ["needs-human"], run)
-    run(thing, "comment", str(number), "--body", body)
+    liveness.post_comment(thing, number, body, run)
     if is_pr:
         author = json.loads(run("pr", "view", str(number), "--json", "author"))["author"]["login"]
         if not same_login(author, owner):  # nobody can review their own PR
