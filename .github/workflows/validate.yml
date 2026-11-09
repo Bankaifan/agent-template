@@ -1,0 +1,34 @@
+name: validate
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - name: Install dependencies
+        run: |
+          pip install ruff pytest pytest-timeout
+          for f in requirements.txt requirements_test.txt; do
+            if [ -f "$f" ]; then pip install -r "$f"; fi
+          done
+      - name: Lint (ruff, if Python files exist)
+        run: |
+          if [ -n "$(git ls-files '*.py')" ]; then ruff check .; else echo "no Python files"; fi
+      - name: Tests (pytest, if tests/ exists)
+        run: |
+          if [ -d tests ]; then pytest --timeout=60; else echo "no tests/"; fi
+      - name: Checks
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: make check

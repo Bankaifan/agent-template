@@ -1,0 +1,69 @@
+name: agent-review
+on:
+  pull_request:
+    types: [opened, synchronize, labeled]
+permissions:
+  contents: read
+  pull-requests: read
+concurrency:
+  group: agent-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+jobs:
+  review:
+    # Own branches only. Bot-authored PRs (the author app) are reviewed automatically, others on label agent:review.
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository && (
+        (github.event.action == 'labeled' && github.event.label.name == 'agent:review') ||
+        (github.event.action != 'labeled' && github.event.pull_request.user.type == 'Bot' &&
+         github.event.pull_request.user.login != 'dependabot[bot]'))
+    runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 30
+    env:
+      PR: ${{ github.event.pull_request.number }}
+      LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+    steps:
+      - id: app
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.APPROVER_APP_ID }}
+          private-key: ${{ secrets.APPROVER_APP_KEY }}
+      - name: Review round limit (labels review:1, review:2)
+        id: round
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          case ",$LABELS," in
+            *,review:2,*)
+              gh pr edit "$PR" --add-label needs-human
+              gh pr comment "$PR" --body "Review limit of 2 rounds reached. Needs the orchestrator or Daniel."
+              echo "skip=true" >> "$GITHUB_OUTPUT" ;;
+            *,review:1,*)
+              gh pr edit "$PR" --add-label review:2
+              echo "skip=false" >> "$GITHUB_OUTPUT" ;;
+            *)
+              gh pr edit "$PR" --add-label review:1
+              echo "skip=false" >> "$GITHUB_OUTPUT" ;;
+          esac
+      - uses: actions/checkout@v4
+        if: steps.round.outputs.skip != 'true'
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: anthropics/claude-code-action@v1
+        if: steps.round.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ steps.app.outputs.token }}
+          allowed_bots: ${{ vars.AUTHOR_BOT || '*' }}
+          prompt: |
+            Act as the reviewer described in .agents/roles/reviewer.md and follow AGENTS.md.
+            Review PR #${{ env.PR }} in ${{ github.repository }}: gh pr view, gh pr diff, and the linked issue.
+            Submit exactly one review: `gh pr review ${{ env.PR }} --approve --body "..."` or
+            `gh pr review ${{ env.PR }} --request-changes --body "..."` (file, line, reason per point).
+            Do not push or edit files.
+          claude_args: >-
+            --model sonnet
+            --max-turns 20
+            --allowedTools "Read,Glob,Grep,Bash(git diff:*),Bash(git log:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr review:*),Bash(gh issue view:*)"
