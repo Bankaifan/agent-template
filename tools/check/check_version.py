@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Check that the project version has a section in CHANGELOG.md.
 
 Version source (first match wins):

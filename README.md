@@ -1,11 +1,11 @@
 # agent-template
 
-Private GitHub template for projects where AI agents write code and humans keep control.
+GitHub template for projects where AI agents write code and humans keep control.
 
 Idea: **rules a script can check live in CI, not in prompts.** The agents get a short
 `AGENTS.md`; CI supplies the strictness.
 
-- Orchestrator + developer + reviewer + tester roles (`.agents/roles/`), each at most 15 lines.
+- Orchestrator + developer + reviewer roles (`.agents/roles/`), each at most 15 lines.
 - Agents run in GitHub Actions via [`anthropics/claude-code-action@v1`](https://github.com/anthropics/claude-code-action),
   paid by a Claude subscription (OAuth token), no API key.
 - Two GitHub Apps: the **author** pushes and opens PRs, the **approver** reviews. Nobody approves their own work.
@@ -20,8 +20,11 @@ Idea: **rules a script can check live in CI, not in prompts.** The agents get a 
 - A weekly rule keeper that opens one PR proposing rule removals, new checks and contradiction fixes (Daniel merges).
 - A daily `branch-cleanup` that deletes `agent/*` branches with a closed PR, or no PR and no commit for 7 days (dry-run input on manual runs).
 - An autonomous `orchestrator` (after a merge to `main` via `workflow_run` of `validate`, daily, manual; off unless variable `ORCHESTRATOR_ENABLED=true`) that cuts task slips,
-  keeps at most 2 `agent:dev` issues, handles `needs-human` PRs, updates HANDOVER.md via PR and keeps one "Weekly summary" issue.
-- A weekly `scout` (haiku) that opens at most `IDEAS_PER_WEEK` (default 3, 0 = off) `idea` issues; the scout adds only `idea`.
+  keeps at most 2 `agent:dev` issues, handles `needs-human` PRs, updates HANDOVER.md via PR and .
+- A monthly `scout` (haiku) that opens at most `IDEAS_PER_WEEK` (default 3 per run, 0 = off) `idea` issues, also from Dependabot/CodeQL alerts; it adds only `idea`.
+- `make check` is what CI checks: ruff, pytest, actionlint, zizmor (pinned in `tools/ci/install_tools.sh`) and the repo checks; the developer
+  and fix jobs install the same tools. `validate` also runs gitleaks. Orchestrator and scout run `tools/prefilter.py` first and skip the model when there is nothing to do;
+  the "Weekly summary" issue is updated on Mondays by `tools/weekly_summary.py`, no model.
   Only trusted input drives agents: the orchestrator sees only issues authored by Daniel or labelled `approved`/`auto-ok` by Daniel
   (checked from the issue timeline by `tools/trusted_issues.py`, not by the prompt).
 
@@ -57,7 +60,8 @@ Then fill in `AGENTS.md` (one sentence about the project) and replace the placeh
 - Dependabot runs get no repo secrets, so `dependabot-automerge.yml` uses `workflow_run` on `validate`. Open: if the
   secrets are still missing there, add the four app secrets under *Secrets > Dependabot* too. Dependabot
   `github-actions` PRs touch `.github/`, so they still need Daniel as code owner.
-- Use only in private repos: the review workflow accepts bot-authored PRs.
+- Use private repos or keep `AUTHOR_BOT`/`APPROVER_BOT` set: the review workflow accepts bot-authored PRs.
+- `allowedTools` is not a security boundary (e.g. `Bash(git:*)` still allows a lot). The boundaries are the token rights of the two apps and the ruleset on `main`.
 - Not verified end to end yet; see `docs/decisions/0001-agent-setup.md`.
 
 German short version: [README.de.md](README.de.md).

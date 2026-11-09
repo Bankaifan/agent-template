@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Fail if compiled Python bytecode is tracked by git.
 
 Build artifacts (__pycache__/, *.pyc, *.pyo) go stale and must not be committed.

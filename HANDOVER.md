@@ -1,21 +1,22 @@
 # Handover
-<!-- Overwrite, do not append. History lives in git and CHANGELOG. Max 60 lines. Written by the orchestrator at the end of each session. -->
+<!-- Overwrite, do not append. History lives in git and CHANGELOG. Max 60 lines. -->
 
 ## Goal
-Issue #11: secure agent inputs and make triggers reliable.
+Issue #12: CI tools for agents, script pre-filters, scripted weekly summary, monthly scout, lean roles.
 
 ## Current state
-PR for #11 is open (branch `agent/11-secure-inputs-reliable-triggers`). Not verified end to end; only `make check` and pytest ran locally.
-See `docs/decisions/0004-secure-inputs-reliable-triggers.md`.
+PR for #12 on branch `agent/12-ci-tools-prefilter-lean-roles`. #11 (secure inputs, reliable triggers) is merged.
+See `docs/decisions/0005-ci-tools-prefilter-lean-roles.md`.
 
 ## Open decisions
-- Author app permissions: Actions and Workflows read/write must be granted (untested).
-- Do `workflow_run` events fire for runs created by the author app, and does the orchestrator see them?
+- Pinned zizmor 1.5.2 and actionlint 1.7.7 were not verified against upstream releases; CI is the truth.
+- gitleaks-action@v2 first run (licence for org repos?) is open.
+- Author app permissions and `workflow_run` events from app-created runs (from #11) are still unverified.
 
 ## Next 3 steps
-1. Daniel sets repo variables `AUTHOR_BOT` and `APPROVER_BOT`, grants the author app the new permissions, runs `setup`.
-2. Merge the PR.
-3. First real run: agent PR with green CI, one with red CI, one merge of a HANDOVER.md-only PR.
+1. Daniel merges the PR once CI is green; re-import the ruleset only if `.github/rulesets/main.json` changes.
+2. Watch the first orchestrator run with the pre-filter and the first Monday summary.
+3. Set `IDEAS_PER_WEEK` as needed (it now means ideas per monthly run).
 
 ## Known traps
 - The ruleset file is not applied automatically; it must be re-imported.

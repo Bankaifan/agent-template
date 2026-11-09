@@ -5,14 +5,14 @@ Privates GitHub-Template für Projekte, in denen KI-Agenten Code schreiben und M
 Leitidee: Regeln, die ein Skript prüfen kann, gehören in CI, nicht in Prompts. Die Agenten lesen eine kurze
 `AGENTS.md`, die Strenge liefert CI (`make check`, Ruleset auf `main`).
 
-- Rollen: Orchestrator, Entwickler, Reviewer, Tester (`.agents/roles/`). Agenten laufen in GitHub Actions mit
+- Rollen: Orchestrator, Entwickler, Reviewer (`.agents/roles/`). Agenten laufen in GitHub Actions mit
   `claude-code-action@v1` über das Claude-Abo (OAuth-Token, kein API-Key).
 - Zwei GitHub-Apps: Autor pusht und öffnet PRs, Approver reviewt. Auto-Merge (rebase) nach Approve und grüner CI. Der Entwickler fasst seinen Branch vor dem Review zu einem Commit von Daniel zusammen, so ist Daniel einziger Autor auf `main`.
 - Der Reviewer läuft nur bei grüner CI (`workflow_run` von `validate`) und führt nie PR-Code aus (Checkout von `main`, PR per `gh`). Fix-Runden starten automatisch bei `CHANGES_REQUESTED` oder roter CI (max. 2, dann `needs-human`). Nach dem Push stellt ein Skript-Schritt sicher, dass `validate` auf dem Head-SHA läuft. Dependabot-PRs prüft keine KI: ein Workflow ohne Modell approved Patch/Minor nach grüner CI, Majors bekommen `needs-human`.
 - `.github/CODEOWNERS`: `@Bankaifan` besitzt `AGENTS.md`, `CLAUDE.md`, `.agents/`, `.github/`, `.claude/`, `.mcp.json`, `tools/check/` (Ruleset verlangt Code-Owner-Review).
 - Wöchentlicher Rule Keeper (ein PR mit Regelvorschlägen, Daniel merged) und täglicher `branch-cleanup` (löscht veraltete `agent/*`-Branches, Dry-Run bei manuellem Start).
 - Kontingent knapp: höchstens 2 Agenten-Jobs gleichzeitig, Modell je Rolle (haiku Routine, sonnet Kern und Review).
-- Autonomer `orchestrator` (nach Merge auf `main` per `workflow_run` von `validate`, täglich, manuell; nur mit Variable `ORCHESTRATOR_ENABLED=true`): schreibt Aufträge, hält max. 2 `agent:dev`-Issues, bearbeitet `needs-human`-PRs, aktualisiert HANDOVER.md per PR und pflegt das Issue "Weekly summary". Wöchentlicher `scout` (haiku) eröffnet höchstens `IDEAS_PER_WEEK` (Standard 3, 0 = aus) `idea`-Issues; er setzt nur `idea`. Nur vertrauenswürdige Eingaben steuern Agenten: der Orchestrator sieht nur Issues von Daniel oder mit `approved`/`auto-ok` von Daniel (Skript `tools/trusted_issues.py`). Beide Variablen steuern das Kontingent.
+- Autonomer `orchestrator` (nach Merge auf `main` per `workflow_run` von `validate`, täglich, manuell; nur mit Variable `ORCHESTRATOR_ENABLED=true`): schreibt Aufträge, hält max. 2 `agent:dev`-Issues, bearbeitet `needs-human`-PRs, aktualisiert HANDOVER.md per PR ; ein Skript (`tools/prefilter.py`) überspringt den Modelllauf, wenn nichts zu tun ist. Das Issue "Weekly summary" pflegt montags ein Skript ohne Modell. Monatlicher `scout` (haiku, auch aus Dependabot/CodeQL-Meldungen) eröffnet höchstens `IDEAS_PER_WEEK` (Standard 3, 0 = aus) `idea`-Issues; er setzt nur `idea`. Nur vertrauenswürdige Eingaben steuern Agenten: der Orchestrator sieht nur Issues von Daniel oder mit `approved`/`auto-ok` von Daniel (Skript `tools/trusted_issues.py`). Beide Variablen steuern das Kontingent.
 
 ## Einrichtung
 

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """List the open issues the orchestrator may act on, as one line of JSON.
 
 Trusted: authored by OWNER, or labelled `approved` / `auto-ok` where the latest label event

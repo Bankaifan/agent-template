@@ -15,22 +15,19 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.x"
-      - name: Install dependencies
-        run: |
-          pip install "ruff==0.17.4" pytest pytest-timeout  # pinned: new ruff releases add rules
-          for f in requirements.txt requirements_test.txt; do
-            if [ -f "$f" ]; then pip install -r "$f"; fi
-          done
-      - name: Lint (ruff, if Python files exist)
-        run: |
-          if [ -n "$(git ls-files '*.py')" ]; then ruff check .; else echo "no Python files"; fi
-      - name: Tests (pytest, if tests/ exists)
-        run: |
-          if [ -d tests ]; then pytest --timeout=60; else echo "no tests/"; fi
-      - name: Checks
+      - name: Install pinned tools
+        run: bash tools/ci/install_tools.sh
+      - name: Secret scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+      - name: Checks (ruff, pytest, actionlint, zizmor, repo checks)
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_BODY: ${{ github.event.pull_request.body }}

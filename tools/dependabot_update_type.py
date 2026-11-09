@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Classify a dependabot PR title as "patch", "minor" or "major" (conservative).
 
 Reads the title from argv[1]. Prints one word. Anything that cannot be parsed
