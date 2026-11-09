@@ -54,6 +54,15 @@ Quota is scarce: `ORCHESTRATOR_ENABLED` and `IDEAS_PER_WEEK` control the autonom
 
 Then fill in `AGENTS.md` (one sentence about the project) and replace the placeholders in `HANDOVER.md`.
 
+## Green means the agents work too
+
+On PRs touching `.github/workflows/`, `.github/actions/` or `tools/ci/`, the required check `agent-smoke` creates both
+app tokens with the PR's workflow versions, calls `gh api /installation/repositories` with each and checks the Claude
+OAuth secret exists (no model call). It is skipped (= success) when no such path changed. Dependabot PRs get no
+Actions secrets: set the five secrets (and the variables `AUTHOR_BOT`, `APPROVER_BOT`) also as **Dependabot secrets**;
+until then `agent-smoke` fails on them with a clear message. `setup` reports whether they exist (best effort).
+Re-import the ruleset after this change.
+
 ## Limits
 
 - One agent run per issue or PR at a time (`concurrency` per number, never cancelled). GitHub cannot cap

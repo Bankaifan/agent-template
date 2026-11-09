@@ -35,3 +35,83 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: make check
+
+  # Decides whether agent-smoke is needed. A paths-filter step (not workflow-level `paths`),
+  # so the required check `agent-smoke` always reports: skipped counts as success.
+  changes:
+    runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 5
+    outputs:
+      agents: ${{ steps.filter.outputs.agents }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - id: filter
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          agents=false
+          if [ "$EVENT" = "pull_request" ] \
+            && git diff --name-only "$BASE_SHA...$HEAD_SHA" | grep -Eq '^(\.github/workflows/|\.github/actions/|tools/ci/)'; then
+            agents=true
+          fi
+          echo "agents=$agents" >> "$GITHUB_OUTPUT"
+
+  # Proves the agent plumbing still works with this PR's workflow versions: both app tokens
+  # can be created and used, and the Claude OAuth secret exists. No model call, no PR code run.
+  agent-smoke:
+    needs: changes
+    if: needs.changes.outputs.agents == 'true'
+    runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 5
+    steps:
+      - id: pre
+        env:
+          ACTOR: ${{ github.actor }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          AUTHOR_APP_ID: ${{ secrets.AUTHOR_APP_ID }}
+          AUTHOR_APP_KEY: ${{ secrets.AUTHOR_APP_KEY }}
+          APPROVER_APP_ID: ${{ secrets.APPROVER_APP_ID }}
+          APPROVER_APP_KEY: ${{ secrets.APPROVER_APP_KEY }}
+        run: |
+          missing=""
+          for name in CLAUDE_CODE_OAUTH_TOKEN AUTHOR_APP_ID AUTHOR_APP_KEY APPROVER_APP_ID APPROVER_APP_KEY; do
+            if [ -z "${!name}" ]; then missing="$missing $name"; fi
+          done
+          if [ -n "$missing" ]; then
+            if [ "$ACTOR" = "dependabot[bot]" ]; then
+              echo "::error::Dependabot PRs get no Actions secrets. Add these as Dependabot secrets (Settings > Secrets and variables > Dependabot):${missing}"
+            else
+              echo "::error::Missing secrets:${missing}"
+            fi
+            exit 1
+          fi
+      - id: author
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.AUTHOR_APP_ID }}
+          private-key: ${{ secrets.AUTHOR_APP_KEY }}
+      - id: approver
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.APPROVER_APP_ID }}
+          private-key: ${{ secrets.APPROVER_APP_KEY }}
+      - name: Call the API with both tokens
+        env:
+          AUTHOR_TOKEN: ${{ steps.author.outputs.token }}
+          APPROVER_TOKEN: ${{ steps.approver.outputs.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          for who in AUTHOR APPROVER; do
+            var="${who}_TOKEN"
+            names=$(GH_TOKEN="${!var}" gh api /installation/repositories --jq '.repositories[].full_name')
+            if ! printf '%s\n' "$names" | grep -qxF "$REPO"; then
+              echo "::error::$who app is not installed on $REPO"
+              exit 1
+            fi
+            echo "$who app token ok"
+          done
