@@ -13,8 +13,9 @@ Open question of the design, how agent-fix starts for a red CI without a new com
 trigger or comment command is needed. Cost: the author app token needs actions:write; that is a permissions change
 for the workflow PR (item 4, risk:security). An issue restarts like restart.py: agent:dev removed, then added.
 
-Limits are enforced here, not only in the prompt: a class 1 verdict that asks for a tool, permission, install or
-workflow edit is turned into class 3; `unblock:1` is set once, a second block goes to Daniel; risk:security PRs
+Limits are enforced here as one layer besides the prompt (a word filter cannot catch every wording): a class 1
+verdict that asks for a tool, permission, install, workflow or check change is turned into class 3, and so is a
+class 2 issue with such wording; model text with `@` is refused; `apply` re-runs the gate on live data; `unblock:1` is set once, a second block goes to Daniel; risk:security PRs
 and design PRs never get class 1.
 """
 import json
@@ -37,6 +38,8 @@ RISK_SECURITY = "risk:security"
 _FORBIDDEN = re.compile(
     r"allowedtools|allowed-tools|pip3? install|-m pip|npm (?:install|i)\b|apt(?:-get)? install|brew install|"
     r"allow (?:the )?(?:command|tool|call)|grant|permissions?:|secrets?\b|token|\.github/|agents\.md|--dangerously|"
+    r"workflows?/|codeowners|rulesets?|protection|risk\.py|security-review|tools/ci|"
+    r"\b(?:disable|skip|bypass|ignore|override|instructions?)\b|"
     r"\b(?:curl|wget|sudo|chmod|chown|base64|bash|sh|eval|exec|rm|git|gh)\b",
     re.IGNORECASE)
 _SAFE_SHAPE = re.compile(r"[A-Za-z0-9 .,;:'()/_#=+-]+")
@@ -119,6 +122,15 @@ def validate(verdict):
         if len(issue["title"]) > MAX_TITLE or not (issue["title"] + issue["body"]).isascii() or len(issue["body"]) > 3000:
             raise ValueError("issue must be ASCII, title <= 100, body <= 3000")
         out["issue"] = {"title": issue["title"].strip(), "body": issue["body"].strip()}
+        bad = _FORBIDDEN.search(f"{out['issue']['title']} {out['issue']['body']}")
+        if bad:
+            out = {"class": 3, "reason": f"class 2 issue asked for a forbidden action ({bad.group(0)}); owner decision",
+                   "note": NOTE_SECURITY}
+    for key in ("comment", "note"):
+        if "@" in (out.get(key) or ""):
+            raise ValueError(f"{key} must not mention anyone (@)")
+    if "@" in "".join((out.get("issue") or {}).values()):
+        raise ValueError("issue must not mention anyone (@)")
     if cls == 1:
         if "comment" not in out:
             raise ValueError("class 1 needs a comment")
@@ -222,28 +234,37 @@ def _owner_note(run, kind, number, owner, v, note):
 def main(argv):
     owner = os.environ.get("OWNER", OWNER_DEFAULT)
     args = argv[1:]
-    if len(args) == 4 and args[0] == "apply" and args[2].isdigit():
+    if len(args) == 4 and args[0] == "apply" and args[2].isdigit() and args[1] in ("pr", "issue"):
         kind, number = args[1], args[2]
+        ok, why = live_gate(kind, number, owner)  # the item may have changed during the model step
+        if not ok:
+            print(f"0 (gate refused: {why})")
+            return 0
         text = exec_log.read_exec(args[3])
         print(apply(kind, number, json.loads(text), owner, author_bot=os.environ.get("AUTHOR_BOT", "")))
         return 0
     if len(args) == 3 and args[0] == "gate" and args[2].isdigit() and args[1] in ("pr", "issue"):
-        repo, kind, number = os.environ["GH_REPO"], args[1], args[2]
-        bot, appr = os.environ.get("AUTHOR_BOT", ""), os.environ.get("APPROVER_BOT", "")
-        info = json.loads(gh(kind, "view", number, "--json", "state,labels,author,comments" + (",files" if kind == "pr" else "")))
-        item = {"kind": kind, "state": info["state"], "labels": [x["name"] for x in info["labels"]],
-                "author": info["author"]["login"]}
-        pages = json.loads(gh("api", "--paginate", "--slurp", f"repos/{repo}/issues/{number}/timeline"))
-        events = [e for p in pages for e in p]
-        comments = [{"body": c.get("body"), "created_at": c.get("createdAt")} for c in info.get("comments", [])]
-        files = [f["path"] for f in info.get("files", [])]
-        issue = {"number": int(number), "title": "", "labels": info["labels"], "author": info["author"], "body": ""}
-        item["trusted"] = kind == "issue" and bool(classify(issue, events, owner, bot))
-        ok, why = gate(item, events, comments, files, owner, bot, appr)
+        ok, why = live_gate(args[1], args[2], owner)
         print(why)
         return 0 if ok else 1
     print(__doc__, file=sys.stderr)
     return 2
+
+
+def live_gate(kind, number, owner):
+    """`gate` on the live item (labels, timeline, comments, files, issue trust)."""
+    repo = os.environ["GH_REPO"]
+    bot, appr = os.environ.get("AUTHOR_BOT", ""), os.environ.get("APPROVER_BOT", "")
+    info = json.loads(gh(kind, "view", number, "--json", "state,labels,author,comments" + (",files" if kind == "pr" else "")))
+    item = {"kind": kind, "state": info["state"], "labels": [x["name"] for x in info["labels"]],
+            "author": info["author"]["login"]}
+    pages = json.loads(gh("api", "--paginate", "--slurp", f"repos/{repo}/issues/{number}/timeline"))
+    events = [e for p in pages for e in p]
+    comments = [{"body": c.get("body"), "created_at": c.get("createdAt")} for c in info.get("comments", [])]
+    files = [f["path"] for f in info.get("files", [])]
+    issue = {"number": int(number), "title": "", "labels": info["labels"], "author": info["author"], "body": ""}
+    item["trusted"] = kind == "issue" and bool(classify(issue, events, owner, bot))
+    return gate(item, events, comments, files, owner, bot, appr)
 
 
 if __name__ == "__main__":
