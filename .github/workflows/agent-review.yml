@@ -27,6 +27,15 @@ jobs:
       GH_REPO: ${{ github.repository }}
       APPROVER_BOT: ${{ vars.APPROVER_BOT }}
     steps:
+      - name: Fail if a required repo variable is unset
+        env:
+          AUTHOR_BOT: ${{ vars.AUTHOR_BOT }}
+          APPROVER_BOT: ${{ vars.APPROVER_BOT }}
+          APPROVER_CLIENT_ID: ${{ vars.APPROVER_CLIENT_ID }}
+        run: |
+          for n in AUTHOR_BOT APPROVER_BOT APPROVER_CLIENT_ID; do
+            [ -n "${!n}" ] || { echo "::error::Repo variable $n is not set (Settings > Secrets and variables > Actions > Variables)."; exit 1; }
+          done
       - id: app
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:

@@ -1,7 +1,7 @@
 name: setup
 # Manual, no model. Creates the labels the workflows use (idempotent) and checks the 3 secrets and the 4 variables.
-# Optional variables (names only, never required): PYTHON_VERSION (default 3.x), EXTRA_INSTALL (shell command run by
-# tools/ci/install_tools.sh), TEMPLATE_SYNC.
+# Optional variables (never required): the table in the job summary shows each one with its effective value
+# (the set value, or the default when unset or empty). EXTRA_INSTALL is a shell command run by tools/ci/install_tools.sh.
 # Secret values are never printed; only the names of missing ones.
 on:
   workflow_dispatch:
@@ -35,6 +35,29 @@ jobs:
           if [ -n "$AUTHOR_CLIENT_ID" ] && [ -n "$AUTHOR_APP_KEY" ]; then
             echo "author=true" >> "$GITHUB_OUTPUT"
           fi
+      - name: Optional variables (effective values)
+        env:
+          RUNNER: ${{ vars.RUNNER }}
+          PYTHON_VERSION: ${{ vars.PYTHON_VERSION }}
+          EXTRA_INSTALL: ${{ vars.EXTRA_INSTALL }}
+          ORCHESTRATOR_ENABLED: ${{ vars.ORCHESTRATOR_ENABLED }}
+          IDEAS_PER_WEEK: ${{ vars.IDEAS_PER_WEEK }}
+          STATUS_INTERVAL: ${{ vars.STATUS_INTERVAL }}
+        run: |
+          # row NAME DEFAULT VALUE: an unset or empty variable means the default, as in the workflows' || fallbacks
+          row() {
+            if [ -n "$3" ]; then echo "| $1 | $3 | repo variable |"; else echo "| $1 | $2 | default |"; fi
+          }
+          {
+            echo "| Variable | Effective value | Source |"
+            echo "| --- | --- | --- |"
+            row RUNNER ubuntu-latest "$RUNNER"
+            row PYTHON_VERSION 3.x "$PYTHON_VERSION"
+            if [ -n "$EXTRA_INSTALL" ]; then echo "| EXTRA_INSTALL | set (not shown) | repo variable |"; else echo "| EXTRA_INSTALL | not set | default |"; fi
+            row ORCHESTRATOR_ENABLED false "$ORCHESTRATOR_ENABLED"
+            row IDEAS_PER_WEEK 3 "$IDEAS_PER_WEEK"
+            row STATUS_INTERVAL "30 public / 60 private" "$STATUS_INTERVAL"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
       - id: app
         if: steps.check.outputs.author == 'true'
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0

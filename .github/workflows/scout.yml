@@ -15,7 +15,8 @@ permissions:
   contents: read
 jobs:
   scout:
-    if: vars.IDEAS_PER_WEEK != '0'
+    # Effective value: an unset variable means the default 3 (vars alone would read as 0 and skip the job).
+    if: (vars.IDEAS_PER_WEEK || '3') != '0'
     # Job level on purpose: a skipped run must not take over the group.
     concurrency:
       group: scout
@@ -26,6 +27,14 @@ jobs:
       MODEL: ${{ inputs.model || 'haiku' }}
       IDEAS: ${{ vars.IDEAS_PER_WEEK || '3' }}
     steps:
+      - name: Fail if a required repo variable is unset
+        env:
+          AUTHOR_CLIENT_ID: ${{ vars.AUTHOR_CLIENT_ID }}
+          AUTHOR_BOT: ${{ vars.AUTHOR_BOT }}
+        run: |
+          for n in AUTHOR_CLIENT_ID AUTHOR_BOT; do
+            [ -n "${!n}" ] || { echo "::error::Repo variable $n is not set (Settings > Secrets and variables > Actions > Variables)."; exit 1; }
+          done
       - id: app
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
