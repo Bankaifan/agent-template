@@ -203,3 +203,60 @@ def test_silent_review_paths(stub_gh, monkeypatch):
     n = len(stub_gh())
     assert g.main(["g", "silent", "review", "5", "sha1"]) == 0
     assert not any(c.startswith("pr comment") for c in stub_gh()[n:])
+
+
+def test_review_is_keyed_on_sha_and_body_hash():
+    h1, h2 = g.body_hash("Closes #1"), g.body_hash("Refs #1")
+    assert h1 != h2 and g.body_hash(" Refs #1\n") == h2
+    rv = [{"commit_id": "s", "user": {"login": "ap[bot]"}, "body": f"no\nbody-hash: {h1}"}]
+    assert g.has_review(rv, "ap", "s", h1)
+    assert not g.has_review(rv, "ap", "s", h2)  # body edited after the review: review again, same SHA
+    assert g.has_review(rv, "ap", "s")  # no hash asked: SHA only
+
+
+def test_review_without_body_hash_line_falls_back_to_sha_only():
+    rv = [{"commit_id": "s", "user": {"login": "ap[bot]"}, "body": "looks fine"}]
+    assert g.has_review(rv, "ap", "s", g.body_hash("anything"))
+    assert not g.has_review(rv, "ap", "other", g.body_hash("anything"))
+
+
+def test_cli_body_hash_rereview(stub_gh, monkeypatch):
+    monkeypatch.setenv("APPROVER_BOT", "ap[bot]")
+    monkeypatch.setenv("GH_PR_VIEW", json.dumps({"body": "Refs #53"}))
+    assert g.main(["g", "body-hash", "5"]) == 0
+    old = g.body_hash("Closes #53")
+    monkeypatch.setenv("GH_REVIEWS", json.dumps([[{"commit_id": "s", "user": {"login": "ap[bot]"}, "body": f"body-hash: {old}"}]]))
+    assert g.main(["g", "reviewed", "5", "s", old]) == 0
+    assert g.main(["g", "reviewed", "5", "s", g.body_hash("Refs #53")]) == 1
+
+
+def test_body_only_silent_fix(stub_gh, tmp_path, monkeypatch):
+    before = tmp_path / "body-before.txt"
+    before.write_text("Closes #53\n")
+    # head unchanged, body unchanged -> escalate
+    stub_gh_env = {"headRefOid": "abc", "author": {"login": "app/x"}, "body": "Closes #53"}
+    monkeypatch.setenv("GH_PR_VIEW", json.dumps(stub_gh_env))
+    assert g.main(["g", "silent", "fix", "5", "abc", str(before)]) == 0
+    assert any(c.startswith("pr comment 5") for c in stub_gh())
+    # head unchanged, body changed -> not silent
+    n = len(stub_gh())
+    monkeypatch.setenv("GH_PR_VIEW", json.dumps({**stub_gh_env, "body": "Refs #53"}))
+    assert g.main(["g", "silent", "fix", "5", "abc", str(before)]) == 0
+    assert len(stub_gh()) == n + 1  # only the pr view
+
+
+def test_fix_produced():
+    assert g.fix_produced("a", "b", None, "x")
+    assert not g.fix_produced("a", "a", None, "x")
+    assert not g.fix_produced("a", "a", "x\n", "x")
+    assert g.fix_produced("a", "a", "x", "y")
+
+
+def test_missing_body_file_is_unknown_not_empty(stub_gh, tmp_path, monkeypatch):
+    missing = str(tmp_path / "body-before.txt")  # the save step never wrote it
+    assert g.read_body_before(missing) is None
+    assert g.read_body_before(None) is None
+    assert not g.fix_produced("a", "a", g.read_body_before(missing), "Refs #53")  # unknown body: head decides
+    monkeypatch.setenv("GH_PR_VIEW", json.dumps({"headRefOid": "abc", "body": "Refs #53", "author": {"login": "app/x"}}))
+    assert g.main(["g", "silent", "fix", "5", "abc", missing]) == 0
+    assert any(c.startswith("pr comment 5") for c in stub_gh())  # escalated, not treated as a changed body
