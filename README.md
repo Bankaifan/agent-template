@@ -17,8 +17,12 @@ Idea: **rules a script can check live in CI, not in prompts.** The agents get a 
 - `.github/CODEOWNERS`: `@Bankaifan` owns `AGENTS.md`, `CLAUDE.md`, `.agents/`, `.github/`, `tools/check/`.
 - A weekly rule keeper that opens one PR proposing rule removals, new checks and contradiction fixes (Daniel merges).
 - A daily `branch-cleanup` that deletes `agent/*` branches with a closed PR, or no PR and no commit for 7 days (dry-run input on manual runs).
+- An autonomous `orchestrator` (push to `main`, daily, manual; off unless variable `ORCHESTRATOR_ENABLED=true`) that cuts task slips,
+  keeps at most 2 `agent:dev` issues, handles `needs-human` PRs, updates HANDOVER.md via PR and keeps one "Weekly summary" issue.
+- A weekly `scout` (haiku) that opens at most `IDEAS_PER_WEEK` (default 3, 0 = off) `idea` issues; small low-risk ones also get
+  `auto-ok` and may be started by the orchestrator, the rest wait for Daniel's `approved` label.
 
-Quota is scarce: at most 2 agent jobs run at the same time; models are chosen per role
+Quota is scarce: `ORCHESTRATOR_ENABLED` and `IDEAS_PER_WEEK` control the autonomous load; at most 2 agent jobs run at the same time; models are chosen per role
 (developer routine: haiku, core work: sonnet, reviewer: sonnet, orchestrator: sonnet).
 
 ## Setup
