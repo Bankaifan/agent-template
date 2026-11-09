@@ -113,6 +113,7 @@ jobs:
             --model sonnet
             --max-turns 12
             --setting-sources user
+            --settings .github/claude-judge-settings.json
             --allowedTools "Read,Glob,Grep,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr review:*),Bash(gh issue view:*)"
       # Approved but waiting for Daniel (security class or code-owner path): label needs-human and the German note.
       - name: Mark an approved PR that waits for Daniel

@@ -97,6 +97,7 @@ jobs:
             --model sonnet
             --max-turns 12
             --setting-sources user
+            --settings .github/claude-judge-settings.json
             --allowedTools "Read,Glob,Grep,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh issue view:*)"
       # The model has no write or comment tools: a script posts the verdict from its final reply. `changes` also gets a
       # request-changes review by the approver app, which starts a normal agent-fix round. No verdict: denials are logged.
