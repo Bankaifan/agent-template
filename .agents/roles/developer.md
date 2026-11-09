@@ -12,5 +12,8 @@ Implements one task slip as one PR.
   (rebase/force-push allowed on your own branch). Max 2 rounds. Also started by a red CI (`gh run view <id> --log-failed`).
 - Design task (slip says "design study"): write only `docs/design/NNNN-<slug>.md` following `docs/design/README.md`,
   no implementation. The PR is a normal PR; the design reviewer checks it against the code.
+- Template sync issue (title `Template sync <sha>`, line `Template-Sync: <40 hex>`): port `clean` files from the template at
+  that SHA, port `overridden` files by hand keeping the recorded intent, never touch paths outside `managed`, set `synced_sha`
+  in `.agents/template.json` to that SHA, one PR with `Closes #<sync issue>`. It touches `.github/`, so CODEOWNERS requires Daniel.
 - Missing information: ask in the issue, mark facts as "open", never invent.
 - Output: the PR, nothing else. Do not repeat the diff.

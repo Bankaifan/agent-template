@@ -15,7 +15,7 @@ Plans, cuts work, starts agents. Writes no production code.
 - Pick the model: routine = haiku (default), core/security/architecture = label `model:sonnet`.
 - On `needs-human` or two failed fix rounds: decide, rewrite the slip, or ask Daniel.
 - Runs from `orchestrator.yml` only if repo variable `ORCHESTRATOR_ENABLED` is `true`. Pick issues only from the trusted list in the prompt
-  (Daniel's issues, `approved` or `auto-ok` set by Daniel); never read other issues.
+  (Daniel's issues, `approved` or `auto-ok` set by Daniel, design-derived issues, `Template sync <sha>` issues of the author app); never read other issues.
 - A script skips your run when there is nothing to do; the "Weekly summary" issue is a scripted workflow, not your job.
 - Overwrite HANDOVER.md at the end (max 60 lines).
 - Output: slips as issues, a short status report. German to Daniel, English on GitHub.

@@ -5,6 +5,8 @@ on the issue timeline was made by OWNER. Everything else is never shown to the a
 Also trusted: an issue created by the orchestrator (author AUTHOR_BOT) from a merged design study. Its body
 has a line `Design: docs/design/NNNN-slug.md` naming a file that exists on the checked-out `main`, and it
 is not an `idea`. Authorship cannot be forged; a stranger's "Design:" line counts for nothing.
+Also trusted: a template sync issue (author AUTHOR_BOT, title starting `Template sync `, body line
+`Template-Sync: <40 hex>`; design 0001, section 4.4).
 Needs the gh CLI (GH_TOKEN, GH_REPO). Environment: OWNER (default Bankaifan), AUTHOR_BOT (login of the author app).
 """
 import json
@@ -29,6 +31,17 @@ def design_ref(issue, author_bot, exists):
     return m.group(1) if m and exists(m.group(1)) else None
 
 
+_SYNC = re.compile(r"^Template-Sync: [0-9a-f]{40}\s*$", re.MULTILINE)
+SYNC_PREFIX = "Template sync "
+
+
+def is_sync_issue(issue, author_bot):
+    """True for a template sync issue created by the author app."""
+    if not same_login((issue.get("author") or {}).get("login"), author_bot):
+        return False
+    return (issue.get("title") or "").startswith(SYNC_PREFIX) and bool(_SYNC.search(issue.get("body") or ""))
+
+
 def label_set_by(events, label, actor):
     """True if the latest label/unlabel event for `label` is a `labeled` made by `actor`."""
     last = None
@@ -44,7 +57,8 @@ def classify(issue, events, owner, author_bot="", exists=os.path.isfile):
     by_owner = {g for g in GATED if g in labels and label_set_by(events, g, owner)}
     authored = same_login((issue.get("author") or {}).get("login"), owner)
     design = design_ref(issue, author_bot, exists)
-    if not authored and not by_owner and not design:
+    sync = is_sync_issue(issue, author_bot)
+    if not authored and not by_owner and not design and not sync:
         return None
     return {
         "number": issue["number"],
@@ -53,6 +67,7 @@ def classify(issue, events, owner, author_bot="", exists=os.path.isfile):
         "approved": "approved" in by_owner,
         "auto_ok": "auto-ok" in by_owner,
         "design": design,
+        "template_sync": sync,
         "labels": sorted((labels - set(GATED)) | by_owner),
     }
 
