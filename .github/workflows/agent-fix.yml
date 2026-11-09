@@ -85,7 +85,8 @@ jobs:
           limit() {
             # First limit of an issue: restart the task once (restart:1) and close this PR. Second: needs-human,
             # review request to Daniel (unless author) and the German note, see tools/restart.py.
-            python3 tools/restart.py limit "$pr"
+            # Never silent: if the hand-over fails, the PR still gets needs-human (the status run picks up the rest).
+            python3 tools/restart.py limit "$pr" || guard label pr "$pr" needs-human
             echo "fix=false" >> "$GITHUB_OUTPUT"
           }
           if [ "$EVENT" = pull_request_review ]; then
