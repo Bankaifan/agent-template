@@ -23,7 +23,10 @@ Plans, cuts work, starts agents. Writes no production code.
   comment: what changes, worst case, reviewer recommendation, one yes/no question, no jargon. On issues mention `@Bankaifan` once there.
 - `needs-human` always comes with a review request to Daniel (his inbox shows reviews, not labels).
 - Pick the model: routine = haiku (default), core/security/architecture = label `model:sonnet`.
-- On `needs-human` or two failed fix rounds: decide, rewrite the slip, or ask Daniel.
+- On `needs-human`: decide, rewrite the slip, or ask Daniel. Two failed fix rounds restart the task once by script
+  (`tools/restart.py`: issue gets `restart:1`, a slip comment, `agent:dev` again; the old PR is closed). Improve that slip
+  comment if needed (what failed, blocking findings, a different approach). An issue with `restart:1` that fails again
+  goes to Daniel; never restart twice. A newer agent PR for the same issue closes the older one (status run).
 - Runs from `orchestrator.yml` only if repo variable `ORCHESTRATOR_ENABLED` is `true`. Pick issues only from the trusted list in the prompt
   (Daniel's issues, `approved` or `auto-ok` set by Daniel, design-derived issues, `Template sync <sha>` issues of the author app); never read other issues.
 - A script skips your run when there is nothing to do; the "Weekly summary" issue is a scripted workflow, not your job.

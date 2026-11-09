@@ -5,7 +5,8 @@ name: agent-fix
 # Both triggers run in the base repo context and get the repo secrets.
 # Also started by `workflow_dispatch` with input `pr` (the status run, for a PR that conflicts with main; it has
 # already bumped the round label).
-# Rounds: labels review:1, review:2 -> fix; review:3 -> needs-human. A red CI bumps the label first.
+# Rounds: labels review:1, review:2 -> fix; review:3 -> restart the issue once (restart:1), else needs-human.
+# A red CI bumps the label first.
 on:
   pull_request_review:
     types: [submitted]
@@ -81,11 +82,9 @@ jobs:
             echo "Review not by the approver app"; exit 0
           fi
           limit() {
-            guard label pr "$pr" needs-human
-            # A label alone is not in Daniel's inbox; skip if he is the author (cannot review own PR).
-            guard same "$(gh pr view "$pr" --json author --jq .author.login)" Bankaifan || \
-              gh pr edit "$pr" --add-reviewer Bankaifan || echo "review request failed"
-            gh pr comment "$pr" --body "Review limit of 2 fix rounds reached. Needs the orchestrator or Daniel."
+            # First limit of an issue: restart the task once (restart:1) and close this PR. Second: needs-human,
+            # review request to Daniel (unless author) and the German note, see tools/restart.py.
+            python3 tools/restart.py limit "$pr"
             echo "fix=false" >> "$GITHUB_OUTPUT"
           }
           if [ "$EVENT" = pull_request_review ]; then
