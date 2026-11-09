@@ -11,11 +11,12 @@ concurrency:
 jobs:
   review:
     # Own branches only. Bot-authored PRs (the author app) are reviewed automatically, others on label agent:review.
+    # Dependabot PRs never get an AI review (dependabot-automerge.yml handles them).
     if: >-
-      github.event.pull_request.head.repo.full_name == github.repository && (
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.user.login != 'dependabot[bot]' && (
         (github.event.action == 'labeled' && github.event.label.name == 'agent:review') ||
-        (github.event.action != 'labeled' && github.event.pull_request.user.type == 'Bot' &&
-         github.event.pull_request.user.login != 'dependabot[bot]'))
+        (github.event.action != 'labeled' && github.event.pull_request.user.type == 'Bot'))
     runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 30
     env:

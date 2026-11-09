@@ -2,7 +2,7 @@
 """Check PR form: title is printable ASCII (English), body is not empty.
 
 Reads PR_TITLE and PR_BODY from the environment. Skipped when PR_TITLE is unset
-(local runs, pushes to main). Whether the title is really English cannot be verified.
+(local runs) or outside pull_request events (pushes to main set it empty). Whether the title is really English cannot be verified.
 """
 import os
 import sys
@@ -10,7 +10,7 @@ import sys
 
 def main() -> int:
     title = os.environ.get("PR_TITLE")
-    if title is None:
+    if title is None or os.environ.get("GITHUB_EVENT_NAME", "pull_request") != "pull_request":
         print("check_pr_form: skipped (PR_TITLE not set)")
         return 0
     body = os.environ.get("PR_BODY") or ""

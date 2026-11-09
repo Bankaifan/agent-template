@@ -13,6 +13,8 @@ Status: accepted (Daniel, 2026-11-09). Not yet verified end to end.
 - Commits authored as Daniel, no `Co-authored-by` trailer.
 - Rules a script can check go into `tools/check/`, not into prompts. The weekly rule keeper proposes rule changes and new checks in one PR; `branch-cleanup` deletes stale `agent/*` branches daily.
 
+Amended by [0002](0002-fix-rounds-dependabot-rebase.md): rebase merge instead of squash, code owners, automatic fix rounds.
+
 ## Consequences
 - Review rounds are capped at 2 by labels; a third trigger ends in `needs-human`.
 - `concurrency` is per issue/PR only, so nothing queued gets dropped; the 2-job cap depends on the orchestrator.
