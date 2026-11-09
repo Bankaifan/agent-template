@@ -35,6 +35,14 @@ or on a red CI). Then the PR gets `needs-human` plus a review request to Daniel 
 Big work (architectural, breaking, release-relevant, multi-PR) starts with a design study in `docs/design/` (see its README); only its *Owner decisions* go to Daniel.
 Only trusted input drives agents: issues by Daniel or labelled `approved`/`auto-ok` by Daniel; the reviewer never runs PR code.
 
+## Waiting for Daniel
+Daniel approves only what needs him: PRs with risk class `security` (check `risk`, label `risk:security`, see `tools/ci/risk.py`),
+`needs-human`, design owner decisions, dependabot majors, product decisions. Whoever parks something with him leaves, as the
+LAST comment, a short plain-German note: what changes, the worst case, what the reviewers recommend, one exact yes/no question;
+technical terms explained in a few words. PRs get a review request to Bankaifan; only issues that wait for him mention
+`@Bankaifan` once in that note. No other comment mentions him. Every infra/security PR also needs the security reviewer
+(`.agents/roles/security-reviewer.md`, status `security-review`) besides the normal review, agent-smoke and zizmor.
+
 ## Models (subscription quota is scarce)
 Routine work haiku; core, security and architecture sonnet; opus only with Daniel's OK.
 Max 2 agent jobs at once. Script first, then haiku, then sonnet. Short reports, never repeat the diff.

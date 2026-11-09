@@ -24,7 +24,12 @@ Idea: **rules a script can check live in CI, not in prompts.** The agents get a 
   (see `docs/design/README.md`), reviewed by a design reviewer (`.agents/roles/design-reviewer.md`). Only the section *Owner decisions* needs Daniel;
   if it is empty the design merges without him. Afterwards the orchestrator creates the implementation issues (body line `Design: docs/design/...`;
   `tools/trusted_issues.py` trusts them when `AUTHOR_BOT` wrote them and the file exists on `main`).
-- `.github/CODEOWNERS`: `@Bankaifan` owns `AGENTS.md`, `CLAUDE.md`, `.agents/`, `.github/`, `.claude/`, `.mcp.json`, `tools/check/`.
+- `.github/CODEOWNERS`: `@Bankaifan` owns only the security-relevant files: `AGENTS.md`, CODEOWNERS, `.github/rulesets/`, `tools/trusted_issues.py`, `tools/agent_guard.py`, `tools/ci/risk.py`, `risk.yml`.
+- Risk classes (`tools/ci/risk.py`, workflow `risk`): a diff touching `permissions:`, `allowedTools`, `allowed_bots`, secrets/tokens, trust logic,
+  rulesets, CODEOWNERS or the AGENTS.md Limits is `security` (label `risk:security`; the required check `risk` fails until Daniel approves the head SHA);
+  other agent-infrastructure changes are `infra`. Every `infra`/`security` agent PR also needs the security reviewer
+  (`.agents/roles/security-reviewer.md`, workflow `agent-security-review.yml`, required status `security-review`), then it auto-merges.
+  Whatever waits for Daniel ends with a plain-German note (what, worst case, recommendation, yes/no question). Add `risk` and `security-review` to the ruleset's required checks.
 - A weekly rule keeper that opens one PR proposing rule removals, new checks and contradiction fixes (Daniel merges).
 - A daily `branch-cleanup` that deletes `agent/*` branches with a closed PR, or no PR and no commit for 7 days (dry-run input on manual runs).
 - An autonomous `orchestrator` (after a merge to `main` via `workflow_run` of `validate`, daily, manual; off unless variable `ORCHESTRATOR_ENABLED=true`) that cuts task slips,

@@ -19,6 +19,8 @@ Plans, cuts work, starts agents. Writes no production code.
   summary (max 5 lines). After the merge create the implementation issues from the split, each with a line
   `Design: docs/design/NNNN-<slug>.md` (these count as trusted), and work them in order.
   Small issues (docs, tests, fixes, contained features) start directly.
+- Anything you park with Daniel (`needs-human`, design owner decisions, product decisions) ends with a plain-German note as the last
+  comment: what changes, worst case, reviewer recommendation, one yes/no question, no jargon. On issues mention `@Bankaifan` once there.
 - `needs-human` always comes with a review request to Daniel (his inbox shows reviews, not labels).
 - Pick the model: routine = haiku (default), core/security/architecture = label `model:sonnet`.
 - On `needs-human` or two failed fix rounds: decide, rewrite the slip, or ask Daniel.

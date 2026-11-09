@@ -73,7 +73,9 @@ jobs:
               # A label alone is not in Daniel's inbox; skip if he is the author.
               guard same "$(jq -r .user.login <<<"$pr")" Bankaifan || \
                 gh pr edit "$num" --add-reviewer Bankaifan || echo "review request failed"
-              gh pr comment "$num" --body "Review limit reached (3 reviews, 2 fix rounds). Needs the orchestrator or Daniel."
+              gh pr comment "$num" --body "Review limit reached (3 reviews, 2 fix rounds). Needs the orchestrator or Daniel.
+
+              Hallo Daniel, dieser PR haengt fest: Entwickler und Pruefer sind nach drei Runden nicht einig. Schlimmster Fall: nichts passiert, der PR wird nur nicht gemergt. Die Pruefer empfehlen, den Auftrag neu zuzuschneiden. Frage: Soll der Orchestrator den Auftrag neu schneiden (ja) oder der PR geschlossen werden (nein)?"
               skip ;;
             *,review:2,*) guard label pr "$num" review:3 ;;
             *,review:1,*) guard label pr "$num" review:2 ;;
@@ -106,6 +108,13 @@ jobs:
             --max-turns 12
             --setting-sources user
             --allowedTools "Read,Glob,Grep,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr review:*),Bash(gh issue view:*)"
+      # Approved but waiting for Daniel (security class or code-owner path): label needs-human and the German note.
+      - name: Mark an approved PR that waits for Daniel
+        if: ${{ steps.claude.conclusion == 'success' }}
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          PR: ${{ steps.round.outputs.pr }}
+        run: python3 tools/ci/risk.py wait "$PR" "$SHA"
       # Never end silently: the Claude step ran but the approver app left no review for this head SHA.
       - name: Escalate a run that left no review
         if: ${{ always() && steps.claude.conclusion != 'skipped' }}
