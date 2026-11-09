@@ -32,4 +32,49 @@ bekommen keine Actions-Secrets: die fünf Secrets (und die Variablen `AUTHOR_BOT
 **Dependabot-Secrets** anlegen, sonst schlägt `agent-smoke` dort mit klarer Meldung fehl. `setup` meldet, ob sie existieren
 (best effort). Ruleset danach neu importieren.
 
+## Projekte synchron halten
+
+Projekte aus diesem Template bekommen spätere Template-Änderungen über einen wöchentlichen Bericht, nicht über blindes
+Kopieren. `template-sync.yml` (montags oder `workflow_dispatch`; ohne Modell) startet `tools/template_sync.py`. Das Skript
+vergleicht `main` des Templates mit `synced_sha` aus `.agents/template.json` und listet geänderte Dateien, die zu `managed`
+passen. Es legt das eine offene Issue `Template sync <kurze sha>` an (Labels `agent:dev`, `model:sonnet`) oder bearbeitet
+es, falls schon eines offen ist. Dateien unter `overrides` stehen getrennt, mit ihrem `why`. Das Issue endet mit
+`Template-Sync: <40 hex>`; der Orchestrator vertraut ihm nur, wenn die Autor-App (`AUTHOR_BOT`) es geschrieben hat. Der
+Entwickler übernimmt `clean`-Dateien unverändert, `overridden`-Dateien von Hand unter Beachtung der Absicht, setzt
+`synced_sha` auf diese SHA und öffnet einen PR mit `Closes #<Sync-Issue>`. Der PR berührt `.github/`, also muss Daniel als
+Code-Owner freigeben.
+
+Beispiel `.agents/template.json` für ein Projekt (einmal von Hand anlegen; die Datei gehört nicht zum Template, damit neue
+Projekte nicht darauf zurückzeigen):
+
+```json
+{
+  "template": "Bankaifan/agent-template",
+  "synced_sha": "<40 hex: der Template-Commit, mit dem du zuletzt übereinstimmst>",
+  "managed": [".github/workflows/", ".github/dependabot.yml", ".github/CODEOWNERS", ".github/rulesets/",
+              ".agents/roles/", "tools/", "tests/", "AGENTS.md", "CLAUDE.md", "Makefile", "docs/design/README.md"],
+  "overrides": [
+    {"path": ".github/workflows/agent-fix.yml", "why": "workflow_run.workflows braucht den CI-Namen 'Validate'"},
+    {"path": "AGENTS.md", "why": "Projektsatz und Projektregeln"}
+  ]
+}
+```
+
+- `managed`: Pfadpräfixe, die dem Template gehören (`/` am Ende = Verzeichnis). Andere Pfade werden nie gemeldet.
+- `overrides`: exakter `path` plus Freitext `why` für den Entwickler.
+- Eine zu alte `synced_sha` macht nur das erste Issue größer. Ohne Datei oder bei leerer `synced_sha` meldet der Lauf
+  `template-sync: no .agents/template.json, skipped` und endet erfolgreich. Im Template-Repo selbst wird ebenfalls übersprungen.
+- Listet der Vergleich 300 oder mehr Dateien, kann er abgeschnitten sein. Der Lauf schlägt dann mit Meldung fehl, legt
+  kein Issue an und ändert keines.
+- Ein privates Template lesen kann nur, wenn die Autor-App auf dem Template-Repo installiert ist.
+
+**Projektwerte.** Lieber Repo-Variablen als geänderte Dateien: `PYTHON_VERSION` (Standard `3.x`), `EXTRA_INSTALL` (Shell-Befehl,
+den `tools/ci/install_tools.sh` nach den üblichen Tools ausführt; nur aus der Repo-Variable, nie aus einer Datei im PR-Branch)
+und `RUNNER`. `TEMPLATE_SYNC=off` schaltet den Sync ab. Nur der CI-Name in `workflow_run.workflows` kann keine Variable sein
+(GitHub erlaubt dort keine Ausdrücke). Er steht als `[validate]` in `agent-fix.yml`, `agent-review.yml`,
+`dependabot-automerge.yml` und `orchestrator.yml`. Heißt die CI eines Projekts anders (z. B. `Validate`), passt es diese
+Zeilen an und trägt die Dateien unter `overrides` ein.
+
+Begründung: [docs/decisions/0007-template-sync.md](docs/decisions/0007-template-sync.md).
+
 Details und Grenzen: [README.md](README.md).
