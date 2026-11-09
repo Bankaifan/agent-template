@@ -12,9 +12,12 @@ CLI (needs the gh CLI with GH_TOKEN and GH_REPO):
                                              after agent-fix: PR head and body (BODY_FILE = body before the run) unchanged -> escalate
   agent_guard.py silent review PR SHA [BODYHASH]
                                              after agent-review: no approver review for SHA (and BODYHASH) -> escalate
+  agent_guard.py silent orchestrator - SINCE after the orchestrator model step: denials, or STARTABLE=true and no visible action
+                                             by AUTHOR_BOT since SINCE -> comment on STATUS_ISSUE (default 57), exit 1; 2nd in 24 h -> prio:1 issue
 Escalate = comment (run URL, denied tool calls from the execution file, else its last lines), label needs-human, request OWNER's review.
 Environment for escalation: RUN_URL, EXEC_FILE (path of the action's execution file), OWNER (default Bankaifan).
 """
+import datetime as dt
 import hashlib
 import json
 import os
@@ -139,6 +142,82 @@ def denied_calls(text, limit=MAX_DENIALS):
     return lines[:limit] + ([f"... and {more} more"] if more > 0 else [])
 
 
+def count_denials(text):
+    """Number of permission denials in the execution file (all of them, not only the listed ones)."""
+    return sum(len([d for d in rec.get("permission_denials") or [] if isinstance(d, dict)]) for rec in _records(text))
+
+
+def _after(ts, since):
+    return (ts or "") >= since  # same UTC ISO format, compares as text
+
+
+def visible_action(author_bot, since, events=(), comments=(), prs=(), issues=()):
+    """Did the author app label, comment, open an issue or a PR at/after SINCE?"""
+    return (any(same_login((e.get("actor") or {}).get("login"), author_bot) and _after(e.get("created_at"), since)
+                for e in events)
+            or any(same_login((c.get("user") or {}).get("login"), author_bot) and _after(c.get("created_at"), since)
+                   for c in comments)
+            or any(same_login((x.get("author") or {}).get("login"), author_bot) and _after(x.get("createdAt"), since)
+                   for x in [*prs, *issues]))
+
+
+def orchestrator_silent(denials, startable, acted):
+    """Reason the orchestrator run counts as silent, else None. Nothing startable and no denials is fine."""
+    if denials > 0:
+        return f"{denials} tool call(s) were denied"
+    if startable and not acted:
+        return "a startable issue existed but no label, comment, issue or PR followed"
+    return None
+
+
+ORCH_MARK = "agent-orchestrator run finished silently"
+ORCH_REPEAT_TITLE = "Orchestrator runs keep ending silently"
+
+
+def recent_failures(comments, author_bot, since):
+    return sum(1 for c in comments if same_login((c.get("user") or {}).get("login"), author_bot)
+               and _after(c.get("created_at"), since) and ORCH_MARK in (c.get("body") or ""))
+
+
+def escalate_orchestrator(why, status_issue, repo, author_bot, run=gh, now=None):
+    """Comment on the status issue (run URL, denied calls). Second failure within 24 h: one prio:1 issue, no duplicates."""
+    now = now or dt.datetime.now(dt.UTC)
+    day_ago = (now - dt.timedelta(hours=24)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    pages = json.loads(run("api", "--paginate", "--slurp",
+                           f"repos/{repo}/issues/{status_issue}/comments?since={day_ago}"))
+    earlier = recent_failures([c for p in pages for c in p], author_bot, day_ago)
+    body = report("orchestrator", why, os.environ.get("RUN_URL", ""), read_exec(os.environ.get("EXEC_FILE", "")))
+    body = body.split("Labelled needs-human")[0] + "The run is marked failed."  # no needs-human here: the status issue is not a task
+    run("issue", "comment", str(status_issue), "--body", body)
+    if earlier:
+        open_ = json.loads(run("issue", "list", "--state", "open", "--search", f'"{ORCH_REPEAT_TITLE}" in:title',
+                               "--json", "title"))
+        if not any(i.get("title") == ORCH_REPEAT_TITLE for i in open_):
+            ensure_label("prio:1", run)
+            run("issue", "create", "--title", ORCH_REPEAT_TITLE, "--label", "prio:1", "--body",
+                f"The orchestrator ended silently {earlier + 1} times within 24 h (latest: {why}). "
+                f"Details: comments on #{status_issue}, run {os.environ.get('RUN_URL', '(unknown)')}.")
+
+
+def silent_orchestrator(since, run=gh):
+    """Check after the orchestrator model step. Returns 1 (run must fail) if it was silent."""
+    repo, bot = os.environ["GH_REPO"], os.environ.get("AUTHOR_BOT", "")
+    denials = count_denials(read_exec(os.environ.get("EXEC_FILE", "")))
+    startable = os.environ.get("STARTABLE") == "true"
+    acted = False
+    if denials == 0 and startable:
+        events = json.loads(run("api", f"repos/{repo}/issues/events?per_page=100"))
+        pages = json.loads(run("api", "--paginate", "--slurp", f"repos/{repo}/issues/comments?since={since}&per_page=100"))
+        prs = json.loads(run("pr", "list", "--state", "all", "--limit", "50", "--json", "author,createdAt"))
+        issues = json.loads(run("issue", "list", "--state", "all", "--limit", "50", "--json", "author,createdAt"))
+        acted = visible_action(bot, since, events, [c for p in pages for c in p], prs, issues)
+    why = orchestrator_silent(denials, startable, acted)
+    if not why:
+        return 0
+    escalate_orchestrator(why, os.environ.get("STATUS_ISSUE", "57"), repo, bot, run)
+    return 1
+
+
 def report(kind, what, run_url, exec_text):
     denied = denied_calls(exec_text) if exec_text else []
     if denied:
@@ -223,6 +302,8 @@ def main(argv):
             bh = args[3] if len(args) == 4 else None
             if not has_review(reviews_of(number), os.environ.get("APPROVER_BOT", ""), args[2], bh):
                 escalate("review", number, True, "no review by the approver app exists for the head commit", owner)
+        elif kind == "orchestrator" and len(args) == 3:
+            return silent_orchestrator(args[2])
         else:
             return 2
     else:
