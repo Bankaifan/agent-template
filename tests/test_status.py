@@ -2,6 +2,7 @@ import datetime
 import importlib.util
 import json
 import pathlib
+import subprocess
 
 _path = pathlib.Path(__file__).parent.parent / "tools" / "status.py"
 _spec = importlib.util.spec_from_file_location("status", _path)
@@ -178,3 +179,18 @@ def test_gate_writes_output(tmp_path):
     out = tmp_path / "o"
     st.gate({"EVENT": "schedule", "PRIVATE": "true", "GITHUB_OUTPUT": str(out)}, at(10, 37))
     assert out.read_text() == "run=false\n"
+
+
+def test_gh_prints_stderr_before_raising(monkeypatch, capsys):
+    def fake_run(cmd, **kw):
+        raise subprocess.CalledProcessError(1, cmd, output="", stderr='Unknown JSON field: "bogus"\n')
+
+    monkeypatch.setattr(st.subprocess, "run", fake_run)
+    try:
+        st.gh("pr", "list", "--json", "bogus")
+    except subprocess.CalledProcessError:
+        pass
+    else:
+        raise AssertionError("expected CalledProcessError")
+    err = capsys.readouterr().err
+    assert "gh pr list exited 1" in err and "Unknown JSON field" in err

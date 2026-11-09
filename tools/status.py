@@ -36,7 +36,13 @@ TICK_MIN = 30
 
 
 def gh(*args):
-    return subprocess.run(["gh", *args], check=True, capture_output=True, text=True).stdout
+    """Run gh; on failure print the (masked, capped) stderr first so the log explains the exit status."""
+    try:
+        return subprocess.run(["gh", *args], check=True, capture_output=True, text=True).stdout
+    except subprocess.CalledProcessError as e:
+        shown = " ".join(str(a) for a in args[:2])
+        print(f"gh {shown} exited {e.returncode}: {tail_text(e.stderr or '(no stderr)')}", file=sys.stderr)
+        raise
 
 
 def safe(run, *args):
