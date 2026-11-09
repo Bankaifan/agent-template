@@ -3,7 +3,7 @@
 # Bump versions here only; one place for every workflow.
 set -euo pipefail
 RUFF=0.17.4
-ZIZMOR=1.5.2
+ZIZMOR=1.32.0
 ACTIONLINT=1.7.7
 pip install "ruff==$RUFF" "zizmor==$ZIZMOR" pytest pytest-timeout
 for f in requirements.txt requirements_test.txt; do

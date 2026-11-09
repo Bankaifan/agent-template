@@ -33,6 +33,9 @@ jobs:
         with:
           client-id: ${{ vars.AUTHOR_CLIENT_ID }}
           private-key: ${{ secrets.AUTHOR_APP_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+          permission-statuses: read
       # Review event: the PR is in the payload. Status event: find the open agent PR whose head is exactly that SHA
       # and that is already approved; anything else ends quietly.
       - name: Resolve the PR
