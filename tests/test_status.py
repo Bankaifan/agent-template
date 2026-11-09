@@ -194,3 +194,41 @@ def test_gh_prints_stderr_before_raising(monkeypatch, capsys):
         raise AssertionError("expected CalledProcessError")
     err = capsys.readouterr().err
     assert "gh pr list exited 1" in err and "Unknown JSON field" in err
+
+
+def _main_runs(*items):
+    return [{"conclusion": c, "createdAt": ago(m)} for c, m in items]  # newest first
+
+
+def _agent_pr(**kw):
+    c = [{"authors": [{"login": "Bankaifan"}], "committedDate": ago(60)}]
+    return pr(7, "agent/7-x", mergeStateStatus="BEHIND", commits=c, **kw)
+
+
+def _failed(sha):
+    return [{"conclusion": "failure", "createdAt": ago(50)}]
+
+
+def test_pr_limit_keeps_graphql_query_small():
+    assert st.PR_LIMIT <= 20
+
+
+def test_pr_red_on_old_red_main_is_rebased():
+    main = _main_runs(("success", 10), ("failure", 90))
+    assert st.rebase_candidates([_agent_pr()], main, _failed, "Bankaifan") != []
+
+
+def test_pr_red_on_green_main_is_left_alone():
+    main = _main_runs(("success", 10), ("success", 90))
+    assert st.rebase_candidates([_agent_pr()], main, _failed, "Bankaifan") == []
+
+
+def test_no_rebase_while_main_is_red_or_for_foreign_prs():
+    assert st.rebase_candidates([_agent_pr()], _main_runs(("failure", 10)), _failed, "Bankaifan") == []
+    main = _main_runs(("success", 10), ("failure", 90))
+    assert st.rebase_candidates([_agent_pr(isCrossRepository=True)], main, _failed, "Bankaifan") == []
+    dependabot = pr(8, "dependabot/x", mergeStateStatus="BEHIND")
+    assert st.rebase_candidates([dependabot], main, _failed, "Bankaifan") == []
+    two = _agent_pr()
+    two["commits"] = two["commits"] * 2
+    assert st.rebase_candidates([two], main, _failed, "Bankaifan") == []
