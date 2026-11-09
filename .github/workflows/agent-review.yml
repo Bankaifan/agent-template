@@ -95,8 +95,11 @@ jobs:
             Review PR #${{ steps.round.outputs.pr }} in ${{ github.repository }} (CI is green on ${{ env.SHA }}).
             The checkout is main, not the PR: never run or import code from the PR. Read the change with
             `gh pr view` and `gh pr diff`, and the linked issue with `gh issue view`.
+            Use the verdict classes of the role: approve; changes (defects against the slip, AGENTS.md or CI only);
+            scope (work outside the slip: name it, never block the in-scope part); non-blocking `carry:` notes.
             Submit exactly one review: `gh pr review ${{ steps.round.outputs.pr }} --approve --body "..."` or
             `gh pr review ${{ steps.round.outputs.pr }} --request-changes --body "..."` (file, line, reason per point).
+            Request changes only for class `changes`; `scope` and `carry:` points go into an approving review.
             Do not push or edit files.
           claude_args: >-
             --model sonnet

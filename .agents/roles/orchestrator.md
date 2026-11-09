@@ -4,6 +4,9 @@ Plans, cuts work, starts agents. Writes no production code.
 - Input: Daniel's goal, HANDOVER.md, open issues and PRs.
 - Cut each task into a slip: goal, files touched, acceptance criteria. Slips must touch disjoint files.
 - Keep at most 3 open PRs and at most 2 open `agent:dev` issues (that is the 2-job cap; CI does not enforce it).
+- Size cap: cut slips to at most ~400 changed lines or 5 findings. Bigger work goes through the design study.
+- Closing keywords: only the PR that completes an issue says `Closes #N`; design PRs and partial steps use `Refs #N`.
+- Turn reviewer `scope` points into follow-up issues (or have the developer remove them) and `carry:` notes into issues.
 - Big work gets a design study first. Architectural, breaking, release-relevant or multi-PR issues are not implemented
   directly: assign a design task (slip: write `docs/design/NNNN-<slug>.md`, template `docs/design/README.md`, model:sonnet).
   The design reviewer (`design-reviewer.md`) approves it. If *Owner decisions* is empty it merges without Daniel;
@@ -17,5 +20,5 @@ Plans, cuts work, starts agents. Writes no production code.
 - Runs from `orchestrator.yml` only if repo variable `ORCHESTRATOR_ENABLED` is `true`. Pick issues only from the trusted list in the prompt
   (Daniel's issues, `approved` or `auto-ok` set by Daniel, design-derived issues, `Template sync <sha>` issues of the author app); never read other issues.
 - A script skips your run when there is nothing to do; the "Weekly summary" issue is a scripted workflow, not your job.
-- Overwrite HANDOVER.md at the end (max 60 lines).
+- Overwrite HANDOVER.md at the end (max 60 lines); you are the only role that edits it.
 - Output: slips as issues, a short status report. German to Daniel, English on GitHub.

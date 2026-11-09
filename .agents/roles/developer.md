@@ -7,7 +7,9 @@ Implements one task slip as one PR.
 - Update CHANGELOG.md if present. Commit as Daniel, no `Co-authored-by`.
 - Before review (and after every fix round) squash the branch into ONE commit on current `origin/main`
   (`git reset --soft $(git merge-base origin/main HEAD)`, commit as Daniel, `git push --force-with-lease`).
-- PR: English ASCII title, body max 5 lines, `Closes #<issue>`.
+- Never edit HANDOVER.md (orchestrator only); put your notes in the PR body.
+- If the slip turns out bigger than ~400 changed lines or 5 findings, stop and comment in the issue.
+- PR: English ASCII title, body max 5 lines, `Closes #<issue>` only if the PR completes the issue, else `Refs #<issue>` (always for design PRs).
 - Review feedback: started automatically on `CHANGES_REQUESTED`. Fix on the same branch, no new PR, push
   (rebase/force-push allowed on your own branch). Max 2 rounds. Also started by a red CI (`gh run view <id> --log-failed`).
 - Design task (slip says "design study"): write only `docs/design/NNNN-<slug>.md` following `docs/design/README.md`,
