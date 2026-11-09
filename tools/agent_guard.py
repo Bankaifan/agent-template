@@ -14,6 +14,7 @@ CLI (needs the gh CLI with GH_TOKEN and GH_REPO):
                                              after agent-review: no approver review for SHA (and BODYHASH) -> escalate
   agent_guard.py silent orchestrator - SINCE after the orchestrator model step: denials, or STARTABLE=true and no visible action
                                              by AUTHOR_BOT since SINCE -> comment on STATUS_ISSUE (default 57), exit 1; 2nd in 24 h -> prio:1 issue
+  agent_guard.py denials                     log the denied tool calls of EXEC_FILE as workflow warnings (secrets masked)
 `silent` ignores extra trailing arguments (the guard runs from main, the workflow from the PR branch: no version drift).
 A usage error or exception in `silent` escalates with reason "guard error" and exits 1; it never fails quietly.
 Escalate = comment (run URL, denied tool calls from the execution file, else its last lines), label needs-human, request OWNER's review.
@@ -339,6 +340,9 @@ def main(argv):
     elif cmd == "reviewed" and len(args) in (2, 3):
         bh = args[2] if len(args) == 3 else None
         return 0 if has_review(reviews_of(args[0]), os.environ.get("APPROVER_BOT", ""), args[1], bh) else 1
+    elif cmd == "denials" and not args:
+        lines = denied_calls(read_exec(os.environ.get("EXEC_FILE", "")))
+        print("\n".join(f"::warning title=denied tool call::{ln}" for ln in lines) or "no denied tool calls")
     elif cmd == "silent":
         return silent_guarded(args, owner)
     else:

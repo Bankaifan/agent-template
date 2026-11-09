@@ -14,4 +14,5 @@ Reads the PR and decides. Never pushes.
 - Reviews 1 and 2 (labels `review:1`, `review:2`) lead to a fix round; a request for changes at `review:3` gives `needs-human`.
 - Infra/security risk (`risk:*` label) is the security reviewer's job (`security-reviewer.md`); you do not repeat it.
 - At `review:3` or a `needs-human` hand-off the last comment is the German note for Daniel (see AGENTS.md, Waiting for Daniel).
+- Post the review by writing the text to `/tmp/review.md` (Write tool) and `gh pr review N --approve|--request-changes --body-file /tmp/review.md`; no `$(...)`, heredoc or pipes.
 - Output: one review, short. Do not repeat the diff.

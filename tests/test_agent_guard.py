@@ -101,6 +101,18 @@ def test_denied_calls_mask_token_straddling_the_cut():
     assert out and "ghp_" not in out[0] and "c" * 5 not in out[0]
 
 
+def test_denials_command_logs_warnings_and_masks(tmp_path, monkeypatch, capsys):
+    f = tmp_path / "exec.json"
+    cmd = 'gh pr comment 5 --body "$(cat x)" ghp_' + "d" * 30
+    f.write_text(json.dumps([{"type": "result", "permission_denials": [{"tool_name": "Bash", "tool_input": {"command": cmd}}]}]))
+    monkeypatch.setenv("EXEC_FILE", str(f))
+    assert g.main(["g", "denials"]) == 0
+    out = capsys.readouterr().out
+    assert "::warning title=denied tool call::Bash: gh pr comment 5" in out and "ghp_" not in out
+    monkeypatch.setenv("EXEC_FILE", str(tmp_path / "missing"))
+    assert g.main(["g", "denials"]) == 0 and "no denied tool calls" in capsys.readouterr().out
+
+
 def test_report_without_denials_keeps_the_tail():
     body = g.report("dev", "no PR", "", json.dumps([{"type": "result", "permission_denials": []}]))
     assert "no denied tool calls found" in body and "permission_denials" in body
