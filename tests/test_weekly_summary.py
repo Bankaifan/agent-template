@@ -13,3 +13,48 @@ def test_build_body_lists_rows_and_none():
     assert "- #9 Idea" in body
     assert body.count("- none") == 2
     assert "Updated 2026-11-09." in body
+
+
+def test_count_code_skips_generated_and_unknown():
+    files = ["a.py", "tools/b.py", "x.sh", "package-lock.json", "dist/c.js", "app.min.js", "README.md", "vendor/d.py"]
+    lines, modules = mod.count_code(files, lambda p: 10)
+    assert lines == {"python": 20, "shell": 10}
+    assert modules == {"python": 2, "shell": 1}
+
+
+def test_max_parallel_counts_overlap_and_ignores_non_agent():
+    prs = [
+        {"headRefName": "agent/1-a", "createdAt": "2026-11-03T10:00:00Z", "closedAt": "2026-11-04T10:00:00Z"},
+        {"headRefName": "agent/2-b", "createdAt": "2026-11-03T12:00:00Z", "closedAt": None},
+        {"headRefName": "agent/3-c", "createdAt": "2026-11-04T10:00:00Z", "closedAt": "2026-11-05T10:00:00Z"},
+        {"headRefName": "feature/x", "createdAt": "2026-11-03T10:00:00Z", "closedAt": None},
+        {"headRefName": "agent/4-d", "createdAt": "2026-10-01T10:00:00Z", "closedAt": "2026-10-02T10:00:00Z"},
+    ]
+    assert mod.max_parallel(prs, "2026-11-02T00:00:00Z", "2026-11-09T23:59:59Z") == 2
+
+
+def test_avg_review_rounds():
+    merged = [{"headRefName": "agent/1", "reviews": [{"state": "CHANGES_REQUESTED"}, {"state": "APPROVED"}]},
+              {"headRefName": "agent/2", "reviews": [{"state": "APPROVED"}]},
+              {"headRefName": "other", "reviews": [{"state": "CHANGES_REQUESTED"}] * 5}]
+    assert mod.avg_review_rounds(merged) == 1.5
+    assert mod.avg_review_rounds([]) is None
+
+
+def test_median_ci_minutes():
+    def run(minutes, conclusion="success"):
+        return {"startedAt": "2026-11-03T10:00:00Z", "updatedAt": f"2026-11-03T10:{minutes:02d}:00Z",
+                "conclusion": conclusion}
+    assert mod.median_ci_minutes([run(2), run(4), run(9), run(50, "")]) == 4.0
+    assert mod.median_ci_minutes([]) is None
+
+
+def test_metrics_row_and_append_idempotent(tmp_path):
+    row = mod.metrics_row("2026-11-09", {"python": 30}, {"python": 3}, 2, None, 4.0, None)
+    assert row["code_lines"] == 30 and row["lines_by_lang"] == "python=30"
+    assert row["avg_review_rounds"] == "" and row["actions_minutes"] == "" and row["conflicts_rebuilt"] == ""
+    path = tmp_path / "docs" / "metrics.csv"
+    assert mod.append_metrics(path, row) is True
+    assert mod.append_metrics(path, row) is False
+    lines = path.read_text().splitlines()
+    assert lines[0] == ",".join(mod.COLUMNS) and len(lines) == 2

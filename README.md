@@ -32,7 +32,9 @@ Idea: **rules a script can check live in CI, not in prompts.** The agents get a 
 - A monthly `scout` (haiku) that opens at most `IDEAS_PER_WEEK` (default 3 per run, 0 = off) `idea` issues, also from Dependabot/CodeQL alerts; it adds only `idea`.
 - `make check` is what CI checks: ruff, pytest, actionlint, zizmor (pinned in `tools/ci/install_tools.sh`) and the repo checks; the developer
   and fix jobs install the same tools. `validate` also runs gitleaks. Orchestrator and scout run `tools/prefilter.py` first and skip the model when there is nothing to do;
-  the "Weekly summary" issue is updated on Mondays by `tools/weekly_summary.py`, no model.
+  the "Weekly summary" issue is updated on Mondays by `tools/weekly_summary.py`, no model; it also adds a row to `docs/metrics.csv` via PR
+  (tiers S/M/L and thresholds: `docs/decisions/0008-tiers.md`).
+  Actions minutes are free on public repos; private repos have a monthly quota, so schedules there are slower.
   Only trusted input drives agents: the orchestrator sees only issues authored by Daniel or labelled `approved`/`auto-ok` by Daniel
   (checked from the issue timeline by `tools/trusted_issues.py`, not by the prompt).
 
