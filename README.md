@@ -13,6 +13,8 @@ Idea: **rules a script can check live in CI, not in prompts.** The agents get a 
   The developer squashes its branch into one commit authored by Daniel, so Daniel is the sole author on `main`.
 - The reviewer runs only on green CI (`workflow_run` of `validate`) and never runs PR code (it checks out `main`, reads the PR with `gh`).
   Fix rounds start automatically when the reviewer requests changes or CI is red (max 2, then `needs-human`).
+  A fix round uses the model of the original task: sonnet if the PR or an issue it closes (`Closes #N`) has `model:sonnet`, else haiku.
+  A red-CI fix on a PR that touches `.github/` or `tools/` always uses sonnet.
   After the developer pushes, a script step makes sure `validate` runs on the head SHA (else `gh workflow run validate.yml`).
 - Dependabot PRs are not reviewed by AI: a model-free workflow approves patch/minor once `validate` is green and
   enables auto-merge; majors get `needs-human`.
@@ -29,7 +31,7 @@ Idea: **rules a script can check live in CI, not in prompts.** The agents get a 
   (checked from the issue timeline by `tools/trusted_issues.py`, not by the prompt).
 
 Quota is scarce: `ORCHESTRATOR_ENABLED` and `IDEAS_PER_WEEK` control the autonomous load; at most 2 agent jobs run at the same time; models are chosen per role
-(developer routine: haiku, core work: sonnet, reviewer: sonnet, orchestrator: sonnet).
+(developer routine: haiku, core work: sonnet, reviewer: sonnet, orchestrator: sonnet, fix rounds: as the original task, see above).
 
 ## Setup
 

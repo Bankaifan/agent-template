@@ -67,8 +67,21 @@ jobs:
             if [ -z "$pr" ]; then echo "No open PR with head $RUN_SHA"; echo "fix=false" >> "$GITHUB_OUTPUT"; exit 0; fi
           fi
           echo "pr=$pr" >> "$GITHUB_OUTPUT"; echo "branch=$branch" >> "$GITHUB_OUTPUT"
+          # Model of the original task: sonnet if the PR or an issue it closes has model:sonnet.
           labels=",$(gh pr view "$pr" --json labels --jq '[.labels[].name] | join(",")'),"
-          case "$labels" in *,model:sonnet,*) echo "model=sonnet" >> "$GITHUB_OUTPUT" ;; *) echo "model=haiku" >> "$GITHUB_OUTPUT" ;; esac
+          model=haiku
+          case "$labels" in *,model:sonnet,*) model=sonnet ;; esac
+          body=$(gh pr view "$pr" --json body --jq .body)
+          for n in $(grep -oiE '(close[sd]?|fix(e[sd])?|resolve[sd]?) +#[0-9]+' <<< "$body" | grep -oE '[0-9]+' || true); do
+            ilabels=",$(gh issue view "$n" --json labels --jq '[.labels[].name] | join(",")' 2>/dev/null || true),"
+            case "$ilabels" in *,model:sonnet,*) model=sonnet ;; esac
+          done
+          # A red CI on a PR that touches the agent rules or CI tooling always gets sonnet.
+          if [ "$EVENT" = workflow_run ]; then
+            files=$(gh pr view "$pr" --json files --jq '.files[].path')
+            if grep -qE '^(\.github/|tools/)' <<< "$files"; then model=sonnet; fi
+          fi
+          echo "model=$model" >> "$GITHUB_OUTPUT"
           case "$labels" in *,needs-human,*) echo "fix=false" >> "$GITHUB_OUTPUT"; exit 0 ;; esac
           if [ "$EVENT" = workflow_run ]; then
             # A red CI is a round: bump the counter like the reviewer does.
