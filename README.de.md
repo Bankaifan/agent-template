@@ -8,6 +8,7 @@ Leitidee: Regeln, die ein Skript prüfen kann, gehören in CI, nicht in Prompts.
 - Rollen: Orchestrator, Entwickler, Reviewer, Tester (`.agents/roles/`). Agenten laufen in GitHub Actions mit
   `claude-code-action@v1` über das Claude-Abo (OAuth-Token, kein API-Key).
 - Zwei GitHub-Apps: Autor pusht und öffnet PRs, Approver reviewt. Auto-Merge (squash) nach Approve und grüner CI.
+- Wöchentlicher Rule Keeper (ein PR mit Regelvorschlägen, Daniel merged) und täglicher `branch-cleanup` (löscht veraltete `agent/*`-Branches, Dry-Run bei manuellem Start).
 - Kontingent knapp: höchstens 2 Agenten-Jobs gleichzeitig, Modell je Rolle (haiku Routine, sonnet Kern und Review).
 
 ## Einrichtung
