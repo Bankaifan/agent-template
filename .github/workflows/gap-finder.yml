@@ -1,0 +1,38 @@
+name: gap-finder
+on:
+  schedule:
+    - cron: "17 5 * * 1"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: agent-slot-${{ (endsWith(github.run_id, '1') || endsWith(github.run_id, '3') || endsWith(github.run_id, '5') || endsWith(github.run_id, '7') || endsWith(github.run_id, '9')) && 'a' || 'b' }}
+  cancel-in-progress: false
+jobs:
+  gaps:
+    runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 20
+    steps:
+      - id: app
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.AUTHOR_APP_ID }}
+          private-key: ${{ secrets.AUTHOR_APP_KEY }}
+      - uses: actions/checkout@v4
+      - uses: anthropics/claude-code-action@v1
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ steps.app.outputs.token }}
+          prompt: |
+            Read the last 30 merged PRs of ${{ github.repository }} (gh pr list --state merged --limit 30)
+            and their reviews and comments (gh pr view --comments). Count repeated review remarks.
+            A remark that appeared 3 or more times could become a script: open one issue per candidate
+            (label gap-finder, English) titled "Check: <what>" with a sketch of tools/check/<name>.py.
+            First run `gh issue list --label gap-finder` and do not duplicate open issues.
+            Create issues only. Do not change files, branches or PRs. If nothing repeats, create nothing.
+          claude_args: >-
+            --model haiku
+            --max-turns 15
+            --allowedTools "Read,Glob,Grep,Bash(gh pr list:*),Bash(gh pr view:*),Bash(gh issue list:*),Bash(gh issue create:*)"
