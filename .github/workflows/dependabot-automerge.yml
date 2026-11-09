@@ -2,16 +2,13 @@ name: dependabot-automerge
 # No model. Trigger: workflow_run on `validate` (not pull_request_target), because runs started by
 # dependabot get no repo secrets and workflow_run always runs the default-branch version of this file.
 # PR code is never checked out. Open: whether workflow_run of a dependabot-triggered run sees the
-# Actions secrets; if not, add the 4 app secrets as Dependabot secrets too (see README).
+# Actions secrets; if not, add the 3 secrets as Dependabot secrets too (see README).
 on:
   workflow_run:  # zizmor: ignore[dangerous-triggers] needs repo secrets that dependabot runs lack; checks out main only, no PR code runs
     workflows: [validate]
     types: [completed]
 permissions:
   contents: read
-concurrency:
-  group: dependabot-automerge-${{ github.event.workflow_run.head_branch }}
-  cancel-in-progress: false
 jobs:
   dependabot:
     if: >-
@@ -19,6 +16,10 @@ jobs:
       github.event.workflow_run.event == 'pull_request' &&
       github.event.workflow_run.actor.login == 'dependabot[bot]' &&
       github.event.workflow_run.head_repository.full_name == github.repository
+    # Job level on purpose: runs skipped by `if` must not take over the group.
+    concurrency:
+      group: dependabot-automerge-${{ github.event.workflow_run.head_branch }}
+      cancel-in-progress: false
     runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 5
     env:
@@ -34,12 +35,12 @@ jobs:
       - id: approver
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
-          app-id: ${{ secrets.APPROVER_APP_ID }}
+          client-id: ${{ vars.APPROVER_CLIENT_ID }}
           private-key: ${{ secrets.APPROVER_APP_KEY }}
       - id: author
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
-          app-id: ${{ secrets.AUTHOR_APP_ID }}
+          client-id: ${{ vars.AUTHOR_CLIENT_ID }}
           private-key: ${{ secrets.AUTHOR_APP_KEY }}
       # Metadata of the update (also for grouped PRs). If the action cannot read the PR from a
       # workflow_run event it fails softly and the script falls back to the title (open: not verified).
@@ -64,7 +65,7 @@ jobs:
           kind=$(python3 tools/dependabot_update_type.py "$title" "${METADATA:-}")
           echo "PR #$number: $kind"
           if [ "$kind" = "major" ]; then
-            GH_TOKEN="$APPROVER_TOKEN" gh pr edit "$number" --add-label needs-human
+            GH_TOKEN="$APPROVER_TOKEN" python3 tools/agent_guard.py label pr "$number" needs-human
             # A label alone is not in Daniel's inbox: request his review (the author is dependabot).
             GH_TOKEN="$APPROVER_TOKEN" gh pr edit "$number" --add-reviewer Bankaifan || echo "review request failed"
             exit 0

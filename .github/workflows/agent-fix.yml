@@ -12,21 +12,19 @@ on:
     types: [completed]
 permissions:
   contents: read
-concurrency:
-  group: agent-fix-${{ github.event.pull_request.head.ref || github.event.workflow_run.head_branch }}
-  cancel-in-progress: false
 jobs:
   prepare:
     if: >-
       (github.event_name == 'pull_request_review' &&
        github.event.review.state == 'changes_requested' &&
-       github.event.review.user.login == vars.APPROVER_BOT &&
        startsWith(github.event.pull_request.head.ref, 'agent/') &&
        github.event.pull_request.head.repo.full_name == github.repository) ||
       (github.event_name == 'workflow_run' &&
        github.event.workflow_run.conclusion == 'failure' &&
        startsWith(github.event.workflow_run.head_branch, 'agent/') &&
        github.event.workflow_run.head_repository.full_name == github.repository)
+    # No concurrency group here on purpose: any review by any user would take it and could replace a pending real
+    # fix run. The group lives on the `fix` job, which only starts after the approver check.
     runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 5
     outputs:
@@ -40,22 +38,34 @@ jobs:
       REVIEW_BRANCH: ${{ github.event.pull_request.head.ref }}
       RUN_BRANCH: ${{ github.event.workflow_run.head_branch }}
       RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+      REVIEWER: ${{ github.event.review.user.login }}
+      APPROVER_BOT: ${{ vars.APPROVER_BOT }}
     steps:
       - id: app
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
-          app-id: ${{ secrets.APPROVER_APP_ID }}
+          client-id: ${{ vars.APPROVER_CLIENT_ID }}
           private-key: ${{ secrets.APPROVER_APP_KEY }}
+      # main only: the label and login helper.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.repository.default_branch }}
       - id: round
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
+          guard() { python3 tools/agent_guard.py "$@"; }
+          # Only the approver app may start a round from a review (login forms x, app/x, x[bot] are the same).
+          if [ "$EVENT" = pull_request_review ] && ! guard same "$REVIEWER" "$APPROVER_BOT"; then
+            echo "Review not by the approver app"; exit 0
+          fi
           limit() {
-            gh pr edit "$pr" --add-label needs-human
+            guard label pr "$pr" needs-human
             # A label alone is not in Daniel's inbox; skip if he is the author (cannot review own PR).
-            [ "$(gh pr view "$pr" --json author --jq .author.login)" = Bankaifan ] || \
+            guard same "$(gh pr view "$pr" --json author --jq .author.login)" Bankaifan || \
               gh pr edit "$pr" --add-reviewer Bankaifan || echo "review request failed"
             gh pr comment "$pr" --body "Review limit of 2 fix rounds reached. Needs the orchestrator or Daniel."
             echo "fix=false" >> "$GITHUB_OUTPUT"
@@ -90,9 +100,9 @@ jobs:
             # A red CI is a round: bump the counter like the reviewer does.
             case "$labels" in
               *,review:3,*) limit; exit 0 ;;
-              *,review:2,*) gh pr edit "$pr" --add-label review:3; limit; exit 0 ;;
-              *,review:1,*) gh pr edit "$pr" --add-label review:2 ;;
-              *) gh pr edit "$pr" --add-label review:1 ;;
+              *,review:2,*) guard label pr "$pr" review:3; limit; exit 0 ;;
+              *,review:1,*) guard label pr "$pr" review:2 ;;
+              *) guard label pr "$pr" review:1 ;;
             esac
             echo "fix=true" >> "$GITHUB_OUTPUT"
           else
@@ -106,6 +116,9 @@ jobs:
   fix:
     needs: prepare
     if: needs.prepare.outputs.fix == 'true'
+    concurrency:
+      group: agent-fix-${{ needs.prepare.outputs.branch }}
+      cancel-in-progress: false
     runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 45
     env:
@@ -118,13 +131,15 @@ jobs:
       - id: app
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
-          app-id: ${{ secrets.AUTHOR_APP_ID }}
+          client-id: ${{ vars.AUTHOR_CLIENT_ID }}
           private-key: ${{ secrets.AUTHOR_APP_KEY }}
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1  # zizmor: ignore[artipacked] this job pushes with the app token persisted by checkout
         with:
           token: ${{ steps.app.outputs.token }}
           ref: ${{ needs.prepare.outputs.branch }}
           fetch-depth: 0
+      - id: before
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - name: Git identity
         run: |
           git config user.name "Daniel"
@@ -134,7 +149,8 @@ jobs:
           python-version: "3.x"
       - name: Install pinned CI tools (ruff, pytest, actionlint, zizmor)
         run: bash tools/ci/install_tools.sh
-      - uses: anthropics/claude-code-action@61a9c274fa7110a66dfafc1bbbced03833eb25fe # v1.0.269
+      - id: claude
+        uses: anthropics/claude-code-action@61a9c274fa7110a66dfafc1bbbced03833eb25fe # v1.0.269
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
         with:
@@ -157,13 +173,14 @@ jobs:
             --model ${{ env.MODEL }}
             --max-turns 60
             --setting-sources user
-            --allowedTools "Read,Edit,Write,Glob,Grep,Bash(git:*),Bash(make:*),Bash(python3:*),Bash(pytest:*),Bash(ruff:*),Bash(actionlint:*),Bash(zizmor:*),Bash(gh issue view:*),Bash(gh pr view:*),Bash(gh run view:*)"
+            --allowedTools "Read,Edit,Write,Glob,Grep,Bash(git:*),Bash(make:*),Bash(python3:*),Bash(pytest:*),Bash(ruff:*),Bash(actionlint:*),Bash(zizmor:*),Bash(gh issue view:*),Bash(gh pr view:*),Bash(gh run view:*),Bash(gh release view:*),Bash(gh release list:*)"
       # Deterministic, inline on purpose: the agent may edit files in the checkout, never this step.
       - name: Make sure CI runs on the PR head
         if: ${{ !cancelled() }}
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           GH_REPO: ${{ github.repository }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           sha=$(gh pr view "$PR" --json headRefOid --jq .headRefOid)
           for _ in 1 2 3 4 5 6; do
@@ -172,4 +189,24 @@ jobs:
             sleep 10
           done
           gh workflow run validate.yml --ref "$BRANCH"
-          gh pr edit "$PR" --add-label agent:review
+          # The agent may edit the checkout: run the helper as it is on the default branch.
+          git fetch --depth=1 origin "$DEFAULT_BRANCH"
+          mkdir -p "$RUNNER_TEMP/guard"
+          git archive FETCH_HEAD tools | tar -x -C "$RUNNER_TEMP/guard"
+          python3 "$RUNNER_TEMP/guard/tools/agent_guard.py" label pr "$PR" agent:review
+      # Never end silently: no new commit on the PR head means a comment, needs-human and Daniel's review.
+      - name: Escalate a run that pushed no fix
+        if: ${{ always() }}
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          EXEC_FILE: ${{ steps.claude.outputs.execution_file }}
+          HEAD_BEFORE: ${{ steps.before.outputs.sha }}
+        run: |
+          # The agent may edit the checkout: run the helper as it is on the default branch.
+          git fetch --depth=1 origin "$DEFAULT_BRANCH"
+          mkdir -p "$RUNNER_TEMP/guard"
+          git archive FETCH_HEAD tools | tar -x -C "$RUNNER_TEMP/guard"
+          python3 "$RUNNER_TEMP/guard/tools/agent_guard.py" silent fix "$PR" "$HEAD_BEFORE"

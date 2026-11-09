@@ -73,15 +73,24 @@ jobs:
         env:
           ACTOR: ${{ github.actor }}
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          AUTHOR_APP_ID: ${{ secrets.AUTHOR_APP_ID }}
+          AUTHOR_CLIENT_ID: ${{ vars.AUTHOR_CLIENT_ID }}
           AUTHOR_APP_KEY: ${{ secrets.AUTHOR_APP_KEY }}
-          APPROVER_APP_ID: ${{ secrets.APPROVER_APP_ID }}
+          APPROVER_CLIENT_ID: ${{ vars.APPROVER_CLIENT_ID }}
           APPROVER_APP_KEY: ${{ secrets.APPROVER_APP_KEY }}
         run: |
           missing=""
-          for name in CLAUDE_CODE_OAUTH_TOKEN AUTHOR_APP_ID AUTHOR_APP_KEY APPROVER_APP_ID APPROVER_APP_KEY; do
+          for name in CLAUDE_CODE_OAUTH_TOKEN AUTHOR_APP_KEY APPROVER_APP_KEY; do
             if [ -z "${!name}" ]; then missing="$missing $name"; fi
           done
+          # Variables are readable in Dependabot runs too.
+          missing_vars=""
+          for name in AUTHOR_CLIENT_ID APPROVER_CLIENT_ID; do
+            if [ -z "${!name}" ]; then missing_vars="$missing_vars $name"; fi
+          done
+          if [ -n "$missing_vars" ]; then
+            echo "::error::Missing Actions variables:${missing_vars} (client IDs of the two apps; Settings > Secrets and variables > Actions > Variables)"
+            exit 1
+          fi
           if [ -n "$missing" ]; then
             if [ "$ACTOR" = "dependabot[bot]" ]; then
               echo "::error::Dependabot PRs get no Actions secrets. Add these as Dependabot secrets (Settings > Secrets and variables > Dependabot):${missing}"
@@ -93,12 +102,12 @@ jobs:
       - id: author
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
-          app-id: ${{ secrets.AUTHOR_APP_ID }}
+          client-id: ${{ vars.AUTHOR_CLIENT_ID }}
           private-key: ${{ secrets.AUTHOR_APP_KEY }}
       - id: approver
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
-          app-id: ${{ secrets.APPROVER_APP_ID }}
+          client-id: ${{ vars.APPROVER_CLIENT_ID }}
           private-key: ${{ secrets.APPROVER_APP_KEY }}
       - name: Call the API with both tokens
         env:
