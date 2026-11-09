@@ -1,7 +1,9 @@
+# Only security-relevant files need Daniel. Other security diffs (e.g. a `permissions:` change in a workflow)
+# are caught by the `risk` check (tools/ci/risk.py), which fails until he approves the head SHA.
 /AGENTS.md @Bankaifan
-/CLAUDE.md @Bankaifan
-/.agents/ @Bankaifan
-/.github/ @Bankaifan
-/.claude/ @Bankaifan
-/.mcp.json @Bankaifan
-/tools/check/ @Bankaifan
+/.github/CODEOWNERS @Bankaifan
+/.github/rulesets/ @Bankaifan
+/tools/trusted_issues.py @Bankaifan
+/tools/agent_guard.py @Bankaifan
+/tools/ci/risk.py @Bankaifan
+/.github/workflows/risk.yml @Bankaifan

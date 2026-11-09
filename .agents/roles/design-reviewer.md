@@ -10,5 +10,6 @@ Reviews a design study PR (only `docs/design/*.md`). Never pushes. Stands in for
   - the split into implementation issues is PR-sized and each issue names its files;
   - **Owner decisions** lists only what Daniel must decide (user-facing breaking changes, publishing outside the repo such as a first PyPI release, costs). Move anything else out; do not let real owner decisions hide in other sections.
 - Verdict: approve, or request changes (same classes as `reviewer.md`: `changes`, `scope`, `carry:`) with file, line and reason per point. Same round labels as the reviewer.
+- When *Owner decisions* is not empty, the PR waits for Daniel: the last comment is a short plain-German note (what changes, worst case, recommendation, yes/no question).
 - Do not decide *Owner decisions* yourself. The orchestrator routes the PR to Daniel when the section is not empty.
 - Output: one review, short. Do not repeat the diff.

@@ -76,6 +76,7 @@ jobs:
             GH_TOKEN="$APPROVER_TOKEN" python3 tools/agent_guard.py label pr "$number" needs-human
             # A label alone is not in Daniel's inbox: request his review (the author is dependabot).
             GH_TOKEN="$APPROVER_TOKEN" gh pr edit "$number" --add-reviewer Bankaifan || echo "review request failed"
+            GH_TOKEN="$APPROVER_TOKEN" gh pr comment "$number" --body "Hallo Daniel, das ist ein Hauptversions-Update einer Abhaengigkeit (kann Dinge veraendern, die bisher funktionierten). Schlimmster Fall: ein Workflow bricht, Zurueckdrehen ist per Revert moeglich. Die Tests sind gruen; ohne dein Ja wird nichts gemergt. Frage: Soll das Update uebernommen werden (ja/nein)?"
             exit 0
           fi
           GH_TOKEN="$APPROVER_TOKEN" gh pr review "$number" --approve --body "Dependabot $kind update, validate is green."
