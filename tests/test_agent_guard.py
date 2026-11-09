@@ -83,6 +83,28 @@ def test_report_has_run_url_tail_and_masks_tokens():
     assert "(no execution file)" in g.report("fix", "x", "", "")
 
 
+def test_report_lists_denied_calls_not_the_raw_tail():
+    denials = [{"tool_name": "Bash", "tool_input": {"command": "cat a.txt ghp_" + "b" * 30}},
+               {"tool_name": "Read", "tool_input": {"file_path": "/etc/x"}}]
+    denials += [{"tool_name": "Bash", "tool_input": {"command": f"ls {i}"}} for i in range(12)]
+    text = json.dumps([{"type": "assistant"}, {"type": "result", "permission_denials": denials}])
+    body = g.report("dev", "no PR", "https://x/run/1", text)
+    assert "Denied tool calls:" in body and "Bash: cat a.txt" in body and "Read: /etc/x" in body
+    assert "ghp_" not in body and "... and 4 more" in body and "ls 7" in body and "ls 8" not in body
+    assert '"type"' not in body
+
+
+def test_denied_calls_mask_token_straddling_the_cut():
+    cmd = "x" * 140 + " ghp_" + "c" * 30
+    out = g.denied_calls(json.dumps({"permission_denials": [{"tool_name": "Bash", "tool_input": {"command": cmd}}]}))
+    assert out and "ghp_" not in out[0] and "c" * 5 not in out[0]
+
+
+def test_report_without_denials_keeps_the_tail():
+    body = g.report("dev", "no PR", "", json.dumps([{"type": "result", "permission_denials": []}]))
+    assert "no denied tool calls found" in body and "permission_denials" in body
+
+
 def test_escalate_issue_labels_comments_assigns(monkeypatch):
     monkeypatch.delenv("EXEC_FILE", raising=False)
     r = Recorder()

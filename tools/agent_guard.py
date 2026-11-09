@@ -9,7 +9,7 @@ CLI (needs the gh CLI with GH_TOKEN and GH_REPO):
   agent_guard.py silent dev ISSUE SINCE      after agent-dev: no PR for agent/ISSUE-* created at/after SINCE (UTC ISO) -> escalate
   agent_guard.py silent fix PR HEAD_BEFORE   after agent-fix: PR head unchanged -> escalate
   agent_guard.py silent review PR SHA        after agent-review: no approver review for SHA -> escalate
-Escalate = comment (run URL, last lines of the execution file), label needs-human, request OWNER's review.
+Escalate = comment (run URL, denied tool calls from the execution file, else its last lines), label needs-human, request OWNER's review.
 Environment for escalation: RUN_URL, EXEC_FILE (path of the action's execution file), OWNER (default Bankaifan).
 """
 import json
@@ -21,6 +21,7 @@ import sys
 OWNER_DEFAULT = "Bankaifan"
 TAIL_LINES = 15
 TAIL_CHARS = 1500
+MAX_DENIALS = 10
 _SECRET = re.compile(r"(gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-ant-[A-Za-z0-9_-]{20,})")
 
 
@@ -82,10 +83,44 @@ def tail_text(text, lines=TAIL_LINES, chars=TAIL_CHARS):
     return _SECRET.sub("***", out)
 
 
+def _records(text):
+    """Execution file = JSON array of messages (or JSON lines); return every dict."""
+    try:
+        data = json.loads(text)
+    except ValueError:
+        data = []
+        for line in text.splitlines():
+            try:
+                data.append(json.loads(line))
+            except ValueError:
+                pass
+    return [d for d in (data if isinstance(data, list) else [data]) if isinstance(d, dict)]
+
+
+def denied_calls(text, limit=MAX_DENIALS):
+    """One line per denied tool call (tool + command/path) from `permission_denials`; secrets masked."""
+    lines = []
+    for rec in _records(text):
+        for d in rec.get("permission_denials") or []:
+            if not isinstance(d, dict):
+                continue
+            inp = d.get("tool_input")
+            inp = inp if isinstance(inp, dict) else {}
+            what = inp.get("command") or inp.get("file_path") or inp.get("path") or inp.get("pattern") or ""
+            text_ = _SECRET.sub("***", " ".join(str(what).split()))[:150]  # mask first, then cut
+            lines.append(f"{d.get('tool_name') or '?'}: {text_}".replace("`", "'"))
+    more = len(lines) - limit
+    return lines[:limit] + ([f"... and {more} more"] if more > 0 else [])
+
+
 def report(kind, what, run_url, exec_text):
-    tail = tail_text(exec_text) if exec_text else "(no execution file)"
-    return (f"agent-{kind} run finished silently: {what}.\n\nRun: {run_url or '(unknown)'}\n\n"
-            f"Last lines of the execution file:\n```\n{tail}\n```\n"
+    denied = denied_calls(exec_text) if exec_text else []
+    if denied:
+        detail = "Denied tool calls:\n```\n" + "\n".join(denied) + "\n```\n"
+    else:
+        tail = tail_text(exec_text) if exec_text else "(no execution file)"
+        detail = f"Last lines of the execution file (no denied tool calls found):\n```\n{tail}\n```\n"
+    return (f"agent-{kind} run finished silently: {what}.\n\nRun: {run_url or '(unknown)'}\n\n{detail}"
             "Labelled needs-human; Daniel is asked to look at it.")
 
 

@@ -205,6 +205,8 @@ jobs:
               `gh run view ${{ env.RUN_ID }} --log-failed`.
             Fix exactly what is raised, run `make check` and the tests, then squash the branch into ONE commit
             authored by Daniel (no Co-authored-by) on top of current origin/main and `git push --force-with-lease`.
+            Use Read/Glob/Grep to read files, not shell reads. If a needed action is denied,
+            comment on the issue/PR saying which one instead of stopping silently.
             Do not open a new PR.
           claude_args: >-
             --model ${{ env.MODEL }}
