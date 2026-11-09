@@ -27,6 +27,14 @@ jobs:
       HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
       HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
     steps:
+      - name: Fail if a required repo variable is unset
+        env:
+          APPROVER_CLIENT_ID: ${{ vars.APPROVER_CLIENT_ID }}
+          AUTHOR_CLIENT_ID: ${{ vars.AUTHOR_CLIENT_ID }}
+        run: |
+          for n in APPROVER_CLIENT_ID AUTHOR_CLIENT_ID; do
+            [ -n "${!n}" ] || { echo "::error::Repo variable $n is not set (Settings > Secrets and variables > Actions > Variables)."; exit 1; }
+          done
       # Only the script is checked out, from the default branch.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

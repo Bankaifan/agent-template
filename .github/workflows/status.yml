@@ -21,6 +21,14 @@ jobs:
     runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 10
     steps:
+      - name: Fail if a required repo variable is unset
+        env:
+          AUTHOR_CLIENT_ID: ${{ vars.AUTHOR_CLIENT_ID }}
+          AUTHOR_BOT: ${{ vars.AUTHOR_BOT }}
+        run: |
+          for n in AUTHOR_CLIENT_ID AUTHOR_BOT; do
+            [ -n "${!n}" ] || { echo "::error::Repo variable $n is not set (Settings > Secrets and variables > Actions > Variables)."; exit 1; }
+          done
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
