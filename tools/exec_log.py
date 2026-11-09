@@ -11,6 +11,16 @@ MAX_DENIALS = 10
 _SECRET = re.compile(r"(gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-ant-[A-Za-z0-9_-]{20,})")
 
 
+def mask(text):
+    """Secret-looking tokens replaced by ***."""
+    return _SECRET.sub("***", text)
+
+
+def has_secret(text):
+    """True if the text holds a secret-looking token."""
+    return bool(_SECRET.search(text))
+
+
 def tail_text(text, lines=TAIL_LINES, chars=TAIL_CHARS):
     """Last lines of the execution file, secret-looking tokens masked, fences neutralized, length capped."""
     out = "\n".join(text.splitlines()[-lines:])[-chars:].replace("```", "'''")
