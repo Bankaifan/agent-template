@@ -48,6 +48,38 @@ def test_dispatch_reads_pr(monkeypatch):
     assert run(monkeypatch, env) == 0
 
 
+def check(monkeypatch, body, files, head="agent/1-x"):
+    fake_gh(monkeypatch, {"title": "Fix x", "body": body, "headRefName": head,
+                          "files": [{"path": f} for f in files]})
+    return run(monkeypatch, {"GITHUB_EVENT_NAME": "workflow_dispatch", "GITHUB_REF_NAME": head})
+
+
+def test_design_pr_with_closing_keyword_fails(monkeypatch):
+    for body in ("Closes #5", "fixes #5", "Resolved: #5", "closes Bankaifan/x#5"):
+        assert check(monkeypatch, body, ["docs/design/0002-x.md"]) == 1
+
+
+def test_design_pr_with_refs_ok_and_other_pr_may_close(monkeypatch):
+    assert check(monkeypatch, "Refs #5", ["docs/design/0002-x.md"]) == 0
+    assert check(monkeypatch, "Closes #5", ["tools/a.py"]) == 0
+    assert check(monkeypatch, "Closes #5", ["docs/design/0002-x.md", "tools/a.py"]) == 0
+
+
+def test_handover_only_for_orchestrator(monkeypatch):
+    assert check(monkeypatch, "why", ["HANDOVER.md"]) == 1
+    assert check(monkeypatch, "why", ["tools/a.py", "HANDOVER.md"]) == 1
+    assert check(monkeypatch, "why", ["HANDOVER.md"], head="agent/orchestrator-handover-2026-11-09") == 0
+
+
+def test_pull_request_event_reads_files_by_number(monkeypatch):
+    fake_gh(monkeypatch, {"title": "t", "body": "b", "headRefName": "agent/1-x", "files": [{"path": "HANDOVER.md"}]})
+    env = {"GITHUB_EVENT_NAME": "pull_request", "PR_TITLE": "Fix x", "PR_BODY": "why", "PR_NUMBER": "7",
+           "PR_HEAD_REF": "agent/1-x"}
+    assert run(monkeypatch, env) == 1
+    fake_gh(monkeypatch, fail=True)
+    assert run(monkeypatch, env) == 0
+
+
 def test_dispatch_without_pr_skipped(monkeypatch):
     fake_gh(monkeypatch, fail=True)
     assert run(monkeypatch, {"GITHUB_EVENT_NAME": "workflow_dispatch", "GITHUB_REF_NAME": "agent/1-x"}) == 0

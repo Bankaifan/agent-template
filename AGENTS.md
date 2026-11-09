@@ -20,7 +20,7 @@ Project: <one sentence>. Current state: HANDOVER.md. Decisions: docs/decisions/.
 - Claim only what you measured (command + output). Unsure? Ask in the issue, do not guess.
   Missing facts are marked "open".
 - Keep context small: read only the files named in the task slip.
-- Finish by overwriting HANDOVER.md (short, max 60 lines).
+- HANDOVER.md (max 60 lines) is rewritten by the orchestrator only; developer and fix runs put notes in the PR body.
 - Everything on GitHub in English (files, commits, PR titles and bodies, issues). Talking to Daniel: German.
 
 ## Commits and PRs

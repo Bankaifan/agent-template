@@ -25,7 +25,19 @@ jobs:
         with:
           client-id: ${{ vars.AUTHOR_CLIENT_ID }}
           private-key: ${{ secrets.AUTHOR_APP_KEY }}
+      # Design PRs (docs/design/) never auto-merge: the design reviewer approves; Daniel merges
+      # (or the orchestrator when Owner decisions is empty).
+      - name: Refuse design PRs
+        id: design
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          n=$(gh api --paginate "repos/$GH_REPO/pulls/$PR/files" --jq '.[] | select(.filename | startswith("docs/design/")) | .filename' | wc -l)
+          if [ "$n" -gt 0 ]; then echo "design=true" >> "$GITHUB_OUTPUT"; echo "PR touches docs/design/: no auto-merge"; fi
       - name: Enable auto-merge (rebase, keeps Daniel as author); GitHub merges once the ruleset is satisfied
+        if: steps.design.outputs.design != 'true'
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           GH_REPO: ${{ github.repository }}
