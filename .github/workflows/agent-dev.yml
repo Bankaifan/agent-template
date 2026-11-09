@@ -6,9 +6,9 @@ on:
     types: [created]
 permissions:
   contents: read
-# Two slots (a/b, picked by run id parity) shared by all agent workflows: at most 2 agent jobs run at once.
+# One run per issue; the 2-job cap is kept by the orchestrator (at most 2 open agent:dev issues).
 concurrency:
-  group: agent-slot-${{ (endsWith(github.run_id, '1') || endsWith(github.run_id, '3') || endsWith(github.run_id, '5') || endsWith(github.run_id, '7') || endsWith(github.run_id, '9')) && 'a' || 'b' }}
+  group: agent-dev-${{ github.event.issue.number }}
   cancel-in-progress: false
 jobs:
   dev:

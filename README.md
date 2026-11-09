@@ -36,8 +36,8 @@ Then fill in `AGENTS.md` (one sentence about the project) and replace the placeh
 
 ## Limits
 
-- `concurrency` allows one running and one pending job per slot; a third queued job replaces the pending one.
-  Re-label or re-comment if a run was dropped.
+- One agent run per issue or PR at a time (`concurrency` per number, never cancelled). GitHub cannot cap
+  jobs across workflows without dropping queued runs, so the orchestrator keeps at most 2 `agent:dev` issues open.
 - Review rounds are capped at 2 (labels `review:1`, `review:2`), then the PR gets `needs-human`.
 - Use only in private repos: the review workflow accepts bot-authored PRs.
 - Not verified end to end yet; see `docs/decisions/0001-agent-setup.md`.

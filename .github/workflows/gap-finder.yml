@@ -6,7 +6,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: agent-slot-${{ (endsWith(github.run_id, '1') || endsWith(github.run_id, '3') || endsWith(github.run_id, '5') || endsWith(github.run_id, '7') || endsWith(github.run_id, '9')) && 'a' || 'b' }}
+  group: gap-finder
   cancel-in-progress: false
 jobs:
   gaps:
