@@ -9,8 +9,10 @@ CLI:
   risk.py pr NUMBER              (env GH_TOKEN, GH_REPO, optional OWNER, AUTHOR_BOT) label the PR, request the owner's review
                                  for `security`, publish the check run `risk`; it fails until OWNER approved the head SHA.
                                  Also starts the status `security-review` (pending for agent PRs that need that review).
-  risk.py wait NUMBER SHA        (env GH_TOKEN, GH_REPO, APPROVER_BOT) after the approver approved SHA: if the PR waits for the
-                                 owner (risk `security` or a code-owner path), label `needs-human` and post the German note once
+  risk.py wait NUMBER SHA        (env GH_TOKEN, GH_REPO, APPROVER_BOT) called by agent-review and agent-security-review; acts only
+                                 when for SHA the approver approved, validate/agent-smoke are green, risk is complete and
+                                 `security-review` is success, and the PR waits for the owner (risk `security` or a code-owner
+                                 path): label `needs-human`, request the owner's review, post the PR-specific German note once
   risk.py verdict NUMBER SHA     publish the status `security-review` from the security reviewer's comment for SHA
 Runs from the default branch with the PR read through `gh`; PR code is never executed.
 """
@@ -127,9 +129,48 @@ def waits_for_owner(level, files, codeowners, owner):
 
 
 NOTE_MARK = "<!-- needs-human-note -->"
-NOTE = (NOTE_MARK + "\nHallo Daniel, dieser PR ist von den Pruefern freigegeben, aber er aendert Dateien, die nur du freigeben darfst "
-        "(z. B. Regeln oder Zugriffsrechte der Agenten). Schlimmster Fall: ein Agent bekommt mehr Rechte oder eine Pruefung wird "
-        "schwaecher; Zurueckdrehen ist per Revert moeglich. Die Pruefer empfehlen die Freigabe. Frage: Soll der PR gemergt werden (ja/nein)?")
+GATE_CHECKS = ("validate", "agent-smoke")  # check runs that must be green; `risk` only has to be complete (owner gate)
+
+
+def first_lines(text, limit=3):
+    """First `limit` non-empty, non-heading, non-marker lines of a text, joined (plain summary of what a PR changes)."""
+    out = []
+    for line in (text or "").splitlines():
+        line = line.strip()
+        if line and not line.startswith(("#", "<!--", "Closes", "Refs")):
+            out.append(line)
+        if len(out) == limit:
+            break
+    return " ".join(out)
+
+
+def build_note(sha, level, summary, review):
+    """PR-specific German note: what changes, worst case, recommendation, one yes/no question. Marker is per head SHA."""
+    worst = ("ein Agent bekommt mehr Rechte oder eine Pruefung wird schwaecher" if level == "security"
+             else "eine Aenderung an der Agenten-Infrastruktur verhaelt sich falsch")
+    what = first_lines(summary) or "(keine Beschreibung im PR)"
+    why = first_lines(review, 2)
+    return (f"{NOTE_MARK[:-4]} {sha[:12]} -->\nHallo Daniel, alle Pruefungen fuer diesen PR sind fertig und gruen; nur dein Schritt fehlt "
+            f"(er aendert Dateien, die nur du freigeben darfst).\nWas der PR aendert: {what}\n"
+            f"Schlimmster Fall: {worst}; Zurueckdrehen ist per Revert moeglich.\n"
+            f"Empfehlung der Pruefer: Freigabe{' (' + why + ')' if why else ''}.\nFrage: Soll der PR gemergt werden (ja/nein)?")
+
+
+def checks_ready(check_runs, statuses):
+    """All gates for the head SHA hold: validate/agent-smoke green (skipped counts), `risk` complete, `security-review` success."""
+    by_name = {}
+    for c in check_runs:
+        by_name[c.get("name")] = c
+    for name in GATE_CHECKS:
+        c = by_name.get(name)
+        if c is not None and (c.get("status") != "completed" or c.get("conclusion") not in ("success", "skipped", "neutral")):
+            return False
+    if "validate" not in by_name:
+        return False
+    if by_name.get("risk", {}).get("status") != "completed":
+        return False
+    sec = next((s for s in statuses if s.get("context") == "security-review"), None)  # newest first
+    return bool(sec) and sec.get("state") == "success"
 
 
 def api_list(path):
@@ -170,11 +211,25 @@ def run_wait(number, sha, run=None):
     if not waits_for_owner(level, files, codeowners, owner):
         print("does not wait for the owner")
         return 0
+    runs = json.loads(run("api", f"repos/{repo}/commits/{sha}/check-runs")).get("check_runs", [])
+    statuses = json.loads(run("api", f"repos/{repo}/commits/{sha}/statuses"))
+    if not checks_ready(runs, statuses):
+        print("checks or security review not done for this head: nothing to do")
+        return 0
+    pr = json.loads(run("api", f"repos/{repo}/pulls/{number}"))
+    if pr.get("head", {}).get("sha") != sha:
+        print("head moved: nothing to do")
+        return 0
+    comments = [c for page in json.loads(run("api", "--paginate", "--slurp", f"repos/{repo}/issues/{number}/comments"))
+                for c in page]
+    if any(f"{NOTE_MARK[:-4]} {sha[:12]} -->" in (c.get("body") or "") for c in comments):
+        return 0  # idempotent: label, review request and note are already set for this head
     subprocess.run(["gh", "label", "create", "needs-human", "--force"], check=False, capture_output=True)
     run("pr", "edit", str(number), "--add-label", "needs-human")
-    comments = json.loads(run("api", "--paginate", "--slurp", f"repos/{repo}/issues/{number}/comments"))
-    if not any(NOTE_MARK in (c.get("body") or "") for page in comments for c in page):
-        run("pr", "comment", str(number), "--body", NOTE)
+    if norm(pr.get("user", {}).get("login")) != norm(owner):  # a label alone is not in the owner's inbox
+        subprocess.run(["gh", "pr", "edit", str(number), "--add-reviewer", owner], check=False, capture_output=True)
+    review = mine[-1].get("body") or ""
+    run("pr", "comment", str(number), "--body", build_note(sha, level, pr.get("body") or "", review))
     return 0
 
 
