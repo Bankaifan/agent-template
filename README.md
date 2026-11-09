@@ -70,6 +70,49 @@ Actions secrets: set the three secrets also as **Dependabot secrets** (Actions v
 until then `agent-smoke` fails on them with a clear message. `setup` reports whether they exist (best effort).
 Re-import the ruleset after this change.
 
+## Keeping projects in sync
+
+Projects created from this template get later template changes through a weekly report, not a blind file copy.
+`template-sync.yml` (Mondays, or `workflow_dispatch`; no model) runs `tools/template_sync.py`. It compares the template's
+`main` with `synced_sha` from `.agents/template.json` and lists the changed files that match `managed`. It creates the one
+open issue `Template sync <short sha>` (labels `agent:dev`, `model:sonnet`), or edits it if one is already open.
+Files you list under `overrides` are shown separately with your `why`. The issue ends with `Template-Sync: <40 hex>`; the
+orchestrator trusts it only when the author app (`AUTHOR_BOT`) wrote it. The developer ports `clean` files as they are,
+ports `overridden` files by hand keeping their intent, sets `synced_sha` to that SHA and opens one PR with
+`Closes #<sync issue>`. The PR touches `.github/`, so Daniel must approve as code owner.
+
+Example `.agents/template.json` for a project (add it once by hand; it is not part of the template, so new projects do not
+point back at it):
+
+```json
+{
+  "template": "Bankaifan/agent-template",
+  "synced_sha": "<40 hex: the template commit you last matched>",
+  "managed": [".github/workflows/", ".github/dependabot.yml", ".github/CODEOWNERS", ".github/rulesets/",
+              ".agents/roles/", "tools/", "tests/", "AGENTS.md", "CLAUDE.md", "Makefile", "docs/design/README.md"],
+  "overrides": [
+    {"path": ".github/workflows/agent-fix.yml", "why": "workflow_run.workflows needs the CI name 'Validate'"},
+    {"path": "AGENTS.md", "why": "project sentence and project rules"}
+  ]
+}
+```
+
+- `managed`: path prefixes the template owns (a trailing `/` means a directory). Other paths are never reported.
+- `overrides`: exact `path` plus a free-text `why` for the developer.
+- A too-old `synced_sha` only makes the first issue larger. No file, or an empty `synced_sha`: the run prints
+  `template-sync: no .agents/template.json, skipped` and succeeds. In the template repo itself it is skipped as well.
+- If the compare lists 300 or more files it may be cut off. The run then fails with a message and creates or edits no issue.
+- Reading a private template needs the author app installed on the template repo.
+
+**Project values.** Prefer repo variables over edited files: `PYTHON_VERSION` (default `3.x`), `EXTRA_INSTALL` (a shell
+command that `tools/ci/install_tools.sh` runs after the common tools; it is read only from the repo variable, never from a
+file on a PR branch) and `RUNNER`. `TEMPLATE_SYNC=off` turns the sync off. The one value that cannot be a variable is the CI
+name in `workflow_run.workflows` (GitHub allows no expressions there). It is `[validate]` in `agent-fix.yml`,
+`agent-review.yml`, `dependabot-automerge.yml` and `orchestrator.yml`. A project whose CI workflow has another name
+(for example `Validate`) edits those lines and lists the files under `overrides`.
+
+Rationale: [docs/decisions/0007-template-sync.md](docs/decisions/0007-template-sync.md).
+
 ## Limits
 
 - One agent run per issue or PR at a time (`concurrency` per number, never cancelled). GitHub cannot cap

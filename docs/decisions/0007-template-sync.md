@@ -1,0 +1,12 @@
+# 0007 Template sync
+
+Status: accepted (design `docs/design/0001-template-sync.md`, issue #19; implemented in the merged sync PRs).
+
+- Projects record the template commit they match in `.agents/template.json` (`synced_sha`, `managed` prefixes, `overrides` with a `why`). The file is not committed to the template, so new projects do not point back at it.
+- `.github/workflows/template-sync.yml` runs weekly (and by hand) with the author app token and no model. `tools/template_sync.py` calls the compare API `synced_sha...main` of the template and keeps only `managed` paths. It creates or edits the single open issue `Template sync <short sha>` (labels `agent:dev`, `model:sonnet`, line `Template-Sync: <40 hex>`). Detecting by compare was chosen over hashing files (cannot tell template from project changes) and over a bot that copies files (overwrites adaptations).
+- Adaptations are whole-file `overrides`. The developer (sonnet) ports: `clean` files as they are, `overridden` files by hand keeping the intent. Merging by script was rejected as too fragile on adapted files. The PR touches `.github/`, so Daniel approves it as code owner.
+- `tools/trusted_issues.py` trusts a sync issue only when `AUTHOR_BOT` wrote it, the title starts with `Template sync ` and the body has the `Template-Sync:` line (owner decision 2 of the design).
+- Fail loudly: a compare with 300 or more files may be truncated, so the run exits 1 and touches no issue. Missing config or empty `synced_sha` is a no-op; the template repo itself is skipped.
+- Project values are repo variables: `PYTHON_VERSION`, `EXTRA_INSTALL` (never read from a PR branch, because it runs as shell code before review), `RUNNER`, `TEMPLATE_SYNC=off` to disable. `workflow_run.workflows` cannot use expressions, so a differing CI name stays a documented override.
+- Open: reading a private template needs the author app installed on it (permission change, owner action). A full `workflow_dispatch` rollout test on a real project is not run yet.
+- Rollback: `TEMPLATE_SYNC=off` or disable the workflow; `git revert` the rebase-merged commits.
