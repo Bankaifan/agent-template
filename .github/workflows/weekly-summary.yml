@@ -34,3 +34,18 @@ jobs:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           GH_REPO: ${{ github.repository }}
         run: python3 tools/weekly_summary.py
+      - name: Open a PR for the new metrics row
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          git diff --quiet -- docs/metrics.csv && exit 0
+          branch="agent/metrics-$(date +%F)"
+          git config user.name "Daniel"
+          git config user.email "476059+Bankaifan@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add docs/metrics.csv
+          git commit -m "Add weekly metrics row"
+          git push --force "https://x-access-token:${GH_TOKEN}@github.com/${GH_REPO}.git" "$branch"
+          gh pr create --head "$branch" --title "Add weekly metrics row" \
+            --body "Weekly row for docs/metrics.csv from tools/weekly_summary.py. Not tied to an issue."
