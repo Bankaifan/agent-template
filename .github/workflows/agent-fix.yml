@@ -42,7 +42,7 @@ jobs:
       RUN_SHA: ${{ github.event.workflow_run.head_sha }}
     steps:
       - id: app
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
           app-id: ${{ secrets.APPROVER_APP_ID }}
           private-key: ${{ secrets.APPROVER_APP_KEY }}
@@ -113,11 +113,11 @@ jobs:
       MODEL: ${{ needs.prepare.outputs.model }}
     steps:
       - id: app
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
           app-id: ${{ secrets.AUTHOR_APP_ID }}
           private-key: ${{ secrets.AUTHOR_APP_KEY }}
-      - uses: actions/checkout@v4  # zizmor: ignore[artipacked] this job pushes with the app token persisted by checkout
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1  # zizmor: ignore[artipacked] this job pushes with the app token persisted by checkout
         with:
           token: ${{ steps.app.outputs.token }}
           ref: ${{ needs.prepare.outputs.branch }}
@@ -126,7 +126,7 @@ jobs:
         run: |
           git config user.name "Daniel"
           git config user.email "476059+Bankaifan@users.noreply.github.com"
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.x"
       - name: Install pinned CI tools (ruff, pytest, actionlint, zizmor)
