@@ -5,13 +5,16 @@ CLI (needs the gh CLI with GH_TOKEN and GH_REPO):
   agent_guard.py same A B                    exit 0 if both logins name the same account
   agent_guard.py label pr|issue N LABEL...   create each label if missing, then add it
   agent_guard.py agent-pr AUTHOR [LABELS]    exit 0 if the PR is an agent PR (env AUTHOR_BOT, OWNER; LABELS comma list)
-  agent_guard.py reviewed PR SHA             exit 0 if the approver app (env APPROVER_BOT) reviewed SHA
+  agent_guard.py reviewed PR SHA             exit 0 if the approver app (env APPROVER_BOT) reviewed SHA; if env PR_BODY is
+                                             set, that review must also carry the marker `body-hash: <hash of PR_BODY>`
+  agent_guard.py body-hash                   print the marker hash of env PR_BODY
   agent_guard.py silent dev ISSUE SINCE      after agent-dev: no PR for agent/ISSUE-* created at/after SINCE (UTC ISO) -> escalate
   agent_guard.py silent fix PR HEAD_BEFORE   after agent-fix: PR head unchanged -> escalate
   agent_guard.py silent review PR SHA        after agent-review: no approver review for SHA -> escalate
 Escalate = comment (run URL, denied tool calls from the execution file, else its last lines), label needs-human, request OWNER's review.
 Environment for escalation: RUN_URL, EXEC_FILE (path of the action's execution file), OWNER (default Bankaifan).
 """
+import hashlib
 import json
 import os
 import re
@@ -61,8 +64,17 @@ def is_agent_pr(author, labels, author_bot, owner):
     return same_login(author, author_bot) or same_login(author, owner) or "agent:review" in labels
 
 
-def has_review(reviews, approver, sha):
+def body_hash(body):
+    """Short hash of the PR body; the reviewer repeats it as `body-hash: <hash>` in its review."""
+    return hashlib.sha256((body or "").encode("utf-8")).hexdigest()[:12]
+
+
+def has_review(reviews, approver, sha, body=None):
+    """Review by the approver on SHA. With `body` (the current PR body) it must also name that body's hash, so a body
+    edit on the same SHA counts as new input."""
+    marker = None if body is None else "body-hash: " + body_hash(body)
     return any(r.get("commit_id") == sha and same_login((r.get("user") or {}).get("login"), approver)
+               and (marker is None or marker in (r.get("body") or ""))
                for r in reviews)
 
 
@@ -169,7 +181,10 @@ def main(argv):
         labels = (args[1] if len(args) == 2 else "").split(",")
         return 0 if is_agent_pr(args[0], labels, os.environ.get("AUTHOR_BOT", ""), owner) else 1
     elif cmd == "reviewed" and len(args) == 2:
-        return 0 if has_review(reviews_of(args[0]), os.environ.get("APPROVER_BOT", ""), args[1]) else 1
+        return 0 if has_review(reviews_of(args[0]), os.environ.get("APPROVER_BOT", ""), args[1],
+                               os.environ.get("PR_BODY")) else 1
+    elif cmd == "body-hash" and not args:
+        print(body_hash(os.environ.get("PR_BODY", "")))
     elif cmd == "silent" and len(args) >= 2:
         kind, number = args[0], args[1]
         if kind == "dev" and len(args) == 3:

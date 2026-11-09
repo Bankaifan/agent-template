@@ -195,6 +195,7 @@ def test_silent_fix_paths(stub_gh):
 
 def test_silent_review_paths(stub_gh, monkeypatch):
     monkeypatch.setenv("APPROVER_BOT", "ap[bot]")
+    monkeypatch.delenv("PR_BODY", raising=False)  # CI sets it; this test checks the SHA-only path
     assert g.main(["g", "silent", "review", "5", "sha1"]) == 0  # no review -> escalate
     assert any(c.startswith("pr comment 5") for c in stub_gh())
     monkeypatch.setenv("GH_REVIEWS", json.dumps([[{"commit_id": "sha1", "user": {"login": "ap[bot]"}}]]))
@@ -203,3 +204,24 @@ def test_silent_review_paths(stub_gh, monkeypatch):
     n = len(stub_gh())
     assert g.main(["g", "silent", "review", "5", "sha1"]) == 0
     assert not any(c.startswith("pr comment") for c in stub_gh()[n:])
+
+
+def test_body_edit_on_same_sha_needs_a_new_review():
+    revs = [{"commit_id": "s", "user": {"login": "ap[bot]"}, "body": "ok\nbody-hash: " + g.body_hash("Closes #1")}]
+    assert g.has_review(revs, "ap", "s", "Closes #1")
+    assert not g.has_review(revs, "ap", "s", "Refs #1")  # body edited: review again
+    assert not g.has_review(revs, "ap", "t", "Closes #1")  # other SHA
+    assert g.has_review([dict(revs[0], body="no marker")], "ap", "s")  # no body given: SHA only
+
+
+def test_cli_reviewed_keys_on_body_hash(stub_gh, monkeypatch, capsys):
+    monkeypatch.setenv("APPROVER_BOT", "ap[bot]")
+    monkeypatch.setenv("PR_BODY", "Refs #1")
+    assert g.main(["g", "body-hash"]) == 0
+    h = capsys.readouterr().out.strip()
+    assert h == g.body_hash("Refs #1") and len(h) == 12
+    rev = {"commit_id": "s", "user": {"login": "ap[bot]"}, "body": "x\nbody-hash: " + h}
+    monkeypatch.setenv("GH_REVIEWS", json.dumps([[rev]]))
+    assert g.main(["g", "reviewed", "5", "s"]) == 0
+    monkeypatch.setenv("PR_BODY", "Refs #2")
+    assert g.main(["g", "reviewed", "5", "s"]) == 1

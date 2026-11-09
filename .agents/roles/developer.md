@@ -12,7 +12,7 @@ Implements one task slip as one PR.
 - If a needed action is denied, do not stop silently: `gh issue comment` which call was denied and why you need it.
 - Never edit HANDOVER.md (orchestrator only); put your notes in the PR body.
 - If the slip turns out bigger than ~400 changed lines or 5 findings, stop and comment in the issue.
-- PR: English ASCII title, body max 5 lines, `Closes #<issue>` only if the PR completes the issue, else `Refs #<issue>` (always for design PRs).
+- PR: English ASCII title, body max 5 lines, `Closes #<issue>` only if the PR completes the issue, else `Refs #<issue>` (always for design PRs and partial work; never `Closes` for part of an issue).
 - Review feedback: started automatically on `CHANGES_REQUESTED`. Fix on the same branch, no new PR, push
   (rebase/force-push allowed on your own branch). Max 2 rounds. Also started by a red CI (`gh run view <id> --log-failed`).
 - Design task (slip says "design study"): write only `docs/design/NNNN-<slug>.md` following `docs/design/README.md`,
