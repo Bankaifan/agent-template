@@ -120,7 +120,7 @@ An unclear case is class 3. The model is told never to guess a class 1 to save D
 Workflow `permissions: contents: read`. The author app token (not `GITHUB_TOKEN`) does the writes, because label events by `GITHUB_TOKEN`
 do not start other workflows and `agent:dev` must start `agent-dev`. The app already has: issues write, pull requests write, contents.
 The unblocker uses only: issue and PR comments, labels (`unblock:1`, `agent:dev`, `needs-human` removal), issue create, PR review request.
-It does not push, merge, approve, edit workflows or dispatch workflows. The approver app token is not used: the unblocker is not a reviewer.
+It does not push, merge, approve, or edit workflows. It dispatches only `agent-fix.yml` (input `pr=N`) for a class 1 PR, which needs `actions:write` on the author app token: a permissions change that belongs to the workflow PR (item 4, `risk:security`, Daniel's OK). The approver app token is not used: the unblocker is not a reviewer.
 `CLAUDE_CODE_OAUTH_TOKEN` reaches the model step only, after the gate; the checkout does not persist the token (`persist-credentials: false`);
 the apply step runs the script from `main`, with the verdict as data. This is a permissions and trust change, so the PR for the workflow is `risk:security`.
 

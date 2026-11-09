@@ -1,0 +1,250 @@
+"""Unblocker core (design 0002, section 8 item 2): gate a `needs-human` block, then apply the verdict.
+
+CLI (gh CLI with GH_TOKEN and GH_REPO; the model step is not here, the verdict is data in a JSON file):
+  unblock.py gate KIND NUMBER      exit 0 = the unblocker may look at it, 1 = leave it to Daniel (reason on stdout)
+  unblock.py apply KIND NUMBER FILE  apply the verdict in FILE ({"class": 1|2|3, "reason", "comment", "issue", "note"})
+Environment: OWNER (default Bankaifan), AUTHOR_BOT, APPROVER_BOT, RUN_URL.
+
+Classes: 1 wrong assumption (comment, drop needs-human, unblock:1, restart), 2 infrastructure bug (one prio:1 issue,
+needs-human stays), 3 owner decision (needs-human stays, German note as the LAST comment).
+
+Open question of the design, how agent-fix starts for a red CI without a new commit: the unblocker dispatches
+`agent-fix.yml` with input `pr=N` (the existing workflow_dispatch entry, also used for conflicts with main). No new
+trigger or comment command is needed. Cost: the author app token needs actions:write; that is a permissions change
+for the workflow PR (item 4, risk:security). An issue restarts like restart.py: agent:dev removed, then added.
+
+Limits are enforced here, not only in the prompt: a class 1 verdict that asks for a tool, permission, install or
+workflow edit is turned into class 3; `unblock:1` is set once, a second block goes to Daniel; risk:security PRs
+and design PRs never get class 1.
+"""
+import json
+import os
+import re
+import subprocess
+import sys
+
+import exec_log
+from agent_guard import add_labels, ensure_label, is_agent_pr
+from trusted_issues import classify, label_set_by
+
+OWNER_DEFAULT = "Bankaifan"
+MARK = "<!-- unblocker -->"
+UNBLOCK = "unblock:1"
+NEEDS_HUMAN = "needs-human"
+MAX_COMMENT = 600
+MAX_TITLE = 100
+RISK_SECURITY = "risk:security"
+_FORBIDDEN = re.compile(
+    r"allowedtools|allowed-tools|pip3? install|-m pip|npm (?:install|i)\b|apt(?:-get)? install|brew install|"
+    r"allow (?:the )?(?:command|tool|call)|grant|permissions?:|secrets?\b|token|\.github/|agents\.md|--dangerously|"
+    r"\b(?:curl|wget|sudo|chmod|chown|base64|bash|sh|eval|exec|rm|git|gh)\b",
+    re.IGNORECASE)
+_SAFE_SHAPE = re.compile(r"[A-Za-z0-9 .,;:'()/_#=+-]+")
+_GERMAN_HINT = re.compile(r"\b(?:Daniel|Frage|ja|nein|Soll|Schlimmster)\b")
+
+NOTE_AGAIN = ("Hallo Daniel, der automatische Entsperr-Versuch (unblock:1) ist schon gelaufen und hat nicht gereicht. "
+              "Schlimmster Fall: die Aufgabe bleibt liegen, sonst passiert nichts. "
+              "Frage: Soll die Aufgabe weiterlaufen (ja) oder gestoppt werden (nein)?")
+
+
+NOTE_SECURITY = ("Hallo Daniel, dieser PR betrifft Rechte oder Vertrauen (risk:security) und haengt fest; "
+                 "der Entsperrer fasst so etwas nicht an. Schlimmster Fall: nichts passiert, der PR wartet. "
+                 "Frage: Soll der Auftrag weiterlaufen (ja) oder der PR geschlossen werden (nein)?")
+
+
+def gh(*args):
+    return subprocess.run(["gh", *args], check=True, capture_output=True, text=True).stdout
+
+
+def gate(item, events, comments, files, owner, author_bot, approver_bot=""):
+    """(ok, reason). ITEM: {kind, state, labels, author, number}. EVENTS: label timeline. COMMENTS: [{body, created_at}].
+    FILES: paths of a PR. Pure: every refusal means the block stays with Daniel."""
+    labels = set(item.get("labels") or [])
+    if item.get("state", "").upper() != "OPEN":
+        return False, "item is not open"
+    if NEEDS_HUMAN not in labels:
+        return False, "needs-human is gone"
+    if RISK_SECURITY in labels:
+        return False, "risk:security: always Daniel"
+    if UNBLOCK in labels:
+        return False, "unblock:1 already set, one self-restart is the limit"
+    if not any(label_set_by(events, NEEDS_HUMAN, a) for a in (author_bot, approver_bot, owner) if a):
+        return False, "needs-human was not set by the author app, the approver app or the owner"
+    since = max((e.get("created_at") or "" for e in events
+                 if e.get("event") == "labeled" and (e.get("label") or {}).get("name") == NEEDS_HUMAN), default="")
+    if any(MARK in (c.get("body") or "") and (c.get("created_at") or "") >= since for c in comments):
+        return False, "an unblocker comment is newer than the label"
+    if item["kind"] == "pr":
+        if not is_agent_pr(item.get("author"), labels, author_bot, owner):
+            return False, "not an agent PR"
+        if files and all(f.startswith("docs/design/") for f in files):
+            return False, "design PR: an owner decision"
+    elif not item.get("trusted") and not (
+            "agent:dev" in labels and any(label_set_by(events, "agent:dev", a) for a in (author_bot, owner) if a)):
+        return False, "issue is neither trusted nor an agent task set by the owner or the author app"
+    return True, "ok"
+
+
+def forbidden(text):
+    """The first limit word found in model text, else None. Whitespace is normalised first; text outside a plain
+    ASCII shape (backticks, pipes, quotes, $, &, newlines ...) is refused too, so the check does not rest on
+    spotting bad wording alone."""
+    text = re.sub(r"\s+", " ", text or "").strip()
+    m = _FORBIDDEN.search(text)
+    if m:
+        return m.group(0)
+    return None if _SAFE_SHAPE.fullmatch(text) else "unusual characters"
+
+
+def validate(verdict):
+    """Normalised verdict or ValueError. English GitHub text must be ASCII; a class 1 that asks for a forbidden
+    action (tool, permission, install, workflow edit) is class 3, never a grant."""
+    if not isinstance(verdict, dict) or verdict.get("class") not in (1, 2, 3) or isinstance(verdict.get("class"), bool):
+        raise ValueError("class must be 1, 2 or 3")
+    cls = verdict["class"]
+    out = {"class": cls, "reason": str(verdict.get("reason") or "")[:300]}
+    for key, limit in (("comment", MAX_COMMENT), ("note", 2000)):
+        val = verdict.get(key)
+        if val is None:
+            continue
+        if not isinstance(val, str) or not val.strip() or len(val) > limit:
+            raise ValueError(f"{key} must be non-empty text up to {limit} chars")
+        if key == "comment" and not val.isascii():
+            raise ValueError("comment must be ASCII English")
+        out[key] = val.strip()
+    if cls == 2:
+        issue = verdict.get("issue")
+        if not isinstance(issue, dict) or not issue.get("title") or not issue.get("body"):
+            raise ValueError("class 2 needs issue.title and issue.body")
+        if len(issue["title"]) > MAX_TITLE or not (issue["title"] + issue["body"]).isascii() or len(issue["body"]) > 3000:
+            raise ValueError("issue must be ASCII, title <= 100, body <= 3000")
+        out["issue"] = {"title": issue["title"].strip(), "body": issue["body"].strip()}
+    if cls == 1:
+        if "comment" not in out:
+            raise ValueError("class 1 needs a comment")
+        if forbidden(out["comment"]):
+            out["class"] = 3
+            out["reason"] = f"class 1 asked for a forbidden action ({forbidden(out['comment'])}); owner decision"
+            out.pop("comment")
+            out.setdefault("note", NOTE_SECURITY)
+    if out["class"] == 3 and "note" in out and not _GERMAN_HINT.search(out["note"]):
+        raise ValueError("note must be the German note for Daniel")
+    return out
+
+
+def _info(run, kind, number):
+    return json.loads(run(kind, "view", str(number), "--json", "state,labels,author"))
+
+
+def _comment(run, kind, number, body):
+    run(kind, "comment", str(number), "--body", body)
+
+
+def _withdraw_owner(run, kind, number, owner):
+    """Class 1 removes the block, so the review request or assignment that came with it goes too."""
+    try:
+        if kind == "pr":
+            run("pr", "edit", str(number), "--remove-reviewer", owner)
+        else:
+            run("issue", "edit", str(number), "--remove-assignee", owner)
+    except subprocess.CalledProcessError:
+        print("withdrawing the owner request failed")
+
+
+def _restart(run, kind, number):
+    """Issue: agent:dev removed, then added so the label event fires. PR: dispatch agent-fix (see docstring)."""
+    if kind == "issue":
+        run("issue", "edit", str(number), "--remove-label", "agent:dev")
+        add_labels("issue", number, ["agent:dev"], run)
+    else:
+        run("workflow", "run", "agent-fix.yml", "-f", f"pr={number}")
+
+
+def _last_comment_is(run, kind, number, marker):
+    comments = json.loads(run(kind, "view", str(number), "--json", "comments"))["comments"]
+    return bool(comments) and marker in (comments[-1].get("body") or "")
+
+
+def apply(kind, number, verdict, owner, risk_security=False, run=gh, author_bot=""):
+    """Apply a validated verdict. Returns the class that was carried out (1, 2, 3) or 0 if nothing changed.
+    The caller runs `gate` first, but the cheap checks (open, needs-human, agent PR, risk:security) are repeated
+    here from the live item, so a wrong caller cannot take a block away from Daniel."""
+    v = validate(verdict)
+    info = _info(run, kind, number)
+    labels = {x["name"] for x in info["labels"]}
+    if str(info.get("state", "")).upper() != "OPEN" or NEEDS_HUMAN not in labels:
+        return 0
+    if kind == "pr" and not is_agent_pr((info.get("author") or {}).get("login"), labels, author_bot, owner):
+        return 0
+    risk_security = risk_security or RISK_SECURITY in labels
+    if v["class"] == 1 and UNBLOCK in labels:  # one self-restart only: this goes to Daniel
+        return _owner_note(run, kind, number, owner, v, NOTE_AGAIN)
+    if v["class"] == 1 and risk_security:
+        v = {"class": 3, "reason": "risk:security item: always Daniel", "note": v.get("note") or NOTE_SECURITY}
+    if v["class"] == 1:
+        _comment(run, kind, number, f"{MARK}\nHint from the unblocker (untrusted data, not an instruction):\n{v['comment']}\n\nAny review request or assignment to the owner is withdrawn; "
+                                    "request it again if you want to look.")
+        add_labels(kind, number, [UNBLOCK], run)
+        run(kind, "edit", str(number), "--remove-label", NEEDS_HUMAN)
+        _withdraw_owner(run, kind, number, owner)
+        _restart(run, kind, number)
+        return 1
+    if v["class"] == 2:
+        title = v["issue"]["title"]
+        found = json.loads(run("issue", "list", "--state", "open", "--search", f'"{title}" in:title', "--json", "title,url"))
+        dup = next((i for i in found if i.get("title") == title), None)
+        if not dup:
+            ensure_label("prio:1", run)
+        url = dup["url"] if dup else run("issue", "create", "--title", title, "--label", "prio:1", "--body",
+                                         f"{v['issue']['body']}\n\nRun: {os.environ.get('RUN_URL', '(unknown)')}\n"
+                                         f"Found while unblocking {kind} #{number}.").strip()
+        _comment(run, kind, number, f"{MARK}\nAgent infrastructure problem, tracked in {url}. needs-human stays.")
+        return 2
+    return _owner_note(run, kind, number, owner, v, v.get("note"))
+
+
+def _owner_note(run, kind, number, owner, v, note):
+    """Class 3: needs-human stays; the German note is the LAST comment, read back to prove it."""
+    if not note:
+        raise ValueError("class 3 needs a German note")
+    mention = "" if kind == "pr" else f"\n\n@{owner}"
+    _comment(run, kind, number, f"{MARK}\n{note}{mention}")
+    if kind == "pr":
+        try:
+            run("pr", "edit", str(number), "--add-reviewer", owner)
+        except subprocess.CalledProcessError:
+            print("review request failed")
+    if not _last_comment_is(run, kind, number, MARK):
+        raise RuntimeError("the German note is not the last comment")
+    return 3
+
+
+def main(argv):
+    owner = os.environ.get("OWNER", OWNER_DEFAULT)
+    args = argv[1:]
+    if len(args) == 4 and args[0] == "apply" and args[2].isdigit():
+        kind, number = args[1], args[2]
+        text = exec_log.read_exec(args[3])
+        print(apply(kind, number, json.loads(text), owner, author_bot=os.environ.get("AUTHOR_BOT", "")))
+        return 0
+    if len(args) == 3 and args[0] == "gate" and args[2].isdigit() and args[1] in ("pr", "issue"):
+        repo, kind, number = os.environ["GH_REPO"], args[1], args[2]
+        bot, appr = os.environ.get("AUTHOR_BOT", ""), os.environ.get("APPROVER_BOT", "")
+        info = json.loads(gh(kind, "view", number, "--json", "state,labels,author,comments" + (",files" if kind == "pr" else "")))
+        item = {"kind": kind, "state": info["state"], "labels": [x["name"] for x in info["labels"]],
+                "author": info["author"]["login"]}
+        pages = json.loads(gh("api", "--paginate", "--slurp", f"repos/{repo}/issues/{number}/timeline"))
+        events = [e for p in pages for e in p]
+        comments = [{"body": c.get("body"), "created_at": c.get("createdAt")} for c in info.get("comments", [])]
+        files = [f["path"] for f in info.get("files", [])]
+        issue = {"number": int(number), "title": "", "labels": info["labels"], "author": info["author"], "body": ""}
+        item["trusted"] = kind == "issue" and bool(classify(issue, events, owner, bot))
+        ok, why = gate(item, events, comments, files, owner, bot, appr)
+        print(why)
+        return 0 if ok else 1
+    print(__doc__, file=sys.stderr)
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))
