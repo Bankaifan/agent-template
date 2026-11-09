@@ -8,10 +8,13 @@
 3. Held runs: runs in `action_required` are approved only if the head belongs to an open same-repo PR of the author app.
 4. Merge conflicts: an agent PR with mergeStateStatus DIRTY gets one fix round (label review:N, then agent-fix is
    dispatched with the PR number). After round 2 the PR gets needs-human instead.
-5. Red main: an own agent PR (one commit, author OWNER, behind main) whose last validate failed while main was red
+5. Exhausted rounds: an open agent PR with `review:3`, not approved, no needs-human, no agent job running and an
+   idle head for more than 30 min was never handed over (the limit step failed): restart.py limit hands it over
+   (issue restart once, else needs-human + review request). A failure is escalated with needs-human.
+6. Red main: an own agent PR (one commit, author OWNER, behind main) whose last validate failed while main was red
    is rebased onto main via the update-branch API once main is green again, so CI runs again. Never merges.
 Read-only except: the status issue, re-triggers, run approvals, the fix dispatch and these labels:
-agent:dev (re-add), status:retriggered, review:N, needs-human. Needs the gh CLI (GH_TOKEN, GH_REPO).
+agent:dev (re-add), status:retriggered, review:N, needs-human, restart:1 (via restart.py). Needs the gh CLI (GH_TOKEN, GH_REPO).
 
 CLI: status.py gate   write run=true|false to $GITHUB_OUTPUT (schedule ticks honour STATUS_INTERVAL)
      status.py        do the run
@@ -28,12 +31,13 @@ import sys
 
 import liveness
 from agent_guard import add_labels, same_login, tail_text
-from restart import close_superseded, superseded
+from restart import close_superseded, handle_limit, superseded
 
 TITLE = "Agent status"
 OWNER_DEFAULT = "Bankaifan"
 ISSUE_ORPHAN_MIN = 30
 PR_ORPHAN_MIN = 10
+LIMIT_IDLE_MIN = 30
 RETRIGGER = "status:retriggered"
 AGENT_WORKFLOWS = {"agent-dev", "agent-fix", "agent-review", "orchestrator", "scout", "rule-keeper"}
 TICK_MIN = 30
@@ -194,6 +198,23 @@ def fix_round(labels):
     if "review:2" in labels:
         return "review:3", True
     return ("review:2" if "review:1" in labels else "review:1"), False
+
+
+def limit_prs(prs, runs, now):
+    """Agent PRs at review:3 that nobody took over: open, not approved, no needs-human, no agent job, idle head."""
+    if any(r["workflowName"] in ("agent-fix", "agent-review") for r in runs):
+        return []
+    return [p for p in prs if is_agent_pr(p) and "review:3" in names(p) and "needs-human" not in names(p)
+            and p.get("reviewDecision") != "APPROVED" and minutes_since(head_date(p), now) > LIMIT_IDLE_MIN]
+
+
+def handle_stuck_limit(pr, owner, run=gh):
+    """Hand the PR over like agent-fix does at the limit; if that fails too, needs-human (never silent)."""
+    try:
+        return f"handed over ({handle_limit(str(pr['number']), owner, run)})"
+    except (subprocess.CalledProcessError, KeyError, ValueError, OSError):
+        escalate("pr", pr["number"], "the PR is at review:3 and the hand-over failed.", owner, run)
+        return "escalated"
 
 
 def conflict_prs(prs):
@@ -411,6 +432,8 @@ def run_status(env, now, run=gh):
     for p in prs:
         if p not in stuck_p:
             clear_retrigger("pr", p, run)
+    for p in limit_prs(prs, runs, now):
+        actions.append(f"review:3 PR #{p['number']}: {handle_stuck_limit(p, owner, run)}")
     if not any(r["workflowName"] == "agent-fix" for r in runs):  # one fix job at a time
         for p in conflict_prs(prs)[:1]:
             actions.append(f"conflict PR #{p['number']}: {handle_conflict(p, owner, run)}")

@@ -7,6 +7,22 @@ on:
 permissions:
   contents: read
 jobs:
+  # `/dev` on a PR is not supported (the agent works on issues): say so instead of ignoring it.
+  dev-on-pr:
+    if: >-
+      github.event_name == 'issue_comment' && github.event.issue.pull_request &&
+      startsWith(github.event.comment.body, '/dev') &&
+      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
+    permissions:
+      issues: write
+    runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 5
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          NUMBER: ${{ github.event.issue.number }}
+        run: gh issue comment "$NUMBER" --body "/dev works on issues only. A PR gets fix rounds from review feedback or a red CI; for more, comment on the issue it closes."
   dev:
     if: >-
       (github.event_name == 'issues' && github.event.label.name == 'agent:dev') ||
