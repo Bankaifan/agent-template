@@ -39,10 +39,10 @@ def main() -> int:
         print(f"check_version: '{version}' is not x.y.z")
         return 1
     text = changelog.read_text(encoding="utf-8")
-    if not re.search(r"^## \[Unreleased\]", text, re.M | re.I):
+    if not re.search(r"^## \[Unreleased\]", text, re.MULTILINE | re.IGNORECASE):
         print("check_version: CHANGELOG.md has no '## [Unreleased]' section")
         return 1
-    if not re.search(rf"^## \[{re.escape(version)}\]", text, re.M):
+    if not re.search(rf"^## \[{re.escape(version)}\]", text, re.MULTILINE):
         print(f"check_version: CHANGELOG.md has no '## [{version}]' section")
         return 1
     print(f"check_version: ok ({version})")

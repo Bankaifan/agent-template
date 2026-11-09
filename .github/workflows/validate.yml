@@ -17,7 +17,7 @@ jobs:
           python-version: "3.x"
       - name: Install dependencies
         run: |
-          pip install ruff pytest pytest-timeout
+          pip install "ruff==0.17.4" pytest pytest-timeout  # pinned: new ruff releases add rules
           for f in requirements.txt requirements_test.txt; do
             if [ -f "$f" ]; then pip install -r "$f"; fi
           done
