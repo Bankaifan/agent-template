@@ -97,6 +97,13 @@ def test_closing_subcommand_reads_file(tmp_path, monkeypatch):
         assert mod.main() == rc
 
 
+def test_closing_subcommand_errors_exit_2(tmp_path, monkeypatch):
+    monkeypatch.setattr(mod.sys, "argv", ["x", "closing", str(tmp_path / "missing.md")])
+    assert mod.main() == 2
+    monkeypatch.setattr(mod.sys, "argv", ["x", "closing"])
+    assert mod.main() == 2
+
+
 def test_dispatch_without_pr_skipped(monkeypatch):
     fake_gh(monkeypatch, fail=True)
     assert run(monkeypatch, {"GITHUB_EVENT_NAME": "workflow_dispatch", "GITHUB_REF_NAME": "agent/1-x"}) == 0
