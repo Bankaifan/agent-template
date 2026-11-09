@@ -48,6 +48,17 @@ jobs:
           persist-credentials: false
           token: ${{ steps.app.outputs.token }}
           fetch-depth: 0
+      - name: Find the template repo (no model; empty without template.json)
+        id: tpl
+        env:
+          GH_REPO: ${{ github.repository }}
+        run: |
+          repo="$(python3 tools/idea_route.py repo)"
+          {
+            echo "repo=$repo"
+            echo "name=${repo#*/}"
+            echo "owner=${repo%%/*}"
+          } >> "$GITHUB_OUTPUT"
       - name: Count work and alerts (no model)
         id: pre
         env:
@@ -59,6 +70,7 @@ jobs:
         if: steps.pre.outputs.work == 'true'
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
+          GH_REPO: ${{ github.repository }}
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ steps.app.outputs.token }}
@@ -72,13 +84,32 @@ jobs:
             Look for improvements: code, tests, docs, recurring review remarks, upstream changes.
             First list existing issues (gh issue list --state all --label idea --limit 100) and do not duplicate.
             Run `gh label create idea --force` first (a missing label must not break the run).
-            Open at most ${{ env.IDEAS }} issues with `gh issue create --label idea`: English, concrete title,
-            body with problem, proposal, files, acceptance (max 15 lines). Add the label `idea` and a label `prio:2` (bug or missing guard) or `prio:3` (feature,
-            improvement), run `gh label create <label> --force` first; never
+            Open at most ${{ env.IDEAS }} issues: English, concrete title,
+            body with problem, proposal, files, acceptance (max 15 lines). Then run
+            `python3 tools/idea_route.py create --title "<title>" --body "<body>" --files <comma-separated repo paths the idea touches> --label prio:2`
+            (prio:2 = bug or missing guard, prio:3 = feature, improvement; run `gh label create <label> --force` first).
+            The tool adds the label `idea` and opens ideas that only touch template-managed files in the template repo, all others here.
+            Do not call `gh issue create` yourself. Never
             `auto-ok` or `approved`: Daniel sets those himself. If nothing is worth doing, open nothing. Never edit files, never merge.
           claude_args: >-
             --model ${{ env.MODEL }}
             --max-turns 30
             --setting-sources user
             --settings .github/claude-judge-settings.json
-            --allowedTools "Read,Glob,Grep,Bash(gh issue list:*),Bash(gh issue view:*),Bash(gh pr list:*),Bash(gh pr view:*),Bash(gh issue create:*),Bash(gh label create:*),Bash(gh api repos/${{ github.repository }}/dependabot/alerts:*),Bash(gh api repos/${{ github.repository }}/code-scanning/alerts:*)"
+            --allowedTools "Read,Glob,Grep,Bash(gh issue list:*),Bash(gh issue view:*),Bash(gh pr list:*),Bash(gh pr view:*),Bash(python3 tools/idea_route.py create:*),Bash(gh label create:*),Bash(gh api repos/${{ github.repository }}/dependabot/alerts:*),Bash(gh api repos/${{ github.repository }}/code-scanning/alerts:*)"
+      - id: tpl-app
+        if: always() && steps.pre.outputs.work == 'true' && steps.tpl.outputs.repo != ''
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.AUTHOR_CLIENT_ID }}
+          private-key: ${{ secrets.AUTHOR_APP_KEY }}
+          owner: ${{ steps.tpl.outputs.owner }}
+          repositories: ${{ steps.tpl.outputs.name }}
+          permission-issues: write
+      - name: Open queued template ideas (no model)
+        if: always() && steps.pre.outputs.work == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+          TEMPLATE_GH_TOKEN: ${{ steps.tpl-app.outputs.token }}
+        run: python3 tools/idea_route.py flush
