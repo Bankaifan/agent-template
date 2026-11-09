@@ -8,6 +8,8 @@
 3. Held runs: runs in `action_required` are approved only if the head belongs to an open same-repo PR of the author app.
 4. Merge conflicts: an agent PR with mergeStateStatus DIRTY gets one fix round (label review:N, then agent-fix is
    dispatched with the PR number). After round 2 the PR gets needs-human instead.
+5. Red main: an own agent PR (one commit, author OWNER, behind main) whose last validate failed while main was red
+   is rebased onto main via the update-branch API once main is green again, so CI runs again. Never merges.
 Read-only except: the status issue, re-triggers, run approvals, the fix dispatch and these labels:
 agent:dev (re-add), status:retriggered, review:N, needs-human. Needs the gh CLI (GH_TOKEN, GH_REPO).
 
@@ -33,6 +35,7 @@ PR_ORPHAN_MIN = 10
 RETRIGGER = "status:retriggered"
 AGENT_WORKFLOWS = {"agent-dev", "agent-fix", "agent-review", "orchestrator", "scout", "rule-keeper"}
 TICK_MIN = 30
+PR_LIMIT = 20  # 50 made the GraphQL query exceed 500,000 nodes (statusCheckRollup x commits)
 
 
 def gh(*args):
@@ -195,6 +198,36 @@ def conflict_prs(prs):
     return [p for p in prs if is_agent_pr(p) and p.get("mergeStateStatus") == "DIRTY" and "needs-human" not in names(p)]
 
 
+def main_was_red(main_runs, at):
+    """True if the newest completed validate run on main created before `at` failed (main_runs: newest first)."""
+    for r in main_runs:
+        if r.get("conclusion") and parse_ts(r["createdAt"]) <= parse_ts(at):
+            return r["conclusion"] == "failure"
+    return False
+
+
+def main_is_green(main_runs):
+    done = [r for r in main_runs if r.get("conclusion")]
+    return bool(done) and done[0]["conclusion"] == "success"
+
+
+def rebase_candidates(prs, main_runs, pr_runs, owner):
+    """Own agent PRs, one commit by owner, not conflicting, whose newest validate failed while main was red."""
+    if not main_is_green(main_runs):
+        return []
+    out = []
+    for p in prs:
+        commits = p.get("commits") or []
+        if not is_agent_pr(p) or "needs-human" in names(p) or p.get("mergeStateStatus") not in ("BEHIND", "BLOCKED"):
+            continue
+        if len(commits) != 1 or not all(same_login(a.get("login"), owner) for a in commits[0].get("authors", [])):
+            continue
+        runs = [r for r in pr_runs(p["headRefOid"]) if r.get("conclusion")]
+        if runs and runs[0]["conclusion"] == "failure" and main_was_red(main_runs, runs[0]["createdAt"]):
+            out.append(p)
+    return out
+
+
 # --- actions ----------------------------------------------------------------------------------
 
 def escalate(kind, number, why, owner, run=gh):
@@ -316,7 +349,7 @@ def run_status(env, now, run=gh):
         runs += jlist(run, "run", "list", "--status", st, "--limit", "50", "--json",
                       "databaseId,workflowName,displayTitle,url,status,createdAt")
     runs = [r for r in runs if r["workflowName"] in AGENT_WORKFLOWS]
-    prs = jlist(run, "pr", "list", "--state", "open", "--limit", "50", "--json",
+    prs = jlist(run, "pr", "list", "--state", "open", "--limit", str(PR_LIMIT), "--json",
                 "number,title,url,headRefName,headRefOid,labels,reviewDecision,reviewRequests,statusCheckRollup,"
                 "mergeStateStatus,isCrossRepository,author,commits,createdAt")
     issues = jlist(run, "issue", "list", "--state", "open", "--label", "agent:dev", "--limit", "50",
@@ -332,6 +365,18 @@ def run_status(env, now, run=gh):
 
     def validate_runs(sha):
         return len(jlist(run, "run", "list", "--workflow", "validate.yml", "--commit", sha, "--json", "databaseId"))
+
+    def pr_validate_runs(sha):
+        return jlist(run, "run", "list", "--workflow", "validate.yml", "--commit", sha, "--json",
+                     "conclusion,createdAt")
+
+    main_runs = safe(jlist, run, "run", "list", "--workflow", "validate.yml", "--branch", "main", "--limit", "20",
+                     "--json", "conclusion,createdAt") or []
+    for p in rebase_candidates(prs, main_runs, pr_validate_runs, owner):
+        done = safe(run, "api", "-X", "PUT", f"repos/{repo}/pulls/{p['number']}/update-branch",
+                    "-f", "update_method=rebase")
+        actions.append(f"rebased PR #{p['number']} onto green main" if done is not None
+                       else f"rebase of PR #{p['number']} failed")
 
     for rid in held_run_ids(held, prs, bot):
         if safe(run, "api", "-X", "POST", f"repos/{repo}/actions/runs/{rid}/approve") is not None:
