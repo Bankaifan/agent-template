@@ -15,6 +15,8 @@ jobs:
        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))
     # One run per issue; the 2-job cap is kept by the orchestrator (at most 2 open agent:dev issues).
     # At job level on purpose: a skipped run (e.g. the label event for model:sonnet) must not replace a pending real run.
+    # Every label event starts a run here (GitHub cannot filter label names at workflow level); runs that are not
+    # `agent:dev` or `/dev` show as skipped. That is expected, not a failure. See docs/decisions/0009-label-triggers.md.
     concurrency:
       group: agent-dev-${{ github.event.issue.number }}
       cancel-in-progress: false
