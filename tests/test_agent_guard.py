@@ -1,3 +1,4 @@
+import datetime
 import json
 import subprocess
 
@@ -260,3 +261,104 @@ def test_missing_body_file_is_unknown_not_empty(stub_gh, tmp_path, monkeypatch):
     monkeypatch.setenv("GH_PR_VIEW", json.dumps({"headRefOid": "abc", "body": "Refs #53", "author": {"login": "app/x"}}))
     assert g.main(["g", "silent", "fix", "5", "abc", missing]) == 0
     assert any(c.startswith("pr comment 5") for c in stub_gh())  # escalated, not treated as a changed body
+
+
+BOT = "my-author[bot]"
+NOW = datetime.datetime(2026, 11, 9, 12, tzinfo=datetime.UTC)
+DENIAL = {"tool_name": "Bash", "tool_input": {"command": "gh issue list | head"}}
+
+
+class OrchGh:
+    """Fake gh for the orchestrator guard: answers by command, logs every call."""
+    def __init__(self, events=(), comments=(), prs=(), issues=(), open_issues=()):
+        self.calls = []
+        self.data = {("issue", "list", "--state", "open"): list(open_issues),
+                     ("pr", "list"): list(prs), ("issue", "list", "--state", "all"): list(issues)}
+        self.events, self.comments = list(events), list(comments)
+
+    def __call__(self, *a):
+        self.calls.append(a)
+        if a[0] == "api" and "/issues/events" in a[-1]:
+            return json.dumps(self.events)
+        if a[0] == "api":
+            return json.dumps([self.comments])
+        for k, v in self.data.items():
+            if a[:len(k)] == k:
+                return json.dumps(v)
+        return ""
+
+    def made(self, *prefix):
+        return [c for c in self.calls if c[:len(prefix)] == prefix]
+
+
+@pytest.fixture
+def orch_env(tmp_path, monkeypatch):
+    f = tmp_path / "exec.json"
+
+    def setup(denials=(), startable=False):
+        f.write_text(json.dumps([{"type": "result", "permission_denials": list(denials)}]))
+        monkeypatch.setenv("EXEC_FILE", str(f))
+        monkeypatch.setenv("STARTABLE", "true" if startable else "false")
+    monkeypatch.setenv("GH_REPO", "o/r")
+    monkeypatch.setenv("AUTHOR_BOT", BOT)
+    monkeypatch.setenv("RUN_URL", "https://x/run/9")
+    monkeypatch.delenv("STATUS_ISSUE", raising=False)
+    return setup
+
+
+def test_orchestrator_denials_escalate(orch_env):
+    orch_env(denials=[DENIAL] * 3)
+    r = OrchGh()
+    assert g.silent_orchestrator(T0, r) == 1
+    comment = r.made("issue", "comment", "57")
+    assert comment and "https://x/run/9" in comment[0][-1] and "Bash: gh issue list" in comment[0][-1]
+    assert not r.made("issue", "create")  # first failure: no issue yet
+
+
+def test_orchestrator_free_slot_without_action_escalates(orch_env):
+    orch_env(startable=True)
+    r = OrchGh(events=[{"actor": {"login": "mallory"}, "created_at": "2026-11-09T10:05:00Z"}],
+               comments=[{"user": {"login": BOT}, "created_at": "2026-11-09T09:00:00Z"}])  # before the run
+    assert g.silent_orchestrator(T0, r) == 1
+    assert r.made("issue", "comment", "57")
+
+
+@pytest.mark.parametrize("kw", [
+    {"events": [{"actor": {"login": "app/my-author"}, "created_at": "2026-11-09T10:05:00Z"}]},
+    {"comments": [{"user": {"login": BOT}, "created_at": "2026-11-09T10:05:00Z"}]},
+    {"prs": [{"author": {"login": "app/my-author"}, "createdAt": "2026-11-09T10:05:00Z"}]},
+    {"issues": [{"author": {"login": "app/my-author"}, "createdAt": "2026-11-09T10:05:00Z"}]},
+])
+def test_orchestrator_visible_action_is_fine(orch_env, kw):
+    orch_env(startable=True)
+    r = OrchGh(**kw)
+    assert g.silent_orchestrator(T0, r) == 0
+    assert not r.made("issue", "comment")
+
+
+def test_orchestrator_nothing_to_do_is_quiet(orch_env):
+    orch_env(startable=False)
+    r = OrchGh()
+    assert g.silent_orchestrator(T0, r) == 0
+    assert not r.calls
+
+
+def test_orchestrator_second_failure_same_day_opens_one_issue(orch_env):
+    orch_env(denials=[DENIAL])
+    prior = {"user": {"login": BOT}, "created_at": "2026-11-09T08:00:00Z", "body": g.ORCH_MARK + ": 1 tool call(s)"}
+    r = OrchGh(comments=[prior])
+    g.escalate_orchestrator("denied", "57", "o/r", BOT, r, now=NOW)
+    created = r.made("issue", "create")
+    assert len(created) == 1 and "prio:1" in created[0]
+    # an open issue with that title already exists: no duplicate
+    r = OrchGh(comments=[prior], open_issues=[{"title": g.ORCH_REPEAT_TITLE}])
+    g.escalate_orchestrator("denied", "57", "o/r", BOT, r, now=NOW)
+    assert not r.made("issue", "create") and r.made("issue", "comment", "57")
+
+
+def test_orchestrator_old_failure_does_not_count(orch_env):
+    old = {"user": {"login": BOT}, "created_at": "2026-11-07T08:00:00Z", "body": g.ORCH_MARK}
+    r = OrchGh(comments=[old])
+    g.escalate_orchestrator("denied", "57", "o/r", BOT, r,
+                            now=NOW)
+    assert not r.made("issue", "create")

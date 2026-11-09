@@ -104,6 +104,8 @@ def main(mode) -> int:
     if out:
         with open(out, "a") as f:
             f.write(f"work={str(work).lower()}\n")
+            if mode == "orchestrator":
+                f.write(f"startable={str(bool(cands)).lower()}\n")
     return 0
 
 
