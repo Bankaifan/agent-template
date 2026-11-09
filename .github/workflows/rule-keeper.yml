@@ -38,6 +38,11 @@ jobs:
         with:
           token: ${{ steps.app.outputs.token }}
           fetch-depth: 0
+      - name: Propose a tier change (script, never switches the tier)
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+        run: python3 tools/tier.py --propose
       - name: Git identity
         run: |
           git config user.name "Daniel"

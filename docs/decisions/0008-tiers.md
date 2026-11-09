@@ -10,7 +10,7 @@ Projects grow; the template must scale without starting heavy. A project is in t
 
 ## Thresholds (estimates, to be calibrated)
 
-Two of the thresholds exceeded four weeks in a row would justify proposing the next tier (the proposal logic, `.agents/tier` and the rule-keeper issue "Propose tier M/L", is a follow-up issue).
+Two of the thresholds exceeded four weeks in a row would justify proposing the next tier (`tools/tier.py`: "lines or modules" counts as one threshold, empty values never count; `.agents/tier` holds the current tier; the `rule-keeper` workflow runs `tools/tier.py --propose`, which opens ONE issue "Propose tier M/L" with the numbers and never switches the tier).
 
 | | S to M | M to L |
 |---|---|---|
