@@ -10,7 +10,8 @@ Idea: **rules a script can check live in CI, not in prompts.** The agents get a 
   paid by a Claude subscription (OAuth token), no API key.
 - Two GitHub Apps: the **author** pushes and opens PRs, the **approver** reviews. Nobody approves their own work.
 - A ruleset on `main` (PR, 1 approval, check `validate`, linear history, squash only) plus auto-merge.
-- A weekly gap finder that only opens issues proposing new checks.
+- A weekly rule keeper that opens one PR proposing rule removals, new checks and contradiction fixes (Daniel merges).
+- A daily `branch-cleanup` that deletes `agent/*` branches with a closed PR, or no PR and no commit for 7 days (dry-run input on manual runs).
 
 Quota is scarce: at most 2 agent jobs run at the same time; models are chosen per role
 (developer routine: haiku, core work: sonnet, reviewer: sonnet, orchestrator: sonnet).
@@ -27,7 +28,7 @@ Quota is scarce: at most 2 agent jobs run at the same time; models are chosen pe
 4. **Import the ruleset**: *Settings > Rules > Rulesets > New > Import* with `.github/rulesets/main.json`.
 5. **Create the labels**:
    ```bash
-   for l in agent:dev agent:review model:sonnet review:1 review:2 needs-human gap-finder; do gh label create "$l" 2>/dev/null; done
+   for l in agent:dev agent:review model:sonnet review:1 review:2 needs-human; do gh label create "$l" 2>/dev/null; done
    ```
 6. **First task**: open an issue with a goal and acceptance criteria, add label `agent:dev` (or comment `/dev`).
    Add `model:sonnet` for core work, otherwise haiku is used. The PR is reviewed, auto-merged after approval and green CI.

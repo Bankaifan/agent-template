@@ -11,7 +11,7 @@ Status: accepted (Daniel, 2026-11-09). Not yet verified end to end.
 - Two GitHub Apps (author pushes and opens PRs, approver reviews); auto-merge squash with the author token.
 - Ruleset on `main`: PR, 1 approval, check `validate`, linear history, squash only, no force push or deletion.
 - Commits authored as Daniel, no `Co-authored-by` trailer.
-- Rules a script can check go into `tools/check/`, not into prompts. The gap finder proposes new checks as issues.
+- Rules a script can check go into `tools/check/`, not into prompts. The weekly rule keeper proposes rule changes and new checks in one PR; `branch-cleanup` deletes stale `agent/*` branches daily.
 
 ## Consequences
 - Review rounds are capped at 2 by labels; a third trigger ends in `needs-human`.
