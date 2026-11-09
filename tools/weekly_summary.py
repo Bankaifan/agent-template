@@ -13,6 +13,8 @@ import statistics
 import subprocess
 import sys
 
+import liveness
+
 TITLE = "Weekly summary"
 METRICS = pathlib.Path("docs/metrics.csv")
 COLUMNS = ["week", "code_lines", "modules", "lines_by_lang", "modules_by_lang", "max_parallel_agent_prs",
@@ -29,11 +31,13 @@ def section(heading, rows):
     return "\n".join(lines)
 
 
-def build_body(merged, needs_human, rule_keeper, ideas, today):
+def build_body(merged, needs_human, rule_keeper, ideas, today, status_stale=False):
     parts = [f"Updated {today}.", section("Merged in the last 7 days", merged),
              section("PRs labelled needs-human", needs_human),
              section("Rule-keeper PRs", rule_keeper),
              section("Ideas waiting for approval", ideas)]
+    if status_stale:
+        parts.append("## Warning\n- The status run has no successful run in the last 3 hours.")
     return "\n\n".join(parts) + "\n"
 
 
@@ -154,6 +158,14 @@ def collect_metrics(today):
                        avg_review_rounds(merged), median_ci_minutes(runs), actions_minutes())
 
 
+def status_stale_safe(run=gh):
+    """The status-run warning; if gh cannot list the runs, skip the warning instead of aborting the summary."""
+    try:
+        return liveness.status_run_stale(run)
+    except (subprocess.CalledProcessError, ValueError, OSError):
+        return False
+
+
 def main() -> int:
     today = datetime.date.today()
     since = (today - datetime.timedelta(days=7)).isoformat()
@@ -167,17 +179,29 @@ def main() -> int:
              if "approved" not in {lab["name"] for lab in i["labels"]}]
     if append_metrics(METRICS, collect_metrics(today)):
         print(f"appended a row to {METRICS}")
-    body = build_body(merged, human, keeper, ideas, today.isoformat())
+    body = build_body(merged, human, keeper, ideas, today.isoformat(), status_stale_safe())
     found = json.loads(gh("issue", "list", "--state", "open", "--search", f'"{TITLE}" in:title',
                           "--json", "number,title"))
     found = [i for i in found if i["title"] == TITLE]
     if found:
-        gh("issue", "edit", str(found[0]["number"]), "--body", body)
-        print(f"updated #{found[0]['number']}")
+        number = str(found[0]["number"])
+        gh("issue", "edit", number, "--body", body)
+        print(f"updated #{number}")
     else:
-        print(gh("issue", "create", "--title", TITLE, "--body", body).strip())
+        url = gh("issue", "create", "--title", TITLE, "--body", body).strip()
+        print(url)
+        number = url.rsplit("/", 1)[-1]
+    liveness.verify_body("issue", number, body, gh)
     return 0
 
 
+def run_main() -> int:
+    try:
+        return main()
+    except liveness.ReadbackError as e:
+        print(f"read-back failed: {e}", file=sys.stderr)
+        return 1
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(run_main())

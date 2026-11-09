@@ -4,6 +4,8 @@ import json
 import pathlib
 import subprocess
 
+import pytest
+
 _path = pathlib.Path(__file__).parent.parent / "tools" / "status.py"
 _spec = importlib.util.spec_from_file_location("status", _path)
 st = importlib.util.module_from_spec(_spec)
@@ -37,9 +39,14 @@ def issue(number=1, labels=("agent:dev",), title="Do it"):
 class Recorder:
     def __init__(self):
         self.calls = []
+        self.comments = []
 
     def __call__(self, *args):
         self.calls.append(args)
+        if args[1] == "comment":
+            self.comments.append({"body": args[args.index("--body") + 1]})
+        if args[:1] in (("pr",), ("issue",)) and args[1] == "view" and "comments" in args:
+            return json.dumps({"comments": self.comments})
         return json.dumps({"author": {"login": "app/author"}})
 
 
@@ -165,6 +172,8 @@ def test_update_issue_creates_or_edits():
         calls.append(args)
         if args[:2] == ("issue", "list"):
             return json.dumps(found)
+        if args[:2] == ("issue", "view"):
+            return json.dumps({"body": "b"})
         return "https://github.com/o/r/issues/12\n"
 
     assert st.update_issue("b", run) == "12"
@@ -232,3 +241,73 @@ def test_no_rebase_while_main_is_red_or_for_foreign_prs():
     two = _agent_pr()
     two["commits"] = two["commits"] * 2
     assert st.rebase_candidates([two], main, _failed, "Bankaifan") == []
+
+
+# --- liveness (issue #74) ----------------------------------------------------------------------
+
+def test_escalate_fails_loudly_when_comment_missing():
+    class Lossy(Recorder):
+        def __call__(self, *args):
+            if args[1] == "comment":
+                self.calls.append(args)
+                return ""  # posted "successfully" but never shows up
+            return super().__call__(*args)
+
+    with pytest.raises(st.liveness.ReadbackError):
+        st.escalate("pr", 7, "stuck.", "Bankaifan", Lossy())
+
+
+def test_update_issue_fails_when_body_missing():
+    def run(*args):
+        if args[:2] == ("issue", "list"):
+            return json.dumps([{"number": 3, "title": st.TITLE}])
+        if args[:2] == ("issue", "view"):
+            return json.dumps({"body": "old"})
+        return ""
+
+    with pytest.raises(st.liveness.ReadbackError):
+        st.update_issue("new", run)
+
+
+def test_main_exits_nonzero_on_readback_failure(monkeypatch):
+    def boom(env, now):
+        raise st.liveness.ReadbackError("comment missing")
+
+    monkeypatch.setattr(st, "run_status", boom)
+    assert st.main(["status.py"]) == 1
+
+
+def fresh():
+    return {wf: {"createdAt": ago(60), "url": "u"} for wf in st.liveness.SCHEDULED}
+
+
+def test_all_fresh_flags_nothing():
+    run = Recorder()
+    assert st.liveness.flag_overdue(fresh(), NOW, run) == ([], [])
+    assert run.calls == []
+
+
+def test_overdue_run_opens_one_issue_then_no_second():
+    succ = fresh()
+    succ["scout.yml"] = {"createdAt": ago(3 * 30 * 24 * 60), "url": "u"}
+    issues = []
+
+    def run(*args):
+        if args[:2] == ("issue", "list"):
+            return json.dumps(issues)
+        issues.append({"number": 5, "title": args[args.index("--title") + 1]})
+        assert "prio:1" in args
+        return "https://github.com/o/r/issues/5\n"
+
+    assert st.liveness.flag_overdue(succ, NOW, run) == (["scout"], ["5"])
+    assert st.liveness.flag_overdue(succ, NOW, run) == (["scout"], [])
+    assert len(issues) == 1
+
+
+def test_never_run_is_overdue_and_listed_in_body():
+    succ = fresh()
+    succ["rule-keeper.yml"] = None
+    assert st.liveness.overdue_runs(succ, NOW) == ["rule keeper"]
+    body = st.build_body([], [], [], {}, None, [], [], NOW, "Bankaifan", succ)
+    assert "- rule keeper: never OVERDUE" in body
+    assert "- orchestrator: [60 min ago](u)" in body
