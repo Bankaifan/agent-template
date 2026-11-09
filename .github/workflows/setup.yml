@@ -70,7 +70,7 @@ jobs:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          for l in agent:dev agent:review model:sonnet review:1 review:2 review:3 needs-human idea auto-ok approved; do
+          for l in agent:dev agent:review model:sonnet review:1 review:2 review:3 needs-human idea auto-ok approved prio:1 prio:2 prio:3; do
             gh label create "$l" --force
           done
       - name: Report Dependabot secrets (best effort)

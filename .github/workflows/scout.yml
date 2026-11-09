@@ -70,7 +70,8 @@ jobs:
             First list existing issues (gh issue list --state all --label idea --limit 100) and do not duplicate.
             Run `gh label create idea --force` first (a missing label must not break the run).
             Open at most ${{ env.IDEAS }} issues with `gh issue create --label idea`: English, concrete title,
-            body with problem, proposal, files, acceptance (max 15 lines). Add only the label `idea`, never
+            body with problem, proposal, files, acceptance (max 15 lines). Add the label `idea` and a label `prio:2` (bug or missing guard) or `prio:3` (feature,
+            improvement), run `gh label create <label> --force` first; never
             `auto-ok` or `approved`: Daniel sets those himself. If nothing is worth doing, open nothing. Never edit files, never merge.
           claude_args: >-
             --model ${{ env.MODEL }}

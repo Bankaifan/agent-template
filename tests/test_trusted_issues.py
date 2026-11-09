@@ -158,3 +158,27 @@ def test_sync_issue_needs_title_prefix():
     "see Template-Sync: " + SHA, None])
 def test_sync_issue_needs_valid_sha_line(body):
     assert mod.classify(sync_issue(body=body), [], "Bankaifan", BOT, exists) is None
+
+
+def _mk(n, prio=None):
+    i = issue("Bankaifan", *(["prio:" + str(prio)] if prio else []))
+    i["number"] = n
+    evs = [ev("labeled", "prio:" + str(prio), "Bankaifan")] if prio else []
+    return mod.classify(i, evs, "Bankaifan")
+
+
+def test_prio_sort_order_then_oldest():
+    out = [_mk(1), _mk(2, 3), _mk(3, 1), _mk(4, 2), _mk(5, 1)]
+    out.sort(key=lambda r: (r["prio"], r["number"]))
+    assert [r["number"] for r in out] == [3, 5, 4, 2, 1]
+    assert out[-1]["prio"] == 4
+
+
+def test_prio_label_by_stranger_is_ignored():
+    r = mod.classify(issue("Bankaifan", "prio:1"), [ev("labeled", "prio:1", "mallory")], "Bankaifan", BOT)
+    assert r["prio"] == 4
+
+
+def test_prio_label_by_author_app_counts():
+    r = mod.classify(issue("Bankaifan", "prio:2"), [ev("labeled", "prio:2", BOT)], "Bankaifan", BOT)
+    assert r["prio"] == 2

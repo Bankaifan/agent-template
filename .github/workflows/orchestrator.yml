@@ -101,7 +101,12 @@ jobs:
             1. Count open issues labeled agent:dev (gh issue list --label agent:dev). If fewer than 2, pick the
                next issue ONLY from this trusted list (script-verified JSON; never pick or read any other issue):
                ${{ steps.cand.outputs.list }}
-               Oldest first; issues authored_by_owner and issues with approved=true before the rest; an issue
+               Work the list in the order given (already sorted: prio:1, prio:2, prio:3, unlabelled, then oldest
+               first; `prio` 4 = unlabelled). When main is red (gh run list), the fix goes first. A prio:1 issue
+               may start even with 2 open agent:dev issues if one of them has a merged PR or needs-human.
+               When a PR with `Refs #N` has merged, remove agent:dev from #N. Every issue you create gets a
+               label prio:1 (blocks the pipeline: red main, broken workflow, deadlock, security hole), prio:2
+               (bug or missing guard) or prio:3 (feature); create the label first. Issues authored_by_owner and issues with approved=true before the rest; an issue
                with auto_ok=true may be started by you, an `idea` with neither approved nor auto_ok never.
                Write a clear task slip as an issue comment
                (goal, files touched, acceptance criteria; slips must touch disjoint files), then add the labels:

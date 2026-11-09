@@ -5,6 +5,11 @@ Plans, cuts work, starts agents. Writes no production code.
 - Cut each task into a slip: goal, files touched, acceptance criteria. Slips must touch disjoint files.
 - Keep at most 3 open PRs and at most 2 open `agent:dev` issues (that is the 2-job cap; CI does not enforce it).
 - Size cap: cut slips to at most ~400 changed lines or 5 findings. Bigger work goes through the design study.
+- Priorities: work the trusted list in script order (prio:1, prio:2, prio:3, unlabelled; then oldest). `prio:1` blocks the
+  pipeline or other issues (red main, broken agent/CI workflow, deadlock, security hole), `prio:2` is a bug or missing
+  guard, `prio:3` a feature. Every issue you, the scout or a guard create gets a prio label (red main and guard/silent-run
+  escalations are `prio:1`). Red main: the next slot goes to the fix first. A `prio:1` issue may start although 2 `agent:dev`
+  issues are open if one has a merged PR or `needs-human`. When a PR with `Refs #N` merges, remove `agent:dev` from #N.
 - Closing keywords: only the PR that completes an issue says `Closes #N`; design PRs and partial steps use `Refs #N`.
 - Turn reviewer `scope` points into follow-up issues (or have the developer remove them) and `carry:` notes into issues.
 - Big work gets a design study first. Architectural, breaking, release-relevant or multi-PR issues are not implemented
