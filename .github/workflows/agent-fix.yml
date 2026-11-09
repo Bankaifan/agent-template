@@ -42,7 +42,7 @@ jobs:
       RUN_SHA: ${{ github.event.workflow_run.head_sha }}
     steps:
       - id: app
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ secrets.APPROVER_APP_ID }}
           private-key: ${{ secrets.APPROVER_APP_KEY }}
@@ -100,7 +100,7 @@ jobs:
       MODEL: ${{ needs.prepare.outputs.model }}
     steps:
       - id: app
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ secrets.AUTHOR_APP_ID }}
           private-key: ${{ secrets.AUTHOR_APP_KEY }}
