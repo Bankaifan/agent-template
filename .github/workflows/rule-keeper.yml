@@ -49,7 +49,8 @@ jobs:
             3. repeated failures where a rule was missing,
             4. contradictions between AGENTS.md, role files and CI.
             If nothing is worth changing, do nothing. Otherwise first run `gh pr list --state open --search "head:agent/rule-keeper-"`
-            and stop if one is open. Then create branch agent/rule-keeper-$(date +%F) from main, make the edits,
+            and stop if one is open. Then run `date +%F` on its own, and create the branch with the literal result
+            (`git checkout -b agent/rule-keeper-<that date>`, no shell substitution) from main, make the edits,
             run `make check`, commit, push and open ONE PR (English, ASCII title, body max 5 lines) with a reason per change.
             Never edit main directly, never merge. Daniel merges.
           claude_args: >-

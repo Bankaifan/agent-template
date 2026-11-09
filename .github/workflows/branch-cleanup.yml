@@ -33,7 +33,7 @@ jobs:
         run: |
           set -euo pipefail
           cutoff=$(date -u -d '7 days ago' +%s)
-          gh api --paginate "repos/$REPO/branches?per_page=100" --jq '.[].name' | grep '^agent/' | while read -r b; do
+          gh api --paginate "repos/$REPO/branches?per_page=100" --jq '.[].name' | { grep '^agent/' || true; } | while read -r b; do
             # Never touch anything outside agent/*.
             case "$b" in agent/*) ;; *) continue ;; esac
             enc=$(printf '%s' "$b" | jq -sRr @uri)
