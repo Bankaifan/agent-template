@@ -2,22 +2,27 @@
 <!-- Overwrite, do not append. History lives in git and CHANGELOG. Max 60 lines. -->
 
 ## Goal
-Two threads in flight: #19 template sync (design study merged in `docs/design/0001-template-sync.md`) and #22
-(no silent agent runs, labels never missing, client IDs, login normalization, job-level concurrency).
+Three threads: #19 template sync (design merged in `docs/design/0001-template-sync.md`), #22 (silent-run guards),
+#27 model-free status run.
 
 ## Current state
-- #19: design merged; two owner decisions open (author app on the template repo; widened trust for `Template sync`
-  issues). After Daniel's decision the orchestrator creates the four implementation issues with a `Design:` line.
-- #22: PR on branch `agent/22-silent-runs-labels-logins`. `tools/agent_guard.py` (login normalization, label
-  create-then-add, silent dev/fix/review detection -> comment, `needs-human`, Daniel). agent-dev/fix/review end with an
-  `if: always()` step; concurrency only on dev/fix jobs; label adds via guard copy from main; all app tokens via `client-id` (`AUTHOR_CLIENT_ID` / `APPROVER_CLIENT_ID`,
-  already set by Daniel).
+- #27: PR #40 on branch `agent/27-status-run`. `.github/workflows/status.yml` + `tools/status.py` + `tests/test_status.py`.
+  Cron ticks at :07/:37; the gate step honours repo variable `STATUS_INTERVAL` (default 30 min public, 60 min private).
+  Also runs on `workflow_dispatch` and after agent-dev/fix/review. Maintains the issue "Agent status" (pinned),
+  re-triggers orphans once (label `status:retriggered`), then needs-human + review request for Daniel, approves held
+  runs of author-app PRs, and starts a fix round for PRs with merge conflicts.
+- Conflict rounds: the status run bumps `review:N` and dispatches `agent-fix.yml -f pr=N`. This needed a small
+  `workflow_dispatch` input in `agent-fix.yml` (outside the slip's file list, inside Daniel's approval for workflows).
+- `make check` and tests green locally (119 passed).
+- #19 and #22: see their PRs/issues; unchanged by this work.
 
-## Open decisions
-- #19: whether the author app can read a private template repo is not verified; sync not run end to end.
-- #22: developer may now run read-only `gh release view/list` (release notes for major updates); nothing broader.
+## Open
+- Not verified on GitHub: author app has `actions: write` (needed for approving runs and dispatching agent-fix) and
+  may pin issues. Failures are printed and do not stop the run.
+- Matching running agent-dev jobs to issues relies on the run title (issue title or `#N`); open.
+- #19: owner decisions still open.
 
 ## Next 3 steps
-1. Daniel decides the two #19 owner decisions.
-2. Merge #22 after review; watch the first run with an escalation step.
-3. Orchestrator creates the #19 implementation issues.
+1. Review and merge PR #40; run `status` once with workflow_dispatch and check the issue "Agent status".
+2. Confirm the app permissions above.
+3. Daniel decides the #19 owner decisions.

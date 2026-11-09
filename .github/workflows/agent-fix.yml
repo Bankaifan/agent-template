@@ -3,6 +3,8 @@ name: agent-fix
 #  - the approver app requesting changes (pull_request_review), or
 #  - a failed `validate` run (workflow_run), which counts as a round too.
 # Both triggers run in the base repo context and get the repo secrets.
+# Also started by `workflow_dispatch` with input `pr` (the status run, for a PR that conflicts with main; it has
+# already bumped the round label).
 # Rounds: labels review:1, review:2 -> fix; review:3 -> needs-human. A red CI bumps the label first.
 on:
   pull_request_review:
@@ -10,11 +12,18 @@ on:
   workflow_run:  # zizmor: ignore[dangerous-triggers] validate gate only; the job never executes PR code and checks out the PR branch only to push fixes with the app token
     workflows: [validate]
     types: [completed]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: Number of the agent/* PR that conflicts with main
+        required: true
+        type: string
 permissions:
   contents: read
 jobs:
   prepare:
     if: >-
+      github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'pull_request_review' &&
        github.event.review.state == 'changes_requested' &&
        startsWith(github.event.pull_request.head.ref, 'agent/') &&
@@ -34,6 +43,7 @@ jobs:
       model: ${{ steps.round.outputs.model }}
     env:
       EVENT: ${{ github.event_name }}
+      DISPATCH_PR: ${{ inputs.pr }}
       REVIEW_PR: ${{ github.event.pull_request.number }}
       REVIEW_BRANCH: ${{ github.event.pull_request.head.ref }}
       RUN_BRANCH: ${{ github.event.workflow_run.head_branch }}
@@ -72,6 +82,12 @@ jobs:
           }
           if [ "$EVENT" = pull_request_review ]; then
             pr="$REVIEW_PR"; branch="$REVIEW_BRANCH"
+          elif [ "$EVENT" = workflow_dispatch ]; then
+            case "$DISPATCH_PR" in ''|*[!0-9]*) echo "Bad PR number"; echo "fix=false" >> "$GITHUB_OUTPUT"; exit 0 ;; esac
+            pr="$DISPATCH_PR"
+            branch=$(gh pr view "$pr" --json state,headRefName,isCrossRepository \
+              --jq 'select(.state == "OPEN" and (.isCrossRepository | not) and (.headRefName | startswith("agent/"))) | .headRefName')
+            if [ -z "$branch" ]; then echo "Not an open agent/* PR of this repo"; echo "fix=false" >> "$GITHUB_OUTPUT"; exit 0; fi
           else
             branch="$RUN_BRANCH"
             # Only the current head of an open PR; an older red run is obsolete.
@@ -166,6 +182,8 @@ jobs:
             PR #${{ env.PR }} in ${{ github.repository }} (branch ${{ env.BRANCH }}, already checked out) needs a fix.
             Trigger: ${{ env.EVENT }}.
             - pull_request_review: a review requests changes. Read it with `gh pr view ${{ env.PR }} --comments --json reviews,comments`.
+            - workflow_dispatch: the PR conflicts with main. Rebase the branch onto current origin/main, resolve
+              the conflicts keeping the intent of the PR (rebase, never merge main into the branch).
             - workflow_run: the validate run ${{ env.RUN_ID }} failed. Read the log with
               `gh run view ${{ env.RUN_ID }} --log-failed`.
             Fix exactly what is raised, run `make check` and the tests, then squash the branch into ONE commit
