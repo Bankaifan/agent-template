@@ -1,0 +1,93 @@
+name: agent-fix
+# Automatic fix round: the approver app requested changes on an agent/* PR.
+# pull_request_review from a same-repo branch gets the repo secrets.
+on:
+  pull_request_review:
+    types: [submitted]
+permissions:
+  contents: read
+concurrency:
+  group: agent-fix-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+jobs:
+  prepare:
+    # Round cap: review:1 -> one fix round; review:2 (or more) -> needs-human, no dev run.
+    if: >-
+      github.event.review.state == 'changes_requested' &&
+      github.event.review.user.type == 'Bot' &&
+      startsWith(github.event.pull_request.head.ref, 'agent/') &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 5
+    outputs:
+      fix: ${{ steps.round.outputs.fix }}
+    env:
+      LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+      PR: ${{ github.event.pull_request.number }}
+    steps:
+      - id: app
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.APPROVER_APP_ID }}
+          private-key: ${{ secrets.APPROVER_APP_KEY }}
+      - id: round
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          case ",$LABELS," in
+            *,needs-human,*)
+              echo "fix=false" >> "$GITHUB_OUTPUT" ;;
+            *,review:2,*)
+              gh pr edit "$PR" --add-label needs-human
+              gh pr comment "$PR" --body "Review limit of 2 rounds reached. Needs the orchestrator or Daniel."
+              echo "fix=false" >> "$GITHUB_OUTPUT" ;;
+            *,review:1,*)
+              echo "fix=true" >> "$GITHUB_OUTPUT" ;;
+            *)
+              echo "fix=false" >> "$GITHUB_OUTPUT" ;;
+          esac
+  fix:
+    needs: prepare
+    if: needs.prepare.outputs.fix == 'true'
+    runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 45
+    env:
+      PR: ${{ github.event.pull_request.number }}
+      BRANCH: ${{ github.event.pull_request.head.ref }}
+      MODEL: ${{ contains(github.event.pull_request.labels.*.name, 'model:sonnet') && 'sonnet' || 'haiku' }}
+    steps:
+      - id: app
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.AUTHOR_APP_ID }}
+          private-key: ${{ secrets.AUTHOR_APP_KEY }}
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ steps.app.outputs.token }}
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+      - name: Git identity
+        run: |
+          git config user.name "Daniel"
+          git config user.email "476059+Bankaifan@users.noreply.github.com"
+      - uses: anthropics/claude-code-action@v1
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ steps.app.outputs.token }}
+          bot_id: "476059"
+          bot_name: "Bankaifan"
+          allowed_bots: ${{ vars.APPROVER_BOT || '*' }}
+          prompt: |
+            Act as the developer described in .agents/roles/developer.md and follow AGENTS.md.
+            PR #${{ env.PR }} in ${{ github.repository }} (branch ${{ env.BRANCH }}) got a review that requests changes.
+            Read it with `gh pr view ${{ env.PR }} --comments --json reviews,comments`. Fix exactly the points raised,
+            on this branch (already checked out), run `make check` and the tests, then squash the branch into ONE commit
+            authored by Daniel (no Co-authored-by) on top of current origin/main and `git push --force-with-lease`.
+            Do not open a new PR.
+          claude_args: >-
+            --model ${{ env.MODEL }}
+            --max-turns 60
+            --allowedTools "Read,Edit,Write,Glob,Grep,Bash(git:*),Bash(make:*),Bash(python3:*),Bash(pytest:*),Bash(ruff:*),Bash(gh issue view:*),Bash(gh pr view:*)"

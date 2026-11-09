@@ -18,9 +18,9 @@ jobs:
         with:
           app-id: ${{ secrets.AUTHOR_APP_ID }}
           private-key: ${{ secrets.AUTHOR_APP_KEY }}
-      - name: Enable auto-merge (squash); GitHub merges once the ruleset is satisfied
+      - name: Enable auto-merge (rebase, keeps Daniel as author); GitHub merges once the ruleset is satisfied
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           GH_REPO: ${{ github.repository }}
           PR: ${{ github.event.pull_request.number }}
-        run: gh pr merge "$PR" --auto --squash
+        run: gh pr merge "$PR" --auto --rebase

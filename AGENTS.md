@@ -12,8 +12,10 @@ Project: <one sentence>. Current state: HANDOVER.md. Decisions: docs/decisions/.
 5. No changes to CI protection, rulesets, permissions, workflows or this file without OK.
 
 ## How to work (a proposal, not a cage)
-- Small PRs, branched from current `main`, squash-merged, no stacked PRs, no `git merge main` into a branch.
+- Small PRs, branched from current `main`, rebase-merged, no stacked PRs, no `git merge main` into a branch.
   If a branch falls behind, rebase it (own branch) or cherry-pick onto a fresh one.
+- Before asking for review, squash the branch into ONE commit authored by Daniel (rebase merge keeps the author,
+  so Daniel is the sole author on `main`). Force-push to your own branch is allowed.
 - Before the PR: `make check` and the tests are green. CI is the truth, not your estimate.
 - Claim only what you measured (command + output). Unsure? Ask in the issue, do not guess.
   Missing facts are marked "open".
@@ -28,7 +30,7 @@ Project: <one sentence>. Current state: HANDOVER.md. Decisions: docs/decisions/.
 - Every user-visible change gets a CHANGELOG entry if the project has a CHANGELOG.md.
 
 ## Review rounds
-Developer -> CI -> reviewer -> at most 2 fix rounds. Then the PR gets `needs-human` and waits for the
+Developer -> CI -> reviewer -> at most 2 fix rounds (started automatically on `CHANGES_REQUESTED`). Then the PR gets `needs-human` and waits for the
 orchestrator or Daniel. Do not start a third round.
 
 ## Models (subscription quota is scarce)
