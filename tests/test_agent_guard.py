@@ -101,6 +101,17 @@ def test_denied_calls_mask_token_straddling_the_cut():
     assert out and "ghp_" not in out[0] and "c" * 5 not in out[0]
 
 
+def test_denied_command_prints_denied_calls(tmp_path, monkeypatch, capsys):
+    f = tmp_path / "exec.json"
+    f.write_text(json.dumps([{"type": "result", "permission_denials": [
+        {"tool_name": "Bash", "tool_input": {"command": "gh pr comment 1 --body \"$(cat x)\""}}]}]))
+    monkeypatch.setenv("EXEC_FILE", str(f))
+    assert g.main(["agent_guard.py", "denied"]) == 0
+    assert capsys.readouterr().out.startswith("Bash: gh pr comment 1")
+    monkeypatch.setenv("EXEC_FILE", str(tmp_path / "missing"))
+    assert g.main(["agent_guard.py", "denied"]) == 0 and capsys.readouterr().out.strip() == ""
+
+
 def test_report_without_denials_keeps_the_tail():
     body = g.report("dev", "no PR", "", json.dumps([{"type": "result", "permission_denials": []}]))
     assert "no denied tool calls found" in body and "permission_denials" in body

@@ -7,7 +7,8 @@ CLI (needs the gh CLI with GH_TOKEN and GH_REPO):
   agent_guard.py agent-pr AUTHOR [LABELS]    exit 0 if the PR is an agent PR (env AUTHOR_BOT, OWNER; LABELS comma list)
   agent_guard.py reviewed PR SHA [BODYHASH]  exit 0 if the approver app (env APPROVER_BOT) reviewed SHA (and BODYHASH)
   agent_guard.py body-hash PR                print the hash of the PR body (the reviewer repeats it as `body-hash: H`)
-  agent_guard.py silent dev ISSUE SINCE      after agent-dev: no PR for agent/ISSUE-* created at/after SINCE (UTC ISO) -> escalate
+  agent_guard.py denied                      print the denied tool calls of env EXEC_FILE (one line each; nothing if none)
+  agent_guard.py silent dev ISSUE SINCE     after agent-dev: no PR for agent/ISSUE-* created at/after SINCE (UTC ISO) -> escalate
   agent_guard.py silent fix PR HEAD_BEFORE [BODY_FILE]
                                              after agent-fix: PR head and body (BODY_FILE = body before the run) unchanged -> escalate
   agent_guard.py silent review PR SHA [BODYHASH]
@@ -339,6 +340,8 @@ def main(argv):
     elif cmd == "reviewed" and len(args) in (2, 3):
         bh = args[2] if len(args) == 3 else None
         return 0 if has_review(reviews_of(args[0]), os.environ.get("APPROVER_BOT", ""), args[1], bh) else 1
+    elif cmd == "denied" and not args:
+        print("\n".join(denied_calls(read_exec(os.environ.get("EXEC_FILE", "")))))
     elif cmd == "silent":
         return silent_guarded(args, owner)
     else:
