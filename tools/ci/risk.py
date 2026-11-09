@@ -23,6 +23,7 @@ import subprocess
 import sys
 
 SECURITY_FILES = (".github/rulesets/", ".github/CODEOWNERS", "tools/trusted_issues.py", "tools/agent_guard.py",
+                  "tools/exec_log.py",
                   "tools/ci/risk.py", ".github/workflows/risk.yml")
 INFRA_PATHS = (".github/", ".agents/", "tools/", "AGENTS.md", "CLAUDE.md", "Makefile", ".claude/", ".mcp.json")
 SECURITY_LINES = re.compile(
