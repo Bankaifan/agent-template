@@ -10,6 +10,10 @@ jobs:
       github.event.review.state == 'approved' &&
       github.event.pull_request.user.type == 'Bot' &&
       github.event.pull_request.user.login != 'dependabot[bot]'
+    # Two approvals in the same second start two runs for one PR; queue them per PR instead of racing.
+    concurrency:
+      group: automerge-${{ github.event.pull_request.number }}
+      cancel-in-progress: false
     runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 5
     steps:
@@ -42,4 +46,17 @@ jobs:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           GH_REPO: ${{ github.repository }}
           PR: ${{ github.event.pull_request.number }}
-        run: gh pr merge "$PR" --auto --rebase
+        run: |
+          # A second run on the same PR can find the merge already queued, running or done. That is success, not a failure mail.
+          if out=$(gh pr merge "$PR" --auto --rebase 2>&1); then
+            echo "$out"
+            exit 0
+          fi
+          # A failed state read is not evidence the PR is closed: it only counts when the state was read and is not OPEN.
+          state=$(gh pr view "$PR" --json state --jq .state 2>/dev/null) || state=""
+          if { [ -n "$state" ] && [ "$state" != "OPEN" ]; } || printf '%s\n' "$out" | grep -qiE 'Merge already in progress|already merged|not open'; then
+            echo "::notice::PR #$PR is ${state:-unknown}; nothing left to enable: $out"
+            exit 0
+          fi
+          echo "$out" >&2
+          exit 1
