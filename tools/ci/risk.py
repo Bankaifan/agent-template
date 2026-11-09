@@ -22,6 +22,9 @@ import re
 import subprocess
 import sys
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+import liveness
+
 SECURITY_FILES = (".github/rulesets/", ".github/CODEOWNERS", "tools/trusted_issues.py", "tools/agent_guard.py",
                   "tools/exec_log.py",
                   "tools/ci/risk.py", ".github/workflows/risk.yml")
@@ -230,7 +233,7 @@ def run_wait(number, sha, run=None):
     if norm(pr.get("user", {}).get("login")) != norm(owner):  # a label alone is not in the owner's inbox
         subprocess.run(["gh", "pr", "edit", str(number), "--add-reviewer", owner], check=False, capture_output=True)
     review = mine[-1].get("body") or ""
-    run("pr", "comment", str(number), "--body", build_note(sha, level, pr.get("body") or "", review))
+    liveness.post_comment("pr", number, build_note(sha, level, pr.get("body") or "", review), run)
     return 0
 
 
