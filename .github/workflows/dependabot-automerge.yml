@@ -41,10 +41,18 @@ jobs:
         with:
           app-id: ${{ secrets.AUTHOR_APP_ID }}
           private-key: ${{ secrets.AUTHOR_APP_KEY }}
+      # Metadata of the update (also for grouped PRs). If the action cannot read the PR from a
+      # workflow_run event it fails softly and the script falls back to the title (open: not verified).
+      - id: meta
+        continue-on-error: true
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
+        with:
+          github-token: ${{ github.token }}
       - name: Approve and auto-merge patch/minor, label majors
         env:
           APPROVER_TOKEN: ${{ steps.approver.outputs.token }}
           AUTHOR_TOKEN: ${{ steps.author.outputs.token }}
+          METADATA: ${{ steps.meta.outputs.updated-dependencies-json }}
         run: |
           set -euo pipefail
           # The PR whose head is the validated commit (workflow_run.pull_requests can be empty).
@@ -53,10 +61,12 @@ jobs:
           if [ -z "$pr" ]; then echo "no open PR with head $HEAD_SHA, nothing to do"; exit 0; fi
           number=$(jq -r .number <<<"$pr")
           title=$(jq -r .title <<<"$pr")
-          kind=$(python3 tools/dependabot_update_type.py "$title")
+          kind=$(python3 tools/dependabot_update_type.py "$title" "${METADATA:-}")
           echo "PR #$number: $kind"
           if [ "$kind" = "major" ]; then
             GH_TOKEN="$APPROVER_TOKEN" gh pr edit "$number" --add-label needs-human
+            # A label alone is not in Daniel's inbox: request his review (the author is dependabot).
+            GH_TOKEN="$APPROVER_TOKEN" gh pr edit "$number" --add-reviewer Bankaifan || echo "review request failed"
             exit 0
           fi
           GH_TOKEN="$APPROVER_TOKEN" gh pr review "$number" --approve --body "Dependabot $kind update, validate is green."

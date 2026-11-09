@@ -54,6 +54,9 @@ jobs:
           set -euo pipefail
           limit() {
             gh pr edit "$pr" --add-label needs-human
+            # A label alone is not in Daniel's inbox; skip if he is the author (cannot review own PR).
+            [ "$(gh pr view "$pr" --json author --jq .author.login)" = Bankaifan ] || \
+              gh pr edit "$pr" --add-reviewer Bankaifan || echo "review request failed"
             gh pr comment "$pr" --body "Review limit of 2 fix rounds reached. Needs the orchestrator or Daniel."
             echo "fix=false" >> "$GITHUB_OUTPUT"
           }
