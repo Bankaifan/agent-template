@@ -47,7 +47,7 @@ jobs:
             echo "Only HANDOVER.md changed: nothing to do"
             echo "skip=true" >> "$GITHUB_OUTPUT"
           fi
-      - uses: actions/checkout@v4  # zizmor: ignore[artipacked] this job pushes with the app token persisted by checkout
+      - uses: actions/checkout@v7  # zizmor: ignore[artipacked] this job pushes with the app token persisted by checkout
         if: steps.gate.outputs.skip != 'true'
         with:
           token: ${{ steps.app.outputs.token }}

@@ -64,7 +64,7 @@ jobs:
           esac
           echo "pr=$num" >> "$GITHUB_OUTPUT"
       # main only, never the PR head.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         if: steps.round.outputs.skip != 'true'
         with:
           persist-credentials: false
