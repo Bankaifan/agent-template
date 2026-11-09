@@ -2,20 +2,20 @@
 <!-- Overwrite, do not append. History lives in git and CHANGELOG. Max 60 lines. Written by the orchestrator at the end of each session. -->
 
 ## Goal
-Issue #7: automatic fix rounds, dependabot without AI, Daniel as sole author (rebase merge), CODEOWNERS, setup workflow.
+Issue #11: secure agent inputs and make triggers reliable.
 
 ## Current state
-PR for #7 is open (branch `agent/7-fix-rounds-dependabot-rebase`). Nothing here is verified end to end yet.
-See `docs/decisions/0002-fix-rounds-dependabot-rebase.md`.
+PR for #11 is open (branch `agent/11-secure-inputs-reliable-triggers`). Not verified end to end; only `make check` and pytest ran locally.
+See `docs/decisions/0004-secure-inputs-reliable-triggers.md`.
 
 ## Open decisions
-- Does `workflow_run` of a dependabot-triggered `validate` see the Actions secrets? If not, add the app secrets as Dependabot secrets.
-- Dependabot `github-actions` PRs touch `.github/`, so they need Daniel as code owner.
+- Author app permissions: Actions and Workflows read/write must be granted (untested).
+- Do `workflow_run` events fire for runs created by the author app, and does the orchestrator see them?
 
 ## Next 3 steps
-1. Daniel merges the PR, re-imports `.github/rulesets/main.json`, switches the repo to rebase merge only.
-2. Run the `setup` workflow to create labels and check the 5 secrets.
-3. First real run: agent PR with `CHANGES_REQUESTED`, and one dependabot PR.
+1. Daniel sets repo variables `AUTHOR_BOT` and `APPROVER_BOT`, grants the author app the new permissions, runs `setup`.
+2. Merge the PR.
+3. First real run: agent PR with green CI, one with red CI, one merge of a HANDOVER.md-only PR.
 
 ## Known traps
 - The ruleset file is not applied automatically; it must be re-imported.

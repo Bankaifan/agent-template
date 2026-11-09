@@ -30,8 +30,9 @@ Project: <one sentence>. Current state: HANDOVER.md. Decisions: docs/decisions/.
 - Every user-visible change gets a CHANGELOG entry if the project has a CHANGELOG.md.
 
 ## Review rounds
-Developer -> CI -> reviewer -> at most 2 fix rounds (started automatically on `CHANGES_REQUESTED`). Then the PR gets `needs-human` and waits for the
-orchestrator or Daniel. Do not start a third round.
+Developer -> CI -> reviewer (only on green CI) -> at most 2 fix rounds (started automatically on `CHANGES_REQUESTED`
+or on a red CI). Then the PR gets `needs-human` and waits for the orchestrator or Daniel. Do not start a third round.
+Only trusted input drives agents: issues by Daniel or labelled `approved`/`auto-ok` by Daniel; the reviewer never runs PR code.
 
 ## Models (subscription quota is scarce)
 Routine work haiku; core, security and architecture sonnet; opus only with Daniel's OK.

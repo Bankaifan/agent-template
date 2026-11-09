@@ -4,8 +4,11 @@ on:
     types: [opened, synchronize, reopened, edited]
   push:
     branches: [main]
+  # Fallback used by agent-dev / agent-fix when no run exists for a bot-pushed head SHA.
+  workflow_dispatch:
 permissions:
   contents: read
+  pull-requests: read
 jobs:
   validate:
     runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
@@ -31,4 +34,7 @@ jobs:
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_BODY: ${{ github.event.pull_request.body }}
+          # workflow_dispatch: check_pr_form reads title/body with `gh pr view`
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: make check

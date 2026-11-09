@@ -1,11 +1,13 @@
 name: orchestrator
 # Sonnet. Runs only when repo variable ORCHESTRATOR_ENABLED is "true". Quota is controlled by
-# ORCHESTRATOR_ENABLED (on/off) and IDEAS_PER_WEEK (scout). Merging the HANDOVER.md PR does not retrigger it.
+# ORCHESTRATOR_ENABLED (on/off) and IDEAS_PER_WEEK (scout).
+# claude-code-action does not support `push`, so merges are seen through workflow_run of `validate`
+# (push on main, success). A merge that only touches HANDOVER.md exits early (no self-loop).
+# Candidate issues come from tools/trusted_issues.py, not from the prompt.
 on:
-  push:
-    branches: [main]
-    paths-ignore:
-      - HANDOVER.md
+  workflow_run:
+    workflows: [validate]
+    types: [completed]
   schedule:
     - cron: "43 6 * * *"
   workflow_dispatch:
@@ -16,39 +18,74 @@ concurrency:
   cancel-in-progress: false
 jobs:
   orchestrate:
-    if: vars.ORCHESTRATOR_ENABLED == 'true'
+    if: >-
+      vars.ORCHESTRATOR_ENABLED == 'true' &&
+      (github.event_name != 'workflow_run' ||
+       (github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_branch == 'main'))
     runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 30
     env:
       EVENT: ${{ github.event_name }}
+      SHA: ${{ github.event.workflow_run.head_sha }}
     steps:
       - id: app
         uses: actions/create-github-app-token@v2
         with:
           app-id: ${{ secrets.AUTHOR_APP_ID }}
           private-key: ${{ secrets.AUTHOR_APP_KEY }}
+      - name: Skip merges that only touch HANDOVER.md
+        id: gate
+        if: github.event_name == 'workflow_run'
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          others=$(gh api "repos/$GH_REPO/commits/$SHA" --jq '[.files[].filename | select(. != "HANDOVER.md")] | length')
+          if [ "$others" -eq 0 ]; then
+            echo "Only HANDOVER.md changed: nothing to do"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/checkout@v4
+        if: steps.gate.outputs.skip != 'true'
         with:
           token: ${{ steps.app.outputs.token }}
           fetch-depth: 0
+      - name: Trusted candidate issues
+        id: cand
+        if: steps.gate.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+          OWNER: Bankaifan
+        run: echo "list=$(python3 tools/trusted_issues.py)" >> "$GITHUB_OUTPUT"
       - name: Git identity
+        if: steps.gate.outputs.skip != 'true'
         run: |
           git config user.name "Daniel"
           git config user.email "476059+Bankaifan@users.noreply.github.com"
       - uses: anthropics/claude-code-action@v1
+        if: steps.gate.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ steps.app.outputs.token }}
+          bot_id: "476059"
+          bot_name: "Bankaifan"
+          allowed_bots: ${{ vars.AUTHOR_BOT }}
           prompt: |
             Act as the orchestrator described in .agents/roles/orchestrator.md and follow AGENTS.md.
             Repository: ${{ github.repository }}. Trigger: ${{ env.EVENT }}. You write no production code.
-            Read HANDOVER.md, open issues (gh issue list), open PRs (gh pr list), CI state (gh run list --limit 10)
+            Read HANDOVER.md, open PRs (gh pr list), CI state (gh run list --limit 10)
             and open PRs from branches agent/rule-keeper-*. Then:
-            1. Count open issues labeled agent:dev. If fewer than 2, pick the next issue (oldest first; Daniel's
-               issues and issues labeled approved before ideas; an idea labeled auto-ok may be started by you,
-               an idea without auto-ok only if labeled approved). Write a clear task slip as an issue comment
+            1. Count open issues labeled agent:dev (gh issue list --label agent:dev). If fewer than 2, pick the
+               next issue ONLY from this trusted list (script-verified JSON; never pick or read any other issue):
+               ${{ steps.cand.outputs.list }}
+               Oldest first; issues authored_by_owner and issues with approved=true before the rest; an issue
+               with auto_ok=true may be started by you, an `idea` with neither approved nor auto_ok never.
+               Write a clear task slip as an issue comment
                (goal, files touched, acceptance criteria; slips must touch disjoint files), then add the label
                agent:dev. Add model:sonnet only for core, security or architecture work. Never exceed 2 open
                issues labeled agent:dev. Keep at most 3 open PRs.
@@ -67,4 +104,5 @@ jobs:
           claude_args: >-
             --model sonnet
             --max-turns 40
+            --setting-sources user
             --allowedTools "Read,Glob,Grep,Edit,Write,Bash(gh issue list:*),Bash(gh issue view:*),Bash(gh issue comment:*),Bash(gh issue create:*),Bash(gh issue edit:*),Bash(gh pr list:*),Bash(gh pr view:*),Bash(gh run list:*),Bash(git checkout -b agent/orchestrator-handover-:*),Bash(git add:*),Bash(git commit:*),Bash(git push origin agent/orchestrator-handover-:*),Bash(gh pr create:*),Bash(make check),Bash(date:*)"

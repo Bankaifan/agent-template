@@ -9,6 +9,6 @@ Implements one task slip as one PR.
   (`git reset --soft $(git merge-base origin/main HEAD)`, commit as Daniel, `git push --force-with-lease`).
 - PR: English ASCII title, body max 5 lines, `Closes #<issue>`.
 - Review feedback: started automatically on `CHANGES_REQUESTED`. Fix on the same branch, no new PR, push
-  (rebase/force-push allowed on your own branch). Max 2 rounds.
+  (rebase/force-push allowed on your own branch). Max 2 rounds. Also started by a red CI (`gh run view <id> --log-failed`).
 - Missing information: ask in the issue, mark facts as "open", never invent.
 - Output: the PR, nothing else. Do not repeat the diff.
