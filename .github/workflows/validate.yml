@@ -20,8 +20,10 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
-          python-version: "3.x"
+          python-version: ${{ vars.PYTHON_VERSION || '3.x' }}
       - name: Install pinned tools
+        env:
+          EXTRA_INSTALL: ${{ vars.EXTRA_INSTALL }}
         run: bash tools/ci/install_tools.sh
       - name: Secret scan
         uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
