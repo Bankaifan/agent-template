@@ -12,6 +12,7 @@ Leitidee: Regeln, die ein Skript prüfen kann, gehören in CI, nicht in Prompts.
 - `.github/CODEOWNERS`: `@Bankaifan` besitzt `AGENTS.md`, `CLAUDE.md`, `.agents/`, `.github/`, `tools/check/` (Ruleset verlangt Code-Owner-Review).
 - Wöchentlicher Rule Keeper (ein PR mit Regelvorschlägen, Daniel merged) und täglicher `branch-cleanup` (löscht veraltete `agent/*`-Branches, Dry-Run bei manuellem Start).
 - Kontingent knapp: höchstens 2 Agenten-Jobs gleichzeitig, Modell je Rolle (haiku Routine, sonnet Kern und Review).
+- Autonomer `orchestrator` (Push auf `main`, täglich, manuell; nur mit Variable `ORCHESTRATOR_ENABLED=true`): schreibt Aufträge, hält max. 2 `agent:dev`-Issues, bearbeitet `needs-human`-PRs, aktualisiert HANDOVER.md per PR und pflegt das Issue "Weekly summary". Wöchentlicher `scout` (haiku) eröffnet höchstens `IDEAS_PER_WEEK` (Standard 3, 0 = aus) `idea`-Issues; kleine bekommen `auto-ok`, der Rest wartet auf Daniels Label `approved`. Beide Variablen steuern das Kontingent.
 
 ## Einrichtung
 

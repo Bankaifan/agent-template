@@ -1,0 +1,70 @@
+name: orchestrator
+# Sonnet. Runs only when repo variable ORCHESTRATOR_ENABLED is "true". Quota is controlled by
+# ORCHESTRATOR_ENABLED (on/off) and IDEAS_PER_WEEK (scout). Merging the HANDOVER.md PR does not retrigger it.
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - HANDOVER.md
+  schedule:
+    - cron: "43 6 * * *"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: orchestrator
+  cancel-in-progress: false
+jobs:
+  orchestrate:
+    if: vars.ORCHESTRATOR_ENABLED == 'true'
+    runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 30
+    env:
+      EVENT: ${{ github.event_name }}
+    steps:
+      - id: app
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.AUTHOR_APP_ID }}
+          private-key: ${{ secrets.AUTHOR_APP_KEY }}
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ steps.app.outputs.token }}
+          fetch-depth: 0
+      - name: Git identity
+        run: |
+          git config user.name "Daniel"
+          git config user.email "476059+Bankaifan@users.noreply.github.com"
+      - uses: anthropics/claude-code-action@v1
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ steps.app.outputs.token }}
+          prompt: |
+            Act as the orchestrator described in .agents/roles/orchestrator.md and follow AGENTS.md.
+            Repository: ${{ github.repository }}. Trigger: ${{ env.EVENT }}. You write no production code.
+            Read HANDOVER.md, open issues (gh issue list), open PRs (gh pr list), CI state (gh run list --limit 10)
+            and open PRs from branches agent/rule-keeper-*. Then:
+            1. Count open issues labeled agent:dev. If fewer than 2, pick the next issue (oldest first; Daniel's
+               issues and issues labeled approved before ideas; an idea labeled auto-ok may be started by you,
+               an idea without auto-ok only if labeled approved). Write a clear task slip as an issue comment
+               (goal, files touched, acceptance criteria; slips must touch disjoint files), then add the label
+               agent:dev. Add model:sonnet only for core, security or architecture work. Never exceed 2 open
+               issues labeled agent:dev. Keep at most 3 open PRs.
+            2. For each PR labeled needs-human: if its issue slip was not rewritten yet, rewrite the slip once
+               (new issue comment starting with "Rewritten slip:") and re-add agent:dev; otherwise comment in the
+               issue asking Daniel for a decision. Do not touch it a third time.
+            3. If Trigger is schedule or workflow_dispatch: open or update ONE issue titled "Weekly summary"
+               (find it with gh issue list --search "Weekly summary in:title"): merged PRs of the last 7 days, items
+               waiting for Daniel (needs-human, rule-keeper PRs, ideas without approved), open ideas.
+            4. If HANDOVER.md is stale: run `gh pr list --state open --search "head:agent/orchestrator-handover"`
+               and skip if one is open. Else run `date +%F` on its own, create branch
+               agent/orchestrator-handover-<that date> from main (literal date, no shell substitution), overwrite
+               HANDOVER.md (max 60 lines, facts you measured, unknowns marked "open"), run `make check`,
+               commit as Daniel (no Co-authored-by), push and open ONE PR (English, ASCII title, body max 5 lines).
+            Never push to main, never merge, no secrets in comments. Finish with a short status report.
+          claude_args: >-
+            --model sonnet
+            --max-turns 40
+            --allowedTools "Read,Glob,Grep,Edit,Write,Bash(gh issue list:*),Bash(gh issue view:*),Bash(gh issue comment:*),Bash(gh issue create:*),Bash(gh issue edit:*),Bash(gh pr list:*),Bash(gh pr view:*),Bash(gh run list:*),Bash(git checkout -b agent/orchestrator-handover-:*),Bash(git add:*),Bash(git commit:*),Bash(git push origin agent/orchestrator-handover-:*),Bash(gh pr create:*),Bash(make check),Bash(date:*)"

@@ -38,7 +38,7 @@ jobs:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          for l in agent:dev agent:review model:sonnet review:1 review:2 needs-human; do
+          for l in agent:dev agent:review model:sonnet review:1 review:2 needs-human idea auto-ok approved; do
             gh label create "$l" --force
           done
       - name: Fail if secrets are missing
