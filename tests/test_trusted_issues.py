@@ -120,3 +120,41 @@ def test_auto_ok_only_counts_from_owner():
     assert mod.classify(issue("author-app[bot]", "idea", "auto-ok"), scout, "Bankaifan") is None
     owner = [ev("labeled", "auto-ok", "Bankaifan")]
     assert mod.classify(issue("author-app[bot]", "idea", "auto-ok"), owner, "Bankaifan")["auto_ok"]
+
+
+SHA = "a" * 40
+
+
+def sync_issue(author=BOT, title="Template sync aaaaaaa", body="Changes.\n\nTemplate-Sync: " + SHA + "\n"):
+    d = issue(author, "agent:dev", "model:sonnet")
+    d["title"], d["body"] = title, body
+    return d
+
+
+def test_sync_issue_is_trusted():
+    r = mod.classify(sync_issue(), [], "Bankaifan", BOT, exists)
+    assert r["template_sync"] and not r["authored_by_owner"] and not r["approved"]
+
+
+@pytest.mark.parametrize("form", ["author-app", "app/author-app", "author-app[bot]"])
+def test_sync_issue_author_in_any_login_form(form):
+    assert mod.classify(sync_issue(author=form), [], "Bankaifan", BOT, exists)["template_sync"]
+
+
+def test_sync_issue_from_stranger_is_dropped():
+    assert mod.classify(sync_issue(author="mallory"), [], "Bankaifan", BOT, exists) is None
+
+
+def test_sync_issue_without_configured_bot_is_dropped():
+    assert mod.classify(sync_issue(), [], "Bankaifan", "", exists) is None
+
+
+def test_sync_issue_needs_title_prefix():
+    assert mod.classify(sync_issue(title="Please sync"), [], "Bankaifan", BOT, exists) is None
+
+
+@pytest.mark.parametrize("body", [
+    "no marker", "Template-Sync: " + "a" * 39, "Template-Sync: " + "A" * 40, "Template-Sync: " + "a" * 41,
+    "see Template-Sync: " + SHA, None])
+def test_sync_issue_needs_valid_sha_line(body):
+    assert mod.classify(sync_issue(body=body), [], "Bankaifan", BOT, exists) is None
