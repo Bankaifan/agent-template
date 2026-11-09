@@ -2,6 +2,7 @@
 
 CLI (gh CLI with GH_TOKEN and GH_REPO; the model step is not here, the verdict is data in a JSON file):
   unblock.py gate KIND NUMBER      exit 0 = the unblocker may look at it, 1 = leave it to Daniel (reason on stdout)
+  unblock.py fetch KIND NUMBER DIR  write masked, capped untrusted input to DIR/untrusted/*.txt for the model step
   unblock.py apply KIND NUMBER FILE  apply the verdict in FILE ({"class": 1|2|3, "reason", "comment", "issue", "note"})
 Environment: OWNER (default Bankaifan), AUTHOR_BOT, APPROVER_BOT, RUN_URL.
 
@@ -34,6 +35,7 @@ UNBLOCK = "unblock:1"
 NEEDS_HUMAN = "needs-human"
 MAX_COMMENT = 600
 MAX_TITLE = 100
+MAX_UNTRUSTED = 20000  # chars per untrusted input file
 RISK_SECURITY = "risk:security"
 _FORBIDDEN = re.compile(
     r"allowedtools|allowed-tools|pip3? install|-m pip|npm (?:install|i)\b|apt(?:-get)? install|brew install|"
@@ -97,6 +99,25 @@ def forbidden(text):
     if m:
         return m.group(0)
     return None if _SAFE_SHAPE.fullmatch(text) else "unusual characters"
+
+
+def outgoing_strings(verdict):
+    """Every string that can leave the unblocker (reason, comment, note, issue title and body, anything nested)."""
+    if isinstance(verdict, str):
+        yield verdict
+    elif isinstance(verdict, dict):
+        for k, v in verdict.items():
+            yield from outgoing_strings(k)
+            yield from outgoing_strings(v)
+    elif isinstance(verdict, (list, tuple)):
+        for v in verdict:
+            yield from outgoing_strings(v)
+
+
+def check_outgoing(verdict):
+    """The single secret filter for all outgoing text: ValueError if any string holds a token shape."""
+    if any(exec_log.has_secret(s) for s in outgoing_strings(verdict)):
+        raise ValueError("verdict holds a secret-looking token; refused")
 
 
 def validate(verdict):
@@ -181,7 +202,9 @@ def apply(kind, number, verdict, owner, risk_security=False, run=gh, author_bot=
     """Apply a validated verdict. Returns the class that was carried out (1, 2, 3) or 0 if nothing changed.
     The caller runs `gate` first, but the cheap checks (open, needs-human, agent PR, risk:security) are repeated
     here from the live item, so a wrong caller cannot take a block away from Daniel."""
+    check_outgoing(verdict)
     v = validate(verdict)
+    check_outgoing(v)
     info = _info(run, kind, number)
     labels = {x["name"] for x in info["labels"]}
     if str(info.get("state", "")).upper() != "OPEN" or NEEDS_HUMAN not in labels:
@@ -231,6 +254,32 @@ def _owner_note(run, kind, number, owner, v, note):
     return 3
 
 
+def _cap(text):
+    return exec_log.mask(text or "")[:MAX_UNTRUSTED]
+
+
+def fetch(kind, number, workspace, run=gh):
+    """Write the untrusted text of an item as masked, capped files in WORKSPACE/untrusted/. The model step reads
+    these files and never calls gh. Returns the file paths."""
+    fields = "title,body,comments" + (",files" if kind == "pr" else "")
+    info = json.loads(run(kind, "view", str(number), "--json", fields))
+    comments = "\n\n---\n\n".join(
+        f"{(c.get('author') or {}).get('login')} {c.get('createdAt')}:\n{c.get('body')}" for c in info.get("comments") or [])
+    files = {"item.txt": f"Title: {info.get('title')}\n\n{info.get('body')}", "comments.txt": comments}
+    if kind == "pr":
+        files["files.txt"] = "\n".join(f.get("path", "") for f in info.get("files") or [])
+        files["diff.txt"] = run("pr", "diff", str(number))
+    out = os.path.join(workspace, "untrusted")
+    os.makedirs(out, exist_ok=True)
+    paths = []
+    for name, text in files.items():
+        path = os.path.join(out, name)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(_cap(text))
+        paths.append(path)
+    return paths
+
+
 def main(argv):
     owner = os.environ.get("OWNER", OWNER_DEFAULT)
     args = argv[1:]
@@ -242,6 +291,9 @@ def main(argv):
             return 0
         text = exec_log.read_exec(args[3])
         print(apply(kind, number, json.loads(text), owner, author_bot=os.environ.get("AUTHOR_BOT", "")))
+        return 0
+    if len(args) == 4 and args[0] == "fetch" and args[2].isdigit() and args[1] in ("pr", "issue"):
+        print("\n".join(fetch(args[1], args[2], args[3])))
         return 0
     if len(args) == 3 and args[0] == "gate" and args[2].isdigit() and args[1] in ("pr", "issue"):
         ok, why = live_gate(args[1], args[2], owner)

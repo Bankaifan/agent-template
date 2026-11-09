@@ -1,4 +1,5 @@
 import json
+import pathlib
 
 import pytest
 import unblock as u
@@ -202,6 +203,54 @@ def test_class_2_with_forbidden_wording_becomes_class_3():
 def test_mentions_in_model_text_are_refused(verdict):
     with pytest.raises(ValueError):
         u.validate(verdict)
+
+
+TOKENS = ["ghp_" + "a" * 36, "github_pat_" + "B" * 30, "sk-ant-" + "c" * 30]
+FIELDS = [
+    ("reason", lambda t: {"class": 1, "comment": "ok", "reason": "saw " + t}),
+    ("comment", lambda t: {"class": 1, "comment": "saw " + t}),
+    ("note", lambda t: {"class": 3, "note": "Hallo Daniel, Frage: ja? " + t}),
+    ("issue title", lambda t: {"class": 2, "issue": {"title": "T " + t, "body": "b"}}),
+    ("issue body", lambda t: {"class": 2, "issue": {"title": "T", "body": "b " + t}}),
+]
+
+
+@pytest.mark.parametrize("token", TOKENS)
+@pytest.mark.parametrize("field,make", FIELDS, ids=[f for f, _ in FIELDS])
+def test_apply_refuses_token_shape_in_every_field(field, make, token):
+    f = Fake()
+    with pytest.raises(ValueError, match="secret"):
+        u.apply("pr", 7, make(token), OWNER, run=f, author_bot=BOT)
+    assert f.calls == []  # nothing was read or posted
+
+
+def test_reason_token_beyond_validate_cut_is_still_refused():
+    with pytest.raises(ValueError, match="secret"):
+        u.apply("pr", 7, {"class": 1, "comment": "ok", "reason": "x" * 400 + TOKENS[0]}, OWNER, run=Fake())
+
+
+def test_fetch_writes_masked_capped_files(tmp_path):
+    token = TOKENS[0]
+
+    def run(*a):
+        if a[:2] == ("pr", "diff"):
+            return "+ " + token + "\n" + "d" * (u.MAX_UNTRUSTED + 50)
+        return json.dumps({"title": "T", "body": "body " + token, "files": [{"path": "a.py"}],
+                           "comments": [{"author": {"login": "x"}, "createdAt": "t", "body": "c " + token}]})
+
+    paths = u.fetch("pr", 7, str(tmp_path), run=run)
+    assert sorted(p.rsplit("/", 1)[1] for p in paths) == ["comments.txt", "diff.txt", "files.txt", "item.txt"]
+    for p in paths:
+        text = pathlib.Path(p).read_text(encoding="utf-8")
+        assert token not in text and len(text) <= u.MAX_UNTRUSTED
+    assert "***" in (tmp_path / "untrusted" / "item.txt").read_text()
+
+
+def test_fetch_issue_has_no_diff(tmp_path):
+    def run(*a):
+        return json.dumps({"title": "T", "body": "b", "comments": []})
+
+    assert [p.rsplit("/", 1)[1] for p in u.fetch("issue", 5, str(tmp_path), run=run)] == ["item.txt", "comments.txt"]
 
 
 def test_apply_cli_rejects_unknown_kind():
