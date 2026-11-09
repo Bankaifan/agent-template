@@ -48,6 +48,25 @@ jobs:
           for l in agent:dev agent:review model:sonnet review:1 review:2 review:3 needs-human idea auto-ok approved; do
             gh label create "$l" --force
           done
+      - name: Report Dependabot secrets (best effort)
+        if: steps.check.outputs.author == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if ! names=$(gh api "/repos/$GH_REPO/dependabot/secrets" --jq '.secrets[].name' 2>/dev/null); then
+            echo "::warning::Cannot read Dependabot secrets (the author app lacks that permission). Check Settings > Secrets and variables > Dependabot by hand: agent-smoke fails on Dependabot PRs without them."
+            exit 0
+          fi
+          missing=""
+          for name in CLAUDE_CODE_OAUTH_TOKEN AUTHOR_APP_ID AUTHOR_APP_KEY APPROVER_APP_ID APPROVER_APP_KEY; do
+            printf '%s\n' "$names" | grep -qx "$name" || missing="$missing $name"
+          done
+          if [ -n "$missing" ]; then
+            echo "::warning::Missing Dependabot secrets:$missing (agent-smoke fails on Dependabot PRs until set)"
+          else
+            echo "All five Dependabot secrets exist."
+          fi
       - name: Fail if secrets or variables are missing
         if: steps.check.outputs.missing != '' || steps.check.outputs.missing_vars != ''
         env:

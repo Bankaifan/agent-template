@@ -23,4 +23,13 @@ Leitidee: Regeln, die ein Skript prüfen kann, gehören in CI, nicht in Prompts.
 5. Workflow `setup` manuell starten: legt die Labels an und listet fehlende Secrets (nur Namen).
 6. Ersten Auftrag als Issue mit Label `agent:dev` anlegen (oder Kommentar `/dev`; `model:sonnet` für Kernarbeit).
 
+## Grün heißt: die Agenten funktionieren auch
+
+Bei PRs, die `.github/workflows/`, `.github/actions/` oder `tools/ci/` ändern, erzeugt der Pflicht-Check `agent-smoke`
+mit den Workflow-Versionen des PRs beide App-Tokens, ruft damit `gh api /installation/repositories` auf und prüft, ob das
+Claude-OAuth-Secret existiert (kein Modellaufruf). Ohne solche Pfade wird er übersprungen (= Erfolg). Dependabot-PRs
+bekommen keine Actions-Secrets: die fünf Secrets (und die Variablen `AUTHOR_BOT`, `APPROVER_BOT`) auch als
+**Dependabot-Secrets** anlegen, sonst schlägt `agent-smoke` dort mit klarer Meldung fehl. `setup` meldet, ob sie existieren
+(best effort). Ruleset danach neu importieren.
+
 Details und Grenzen: [README.md](README.md).
