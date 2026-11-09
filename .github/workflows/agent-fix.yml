@@ -280,4 +280,6 @@ jobs:
           git fetch --depth=1 origin "$DEFAULT_BRANCH"
           mkdir -p "$RUNNER_TEMP/guard"
           git archive FETCH_HEAD tools | tar -x -C "$RUNNER_TEMP/guard"
+          # Rule: the guard comes from main, this call from the PR branch. `silent` ignores extra trailing args and a
+          # usage error escalates ("guard error"); only ever append args, never reorder or remove them.
           python3 "$RUNNER_TEMP/guard/tools/agent_guard.py" silent fix "$PR" "$HEAD_BEFORE" "$RUNNER_TEMP/body-before.txt"
