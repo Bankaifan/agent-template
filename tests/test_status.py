@@ -364,3 +364,10 @@ def test_added_dates_only_for_never_run_workflows():
 
     assert st.liveness.added_dates(succ, run) == {"scout.yml": "2026-11-09T10:00:00Z"}
     assert len(calls) == 1 and "actions/workflows/scout.yml" in calls[0][1]
+
+
+def test_merged_rows_last_24h_with_risk_label():
+    now = datetime.datetime(2026, 11, 10, 12, 0, tzinfo=datetime.UTC)
+    merged = [{"number": 1, "title": "new", "mergedAt": "2026-11-10T08:00:00Z", "labels": [{"name": "risk:security"}]},
+              {"number": 2, "title": "old", "mergedAt": "2026-11-08T08:00:00Z", "labels": []}]
+    assert st.merged_rows(merged, now) == ["- #1 new (risk:security)"]
