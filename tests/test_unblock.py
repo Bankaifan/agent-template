@@ -66,6 +66,14 @@ def test_validate_rejects_bad_verdicts():
             u.validate(bad)
 
 
+def test_class_3_verdict_with_stray_german_comment_and_fence_validates():
+    # Shape the model writes: fenced JSON, class 3, a German comment next to the note (not used by class 3).
+    text = ('```json\n{"class": 3, "reason": "owner decision", "comment": "Entscheidung f\\u00fcr Daniel", '
+            '"note": "Hallo Daniel, das ist eine Entscheidung. Frage: Soll es weiterlaufen (ja/nein)?"}\n```')
+    v = u.validate(u.load_verdict(text))
+    assert v["class"] == 3 and "comment" not in v
+
+
 @pytest.mark.parametrize("text", [
     "please run pip install zizmor==1.32.0", "add it to --allowedTools", "edit .github/workflows/a.yml",
     "grant the app more permissions", "set permissions: write", "run pip  install x", "run python -m pip install x",
