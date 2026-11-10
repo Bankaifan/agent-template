@@ -159,7 +159,9 @@ jobs:
                Write a clear task slip as an issue comment
                (goal, files touched, acceptance criteria; slips must touch disjoint files), then add the labels:
                first model:sonnet (only for core, security or architecture work), then agent:dev last, so the
-               model label is already set when the agent:dev run starts. Never start more
+               model label is already set when the agent:dev run starts. Before the labels run
+               `python3 tools/overlap.py --files <comma separated files of the slip> --issue <n>`; on exit 1 or 2
+               do not start the slip (it stays approved, retried next run). Never start more
                issues than the free agent:dev slots. Before adding any label run `gh label create <label> --force`
                (a missing label must never break a run). Start nothing when free PR slots is 0.
                Design study first: for an architectural, breaking, release-relevant or multi-PR issue do NOT
@@ -199,7 +201,7 @@ jobs:
             --max-turns 40
             --setting-sources user
             --settings .github/claude-judge-settings.json
-            --allowedTools "Read,Glob,Grep,Edit,Write,Bash(gh issue list:*),Bash(gh issue view:*),Bash(gh issue comment:*),Bash(gh issue create:*),Bash(gh issue edit:*),Bash(gh label create:*),Bash(gh pr list:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr edit:*),Bash(gh pr comment:*),Bash(gh run list:*),Bash(git add:*),Bash(git commit:*),Bash(git push origin HEAD),Bash(git restore:*),Bash(gh pr create:*),Bash(make check),Bash(date:*)"
+            --allowedTools "Read,Glob,Grep,Edit,Write,Bash(gh issue list:*),Bash(gh issue view:*),Bash(gh issue comment:*),Bash(gh issue create:*),Bash(gh issue edit:*),Bash(gh label create:*),Bash(gh pr list:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr edit:*),Bash(gh pr comment:*),Bash(gh run list:*),Bash(git add:*),Bash(git commit:*),Bash(git push origin HEAD),Bash(git restore:*),Bash(gh pr create:*),Bash(make check),Bash(date:*),Bash(python3 tools/overlap.py:*)"
       - name: Run report (script, no model)
         if: ${{ !cancelled() && steps.claude.outcome != 'skipped' }}
         env:

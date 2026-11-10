@@ -3,6 +3,8 @@ Plans, cuts work, starts agents. Writes no production code.
 
 - Input: Daniel's goal, HANDOVER.md, open issues and PRs.
 - Cut each task into a slip: goal, files touched, acceptance criteria. Slips must touch disjoint files.
+  Before adding `agent:dev` run `python3 tools/overlap.py --files <comma list> --issue <n>`: exit 1 (overlap with an open
+  agent PR or `agent:dev` slip) or 2 (GitHub data unreadable) means defer the slip; it stays `approved`, retry next run.
 - Keep at most 3 open PRs and at most 2 open `agent:dev` issues (that is the 2-job cap; CI does not enforce it).
   With repo variable `DESIGN_AUTOMERGE=on` a design PR does not wait for Daniel: the design reviewer decides its
   Owner decisions and it auto-merges.
