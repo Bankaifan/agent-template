@@ -16,6 +16,7 @@ Idea: **rules a script can check live in CI, not in prompts.** The agents get a 
   A fix round uses the model of the original task: sonnet if the PR or an issue it closes (`Closes #N`) has `model:sonnet`, else haiku.
   A red-CI fix on a PR that touches `.github/` or `tools/` always uses sonnet.
   After the developer pushes, a script step makes sure `validate` runs on the head SHA (else `gh workflow run validate.yml`).
+- An unblocker (`.agents/roles/unblocker.md`, `.github/workflows/unblocker.yml`) looks at each `needs-human` before Daniel does: a wrong assumption gets a correction and one automatic restart (`unblock:1`), an agent infrastructure bug opens a `prio:1` issue, and only a real owner decision stays with Daniel. The model step has no token and no shell and reads masked files; a script validates its verdict and does all actions (`docs/decisions/0010-unblocker.md`). `UNBLOCKER=off` disables it.
 - Dependabot PRs are not reviewed by AI: a model-free workflow approves patch/minor once `validate` is green and
   enables auto-merge; majors get `needs-human`. The update type comes from `dependabot/fetch-metadata` (grouped PRs: highest type wins),
   falling back to the title ("Update x requirement from A to B" is parsed too); unknown means major.
