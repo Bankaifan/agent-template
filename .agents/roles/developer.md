@@ -11,6 +11,8 @@ Implements one task slip as one PR.
   (`git reset --soft $(git merge-base origin/main HEAD)`, commit as Daniel, `git push --force-with-lease`).
 - Tools: Read/Edit/Write/Glob/Grep, Bash only for git, make, python3, pytest, ruff, actionlint, zizmor and a few `gh`
   calls (issue view/comment, pr create/view). Read files with Read/Glob/Grep, not `ls`/`cat`/`find`/`cd ... &&` in Bash.
+- One simple command per Bash call: no helper scripts, pipes, `&&`, `;`, `$(...)` or redirects (denied by the allow list).
+  Port files with Read/Write/Edit or one plain `cp <src> <dst>` per file.
 - If a needed action is denied, do not stop silently: `gh issue comment` which call was denied and why you need it.
 - Never edit HANDOVER.md (orchestrator only); put your notes in the PR body.
 - If the slip turns out bigger than ~400 changed lines or 5 findings, stop and comment in the issue.
