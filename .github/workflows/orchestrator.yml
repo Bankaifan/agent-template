@@ -7,12 +7,21 @@ name: orchestrator
 # A label event (`approved` or `auto-ok`) starts it at once; tools/orchestrator_gate.py checks that Daniel set
 # the label and skips a run that follows another run within 3 minutes (one run per burst of labels).
 # Skipped runs are expected: GitHub lists every label event, and the job-level `if` skips the ones that are not gated.
+# Design 0007 (Refs #125): more events (issues opened/edited/closed, comments, PRs, reviews) are accepted only when repo
+# variable ORCHESTRATOR_EVENTS is "on" (default off). Then every event run waits 60 s (burst), tools/orchestrator_gate.py
+# decides on live data and tools/prefilter.py maps the event to a reason; no model runs without a matching reason.
 on:
   workflow_run:  # zizmor: ignore[dangerous-triggers] only successful validate runs on main reach the job (see the if condition); no PR code
     workflows: [validate]
     types: [completed]
   issues:
-    types: [labeled]
+    types: [opened, edited, closed, labeled]
+  issue_comment:
+    types: [created]
+  pull_request_target:  # zizmor: ignore[dangerous-triggers] the checkout is the default branch, PR code is never checked out or run; the gate checks the sender
+    types: [opened, closed]
+  pull_request_review:
+    types: [submitted]
   schedule:
     - cron: "43 6 * * *"
   workflow_dispatch:
@@ -23,8 +32,12 @@ jobs:
     if: >-
       vars.ORCHESTRATOR_ENABLED == 'true' &&
       ((github.event_name == 'issues' &&
-        contains(fromJSON('["approved","auto-ok"]'), github.event.label.name)) ||
-       (github.event_name != 'issues' &&
+        ((github.event.action == 'labeled' &&
+          contains(fromJSON('["approved","auto-ok"]'), github.event.label.name)) ||
+         (github.event.action != 'labeled' && vars.ORCHESTRATOR_EVENTS == 'on'))) ||
+       (contains(fromJSON('["issue_comment","pull_request_target","pull_request_review"]'), github.event_name) &&
+        vars.ORCHESTRATOR_EVENTS == 'on') ||
+       (contains(fromJSON('["schedule","workflow_dispatch","workflow_run"]'), github.event_name) &&
         (github.event_name != 'workflow_run' ||
          (github.event.workflow_run.conclusion == 'success' &&
           github.event.workflow_run.event == 'push' &&
@@ -47,6 +60,10 @@ jobs:
           for n in AUTHOR_CLIENT_ID AUTHOR_BOT; do
             [ -n "${!n}" ] || { echo "::error::Repo variable $n is not set (Settings > Secrets and variables > Actions > Variables)."; exit 1; }
           done
+      # Burst debounce (design 0007 4.4): let the events of a burst land; the gate then skips this run if a newer one is pending.
+      - name: Wait for the rest of a burst (event runs only)
+        if: github.event_name != 'schedule' && github.event_name != 'workflow_dispatch' && github.event_name != 'workflow_run' && !(github.event_name == 'issues' && github.event.action == 'labeled')
+        run: sleep 60
       - id: app
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
@@ -70,18 +87,30 @@ jobs:
           SENDER: ${{ github.event.sender.login }}
           OWNER: Bankaifan
           RUN_ID: ${{ github.run_id }}
+          EVENT_ACTION: ${{ github.event.action }}
+          NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}
+          COMMENT_ID: ${{ github.event.comment.id }}
+          REVIEW_ID: ${{ github.event.review.id }}
+          EVENT_AT: ${{ github.event.comment.created_at || github.event.review.submitted_at || github.event.issue.updated_at || github.event.pull_request.updated_at }}
+          AUTHOR_BOT: ${{ vars.AUTHOR_BOT }}
+          APPROVER_BOT: ${{ vars.APPROVER_BOT }}
+          ORCHESTRATOR_EVENTS: ${{ vars.ORCHESTRATOR_EVENTS }}
+          STATUS_ISSUE: "57"
         run: |
           set -eu
-          if [ "$EVENT" = issues ]; then
-            run=$(python3 tools/orchestrator_gate.py)
-            if [ "$run" != true ]; then echo "Label event not gated: nothing to do"; echo "skip=true" >> "$GITHUB_OUTPUT"; fi
-          elif [ "$EVENT" = workflow_run ]; then
-            others=$(gh api "repos/$GH_REPO/commits/$SHA" --jq '[.files[].filename | select(. != "HANDOVER.md")] | length')
-            if [ "$others" -eq 0 ]; then
-              echo "Only HANDOVER.md changed: nothing to do"
-              echo "skip=true" >> "$GITHUB_OUTPUT"
-            fi
-          fi
+          case "$EVENT" in
+            issues|issue_comment|pull_request_target|pull_request_review)
+              run=$(python3 tools/orchestrator_gate.py)
+              if [ "$run" != true ]; then echo "Event not gated: nothing to do"; echo "skip=true" >> "$GITHUB_OUTPUT"; fi
+              ;;
+            workflow_run)
+              others=$(gh api "repos/$GH_REPO/commits/$SHA" --jq '[.files[].filename | select(. != "HANDOVER.md")] | length')
+              if [ "$others" -eq 0 ]; then
+                echo "Only HANDOVER.md changed: nothing to do"
+                echo "skip=true" >> "$GITHUB_OUTPUT"
+              fi
+              ;;
+          esac
       - name: Trusted candidate issues
         id: cand
         if: steps.gate.outputs.skip != 'true'
@@ -100,6 +129,14 @@ jobs:
           GH_REPO: ${{ github.repository }}
           TRUSTED: ${{ steps.cand.outputs.list }}
           APPROVER_BOT: ${{ vars.APPROVER_BOT }}
+          # Per-event reason (tools/prefilter.py): the table rows know pull_request, not pull_request_target.
+          EVENT: ${{ github.event_name == 'pull_request_target' && 'pull_request' || github.event_name }}
+          EVENT_ACTION: ${{ github.event.action }}
+          EVENT_NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}
+          EVENT_SENDER: ${{ github.event.sender.login }}
+          EVENT_MERGED: ${{ github.event.pull_request.merged }}
+          REVIEW_STATE: ${{ github.event.review.state }}
+          REVIEWER: ${{ github.event.review.user.login }}
           # Parallel work caps; the template itself runs wider than a fresh project.
           MAX_DEV: ${{ vars.MAX_DEV || (github.repository == 'Bankaifan/agent-template' && '4' || '2') }}
           MAX_PRS: ${{ vars.MAX_PRS || (github.repository == 'Bankaifan/agent-template' && '5' || '3') }}
