@@ -157,6 +157,16 @@ def test_limit_prs_picks_only_unhandled_review3():
     assert st.limit_prs([stuck], [{"workflowName": "agent-fix"}], NOW) == []
 
 
+def test_limit_hand_over_when_code_approved_but_security_changes():
+    sha = "abcdef1234567"
+    verdict = [{"author": {"login": "approver"}, "body": f"security-review: changes {sha}"}]
+    masked = pr(1, labels=["review:3", "risk:security"], reviewDecision="APPROVED", headRefOid=sha, comments=verdict)
+    assert st.limit_prs([masked], [], NOW, "app/approver") == [masked]
+    # an approval of a risk:security head without a `changes` verdict still counts as approved
+    clean = pr(2, labels=["review:3", "risk:security"], reviewDecision="APPROVED", headRefOid=sha, comments=[])
+    assert st.limit_prs([clean], [], NOW, "app/approver") == []
+
+
 def test_stuck_limit_hands_over_or_escalates(monkeypatch):
     monkeypatch.setattr(st, "handle_limit", lambda n, o, run: "restarted")
     assert st.handle_stuck_limit(pr(7), "Bankaifan", Recorder()) == "handed over (restarted)"
