@@ -8,8 +8,9 @@ Test scoping (#135, design 0009): implementation issues #269-#273; #269 script m
 
 ## Current state (measured 2026-11-10)
 - #290 (prefilter per event, #239) merged: commit 2c296ae on main. Open PR list not re-measured (gh pr list denied in this run).
-- Free agent:dev slots 2, free PR slots 3 at start of this run.
-- Started this run: #253 (failure watch 3/4). Slip comment written, overlap check passed, model:sonnet and agent:dev set.
+- Open PRs: #292 (failure watch 3/4, #253, review:1), #294 (empty changes verdict, #292 issue). Free agent:dev slots 3, free PR slots 3 at start of this run.
+- Started this run: #241 (orchestrator events 5/5, docs). Slip written, overlap check passed, agent:dev set.
+- Orchestrator events 1-4 (#237-#240) are closed.
 - Merged: answer receiver (#283 area), orchestrator gate, failure watch module (#287), friction script (#259), prefilter per event (#290).
 - Main CI: status/validate runs queued or in progress, none red at measurement time.
 - #105: done on main, issue still open, Daniel closes.
@@ -27,6 +28,6 @@ Test scoping (#135, design 0009): implementation issues #269-#273; #269 script m
 - #282 (owner issue, not approved): not started.
 
 ## Next 3 steps
-1. Get the #253 PR through review; #240, #241 follow #239 (merged in #290).
+1. Get PR #292 (#253) and the #241 PR through review.
 2. Next approved issues: #270, #254 (after #253; both touch status/weekly files, check overlap first), #148.
 3. Later #112.
