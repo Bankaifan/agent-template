@@ -43,6 +43,8 @@ jobs:
           permission-contents: read
           permission-pull-requests: read
           permission-issues: write
+          permission-vulnerability-alerts: read
+          permission-security-events: read
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -87,7 +89,8 @@ jobs:
             You are the scout of ${{ github.repository }}. Read AGENTS.md, HANDOVER.md, the code, tests and docs,
             the last 30 merged PRs with review comments (gh pr list --state merged --limit 30; gh pr view --comments),
             open Dependabot and code scanning alerts (gh api repos/${{ github.repository }}/dependabot/alerts?state=open and
-            .../code-scanning/alerts?state=open; skip silently if not readable) as a free idea source,
+            .../code-scanning/alerts?state=open) as a free idea source. If a read fails (403, 404), skip that source but say so;
+            never skip silently. Before the Conclusion line print `Alerts: dependabot=<read|skipped (reason)> code-scanning=<read|skipped (reason)>`,
             and dependency and platform versions (workflow action versions, tool versions) against upstream.
             Look for improvements: code, tests, docs, recurring review remarks, upstream changes.
             Titles already taken (open and recently closed issues, open PRs, design studies). Never propose an idea that

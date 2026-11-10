@@ -11,6 +11,7 @@ Project: <one sentence>. Current state: HANDOVER.md. Decisions: docs/decisions/.
    devices needs Daniel's OK.
 5. Changes to CI protection, permissions, workflows or this file go through the security reviewer. Changes to the
    CODEOWNERS paths (CODEOWNERS, rulesets, trust logic) need Daniel's OK.
+   Scout app token: contents, pull-requests, vulnerability-alerts, security-events read; issues write.
 
 ## How to work (a proposal, not a cage)
 - Small PRs, branched from current `main`, rebase-merged, no stacked PRs, no `git merge main` into a branch.
