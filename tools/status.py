@@ -18,7 +18,9 @@ agent:dev (re-add), status:retriggered, review:N, needs-human, restart:1 (via re
 
 CLI: status.py gate   write run=true|false to $GITHUB_OUTPUT (schedule ticks honour STATUS_INTERVAL)
      status.py        do the run
-Environment: OWNER (default Bankaifan), AUTHOR_BOT, STATUS_INTERVAL (minutes, default 30 public / 60 private repos;
+7. Failure watch (tools/failure_watch.py, design 0008): after the overdue block; FAILURE_WATCH=off skips it; the
+   anchor is kept in the status issue line `Failure watch since:`. An error in it never stops the status issue.
+Environment: OWNER (default Bankaifan), AUTHOR_BOT, FAILURE_WATCH (off = skip the failure watch), STATUS_INTERVAL (minutes, default 30 public / 60 private repos;
 rounded up to a multiple of 30), EVENT, PRIVATE ("true" for a private repo).
 Prints numbers and titles, never tokens.
 """
@@ -29,6 +31,7 @@ import re
 import subprocess
 import sys
 
+import failure_watch
 import liveness
 import owner_hold
 from agent_guard import add_labels, same_login, tail_text
@@ -43,6 +46,7 @@ LIMIT_IDLE_MIN = 30
 RETRIGGER = "status:retriggered"
 AGENT_WORKFLOWS = {"agent-dev", "agent-fix", "agent-review", "orchestrator", "scout", "rule-keeper"}
 TICK_MIN = 30
+SINCE_LABEL = "Failure watch since:"
 PR_LIMIT = 20  # 50 made the GraphQL query exceed 500,000 nodes (statusCheckRollup x commits)
 
 
@@ -327,7 +331,7 @@ def merged_rows(merged, now, hours=24):
 
 
 def build_body(runs, prs, issues, ages, orchestrator, ideas, actions, now, owner, scheduled=None, added=None,
-               merged=None):
+               merged=None, watch_since=None):
     run_rows = [f"- [{r['workflowName']}]({r['url']}) {r.get('displayTitle', '')} ({r['status']}, "
                 f"{age(r['createdAt'], now)})" for r in runs]
     pr_rows = [pr_line(p, owner) for p in prs]
@@ -347,13 +351,15 @@ def build_body(runs, prs, issues, ages, orchestrator, ideas, actions, now, owner
     if scheduled is not None:
         parts.append(section("Last successful scheduled runs", scheduled_rows(scheduled, now, added)))
     parts.append(section("Actions of this run", [f"- {a}" for a in actions]))
+    if watch_since is not None:
+        parts.append(f"{SINCE_LABEL} {watch_since:%Y-%m-%dT%H:%M:%SZ}")
     return "\n\n".join(parts) + "\n"
 
 
-def update_issue(body, run=gh):
+def update_issue(body, run=gh, bot=""):
     found = json.loads(run("issue", "list", "--state", "open", "--search", f'"{TITLE}" in:title',
-                           "--json", "number,title"))
-    found = [i for i in found if i["title"] == TITLE]
+                           "--json", "number,title,author"))
+    found = [i for i in found if i["title"] == TITLE and own_issue(i, bot)]
     if found:
         number = str(found[0]["number"])
         run("issue", "edit", number, "--body", body)
@@ -383,6 +389,46 @@ def label_time(run, repo):
             pass
         return issue["createdAt"]
     return f
+
+
+def own_issue(issue, bot):
+    """Status issue written by our bot. Without a configured bot login the author is not checked."""
+    return not bot or same_login((issue.get("author") or {}).get("login"), bot)
+
+
+def previous_since(run, now, bot=""):
+    """Anchor of the failure watch: the `Failure watch since:` line of the open status issue (bot-authored only,
+    clamped to [now - MAX_BACK, now] because the body is editable input), else 24 h back."""
+    oldest = now - failure_watch.MAX_BACK
+    found = jlist(run, "issue", "list", "--state", "open", "--search", f'"{TITLE}" in:title', "--json",
+                  "title,body,author")
+    for i in found:
+        if i["title"] != TITLE or not own_issue(i, bot):
+            continue
+        m = re.search(rf"^{re.escape(SINCE_LABEL)} (\S+)$", i.get("body") or "", re.MULTILINE)
+        if m:
+            try:
+                return min(max(parse_ts(m.group(1)), oldest), now)
+            except (ValueError, TypeError):
+                break
+    return oldest
+
+
+def watch_failures(env, now, successes, added, actions, run):
+    """Failure watch after the overdue block (design 0008, 4.8). Never stops the status run; returns the new anchor.
+    FAILURE_WATCH=off skips it. Without a successes list the overdue state is unknown, so nothing is closed."""
+    bot = env.get("AUTHOR_BOT", "")
+    if env.get("FAILURE_WATCH", "").strip().lower() == "off" or successes is None:
+        return None
+    since = None
+    try:
+        since = previous_since(run, now, bot)
+        late = liveness.overdue_runs(successes, now, added)
+        done, since = failure_watch.watch(since, now, late, None, run)
+        actions += done
+    except Exception as e:  # noqa: BLE001 - the status issue must always be written
+        print(f"failure watch failed: {type(e).__name__}")
+    return since
 
 
 def gate(env, now):
@@ -465,10 +511,11 @@ def run_status(env, now, run=gh):
         added = safe(liveness.added_dates, successes, run) or {}
         late, new = liveness.flag_overdue(successes, now, run, added)
         actions += [f"overdue run: {label}" for label in late] + [f"opened overdue issue #{n}" for n in new]
+    watch_since = watch_failures(env, now, successes, added, actions, run)
     merged = safe(jlist, run, "pr", "list", "--state", "merged", "--limit", "30", "--json",
                   "number,title,mergedAt,labels")
     number = update_issue(build_body(runs, prs, issues, ages, orch, ideas, actions, now, owner, successes, added,
-                                     merged), run)
+                                     merged, watch_since), run, bot)
     print(f"status issue #{number}; actions: {len(actions)}")
     for a in actions:
         print(a)
