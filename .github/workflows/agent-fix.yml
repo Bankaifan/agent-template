@@ -199,7 +199,8 @@ jobs:
         run: |
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           # Nothing from an earlier run may be applied to this PR: remove the agent's body file before the agent runs.
-          rm -f "$RUNNER_TEMP/pr-body.md"
+          # It lives in the checkout (the agent may not touch $RUNNER_TEMP, #266) and is kept out of git.
+          rm -rf .agent-out && mkdir .agent-out && echo ".agent-out/" >> .git/info/exclude
           gh pr view "$PR" --json body --jq .body > "$RUNNER_TEMP/body-before.txt"
       - name: Git identity
         run: |
@@ -248,7 +249,7 @@ jobs:
             Use Read/Glob/Grep to read files, not shell reads. If a needed action is denied,
             comment on the issue/PR saying which one instead of stopping silently.
             If the review only asks for a change of the PR body (title or body text, e.g. `Closes #N` -> `Refs #N`),
-            write the complete new body (max 5 lines, ASCII, no Closes/Fixes/Resolves keywords) to ${{ runner.temp }}/pr-body.md
+            write the complete new body (max 5 lines, ASCII, no Closes/Fixes/Resolves keywords) to .agent-out/pr-body.md
             and do not run `gh pr edit` yourself: a fixed step after you applies that file to PR #${{ env.PR }}. Never change labels.
             Do not open a new PR.
           claude_args: >-
@@ -264,11 +265,13 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           GH_REPO: ${{ github.repository }}
-          BODY_FILE: ${{ runner.temp }}/pr-body.md
+          BODY_FILE: .agent-out/pr-body.md
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           f="$BODY_FILE"
-          if [ ! -f "$f" ] || [ -L "$f" ]; then echo "No PR body file from the agent; PR body unchanged"; exit 0; fi
+          # The checkout is agent-writable: a symlinked directory or file could point at any runner file.
+          if [ -L .agent-out ] || [ ! -f "$f" ] || [ -L "$f" ]; then echo "No PR body file from the agent; PR body unchanged"; exit 0; fi
+          if [ "$(realpath "$f")" != "$(pwd -P)/.agent-out/pr-body.md" ]; then echo "::error::PR body file resolves outside .agent-out; not applied"; exit 1; fi
           size=$(wc -c < "$f"); lines=$(grep -c '' "$f" || true)
           if [ "$size" -lt 1 ] || [ "$size" -gt 4000 ] || [ "$lines" -gt 5 ]; then
             echo "::error::PR body is empty, over 4000 bytes or over 5 lines; not applied"; exit 1
