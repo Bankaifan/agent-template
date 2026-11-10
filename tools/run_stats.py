@@ -120,6 +120,39 @@ def workflow_stats(runs, jobs_of, log_of, days=7, now=None):
             "median_min": round(statistics.median(durations) / 60, 1) if durations else None}
 
 
+ERROR_RE = re.compile(r"error|exception|failed", re.IGNORECASE)
+STAMP_RE = re.compile(r"^\d{4}-\d\d-\d\dT[\d:.]+Z\s*")
+
+
+def failure_class(log):
+    """Normalized first error line of a failed model run (digits become #), or None. Limit or rate errors are not a
+    role failure and give None. Heuristic (design 0015): same text = same class."""
+    if LIMIT_RE.search(log):
+        return None
+    for line in log.splitlines():
+        text = STAMP_RE.sub("", line.rsplit("\t", 1)[-1]).strip()
+        if ERROR_RE.search(text):
+            return re.sub(r"\d+", "#", text.lower())[:120]
+    return None
+
+
+def failure_classes(runs, jobs_of, log_of, days=28, now=None):
+    """{failure class: number of failed model runs in the last `days` days}; runs: {workflow file: run list}."""
+    now = now or datetime.datetime.now(datetime.UTC)
+    cutoff = now - datetime.timedelta(days=days)
+    counts = {}
+    for file_runs in runs.values():
+        for run in file_runs:
+            if parse_time(run["createdAt"]) < cutoff or run.get("conclusion") != "failure":
+                continue
+            if not ran_model(jobs_of(run["databaseId"])):
+                continue
+            cls = failure_class(log_of(run["databaseId"]))
+            if cls:
+                counts[cls] = counts.get(cls, 0) + 1
+    return counts
+
+
 def main(argv):
     import os
     days = int(argv[1]) if len(argv) > 1 else 14
