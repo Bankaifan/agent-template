@@ -6,15 +6,14 @@ Unblocker role (#92, design 0002) on the untrusted-text boundary (design 0004, m
 Risk class tightening (#171, design 0005, merged). Answer receiver (#191, design 0006, merged).
 
 ## Current state (measured 2026-11-10)
-- Open PRs: #217 (for #150 overlap guard, risk:security, review:1, CHANGES_REQUESTED, agent-fix running). #213 no longer open.
-- Main CI: status run in progress at measure time; no red run seen in the last 10.
-- Started this run: #125 as a design study (slip written, model:sonnet, agent:dev). Output docs/design/NNNN-orchestrator-events.md.
-- Created earlier from design 0006: #204 (hold, prio:1), #205-#208 (prio:3). Not approved, no agent:dev.
+- Open PRs: #217 (for #150 overlap guard, risk:security, CHANGES_REQUESTED, needs-human; latest security-review is approve on 56d1164; slip already rewritten once, not touched again).
+- Main CI: last 10 runs green or skipped; orchestrator run in progress at measure time.
+- Started this run: #204 (answer receiver 1/5, owner label hold; slip, model:sonnet, agent:dev). Files disjoint from #217.
+- #125 design study was started earlier; no PR seen yet (open).
 - Design 0005 issues #197-#201 exist (prio:1, not approved, no agent:dev).
 - #92 stays needs-human. Design 0004: #148 not started. Design 0003: #150 in PR #217, #152 not started; #154 is Daniel's.
 - #105 (Unblocker 4/5) looks superseded by #147 (unblocker.yml exists); not started.
-- #99, #100 (overdue scheduled run issues): not dev work, not started.
-- #195 state after this run: open (not re-measured).
+- #99, #100 (overdue scheduled run issues), #210 (orchestrator runs end silently): not started.
 
 ## Open
 - Design 0005 section 9 (Limit 5 exception) is a yes/no question for Daniel; it blocks #201 only.
@@ -27,5 +26,5 @@ Risk class tightening (#171, design 0005, merged). Answer receiver (#191, design
 
 ## Next 3 steps
 1. Merge of #217 (#150); then #152 and #212.
-2. Start #204 and #205 once approved; #197 and #198 once on the trusted list.
+2. After #204 merges: #205, #206; #210 when a slot frees.
 3. Later #129, #132, #133, #119, #120, #112, #148.
