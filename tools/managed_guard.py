@@ -8,6 +8,7 @@ paths the project may change on purpose). Two checks, both no-ops in the templat
 
 `check` reads PR_NUMBER (gh pr view for files, title, head branch). A template-sync PR is exempt: its title starts
 with `Template sync` and it changes .agents/template.json (it must set synced_sha).
+A part 1 PR of a split sync (title `Template sync <sha> part 1`) is exempt without that change.
 `route-issue` reads the issue JSON (`gh issue view --json number,title,body,comments`; comments of untrusted authors are ignored) from ISSUE_JSON, takes the
 last `Files touched:` line of the slip, and when every path is managed and not overridden opens an issue in the
 template repo (TEMPLATE_GH_TOKEN) and comments on the project issue. Prints `skip=true` when it routed.
@@ -23,7 +24,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).parent))
 from template_sync import CONFIG, ConfigError, is_managed, parse_config
 
 SYNC_TITLE = "Template sync"
-FILES_LINE = re.compile(r"^\s*Files touched:\s*(.+)$", re.IGNORECASE | re.MULTILINE)
+PART1_TITLE = re.compile(r"Template sync [0-9a-f]{7,40} part 1(?!\w)", re.IGNORECASE)
+FILES_LINE =re.compile(r"^\s*Files touched:\s*(.+)$", re.IGNORECASE | re.MULTILINE)
 PATH_RE = re.compile(r"[A-Za-z0-9_.][A-Za-z0-9_./-]*")
 
 
@@ -47,6 +49,9 @@ def protected(files, cfg):
 
 
 def is_sync_pr(title, files):
+    """Normal sync PR (title + config change) or part 1 of a split sync (title only, synced_sha stays)."""
+    if PART1_TITLE.match(title.strip()):
+        return True
     return title.strip().lower().startswith(SYNC_TITLE.lower()) and CONFIG.as_posix() in files
 
 

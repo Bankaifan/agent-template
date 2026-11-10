@@ -37,6 +37,19 @@ def test_sync_pr_is_exempt_only_with_title_and_config_change():
     assert mod.pr_errors(CFG, PROJ, "Fix", files)
 
 
+def test_part1_sync_pr_is_exempt_without_config_change():
+    files = ["tools/a.py", "AGENTS.md"]
+    assert mod.pr_errors(CFG, PROJ, "Template sync abc1234 part 1", files) == []
+    assert mod.pr_errors(CFG, PROJ, "Template sync abc1234 part 1: reviewer pipeline", files) == []
+
+
+def test_other_titles_are_not_part1_exempt():
+    files = ["tools/a.py"]
+    for title in ["Fix", "Template sync abc1234", "Template sync abc1234 part 2", "Template sync abc1234 part 10",
+                  "Template sync part 1", "Template sync xyz part 1", "Fix: Template sync abc1234 part 1"]:
+        assert mod.pr_errors(CFG, PROJ, title, files), title
+
+
 def test_slip_paths_takes_last_line():
     text = "Files touched: `a.py`\nmore\nFiles touched: new tools/managed_guard.py, tests/test_x.py (and AGENTS.md)."
     assert mod.slip_paths(text) == ["tools/managed_guard.py", "tests/test_x.py", "AGENTS.md"]
