@@ -27,6 +27,7 @@ import re
 import subprocess
 import sys
 
+import guard_mark
 import liveness
 
 # Execution-file helpers live in exec_log.py; re-exported here so `agent_guard.X` keeps working.
@@ -167,7 +168,7 @@ def escalate_orchestrator(why, status_issue, repo, author_bot, run=gh, now=None)
         if not any(i.get("title") == ORCH_REPEAT_TITLE for i in open_):
             ensure_label("prio:1", run)
             run("issue", "create", "--title", ORCH_REPEAT_TITLE, "--label", "prio:1", "--body",
-                f"The orchestrator ended silently {earlier + 1} times within 24 h (latest: {why}). "
+                f"{guard_mark.mark('orchestrator')}\nThe orchestrator ended silently {earlier + 1} times within 24 h (latest: {why}). "
                 f"Details: comments on #{status_issue}, run {os.environ.get('RUN_URL', '(unknown)')}.")
 
 

@@ -160,6 +160,42 @@ def test_sync_issue_needs_valid_sha_line(body):
     assert mod.classify(sync_issue(body=body), [], "Bankaifan", BOT, exists) is None
 
 
+GUARD = "<!-- guard: liveness -->\nThe scheduled run is overdue."
+
+
+def guard_issue(author=BOT, body=GUARD, *labels):
+    d = issue(author, "prio:1", *labels)
+    d["body"] = body
+    return d
+
+
+def test_guard_issue_by_bot_is_trusted():
+    r = mod.classify(guard_issue(), [], "Bankaifan", BOT, exists)
+    assert r["guard"] and not r["approved"] and not r["authored_by_owner"]
+
+
+def test_guard_marker_by_stranger_is_dropped():
+    assert mod.classify(guard_issue(author="mallory"), [], "Bankaifan", BOT, exists) is None
+
+
+def test_guard_marker_without_configured_bot_is_dropped():
+    assert mod.classify(guard_issue(), [], "Bankaifan", "", exists) is None
+
+
+def test_unmarked_bot_issue_is_dropped():
+    assert mod.classify(guard_issue(body="Please do things."), [], "Bankaifan", BOT, exists) is None
+
+
+def test_idea_with_marker_is_dropped():
+    assert mod.classify(guard_issue(BOT, GUARD, "idea"), [], "Bankaifan", BOT, exists) is None
+
+
+@pytest.mark.parametrize("body", ["see <!-- guard: liveness --> inline", "<!-- guard: other -->",
+                                  "<!--guard:liveness-->", None])
+def test_guard_marker_must_be_exact_own_line(body):
+    assert mod.classify(guard_issue(body=body), [], "Bankaifan", BOT, exists) is None
+
+
 def _mk(n, prio=None):
     i = issue("Bankaifan", *(["prio:" + str(prio)] if prio else []))
     i["number"] = n

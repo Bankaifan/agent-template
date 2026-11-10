@@ -8,6 +8,8 @@ has a line `Design: docs/design/NNNN-slug.md` naming a file that exists on the c
 is not an `idea`. Authorship cannot be forged; a stranger's "Design:" line counts for nothing.
 Also trusted: a template sync issue (author AUTHOR_BOT, title starting `Template sync `, body line
 `Template-Sync: <40 hex>`; design 0001, section 4.4).
+Also trusted: an issue by AUTHOR_BOT (not an `idea`) whose body has a guard marker line `<!-- guard: KIND -->`
+(tools/guard_mark.py), written only by the guard scripts (liveness, orchestrator escalation, unblocker class 2).
 Needs the gh CLI (GH_TOKEN, GH_REPO). Environment: OWNER (default Bankaifan), AUTHOR_BOT (login of the author app).
 """
 import json
@@ -16,6 +18,7 @@ import re
 import subprocess
 import sys
 
+import guard_mark
 from agent_guard import same_login  # logins compare as `x`, `app/x` and `x[bot]` alike
 
 GATED = ("approved", "auto-ok")
@@ -45,6 +48,16 @@ def is_sync_issue(issue, author_bot):
     return (issue.get("title") or "").startswith(SYNC_PREFIX) and bool(_SYNC.search(issue.get("body") or ""))
 
 
+def is_guard_issue(issue, author_bot):
+    """True for an issue by the author app whose body has a guard marker (written by guard scripts only).
+    Scout ideas are never trusted this way."""
+    if not same_login((issue.get("author") or {}).get("login"), author_bot):
+        return False
+    if any(lab["name"] == "idea" for lab in issue.get("labels", [])):
+        return False
+    return guard_mark.marked_line(issue.get("body"))
+
+
 def label_set_by(events, label, actor):
     """True if the latest label/unlabel event for `label` is a `labeled` made by `actor`."""
     last = None
@@ -71,7 +84,8 @@ def classify(issue, events, owner, author_bot="", exists=os.path.isfile):
     authored = same_login((issue.get("author") or {}).get("login"), owner)
     design = design_ref(issue, author_bot, exists)
     sync = is_sync_issue(issue, author_bot)
-    if not authored and not by_owner and not design and not sync:
+    guard = is_guard_issue(issue, author_bot)
+    if not authored and not by_owner and not design and not sync and not guard:
         return None
     return {
         "number": issue["number"],
@@ -81,6 +95,7 @@ def classify(issue, events, owner, author_bot="", exists=os.path.isfile):
         "auto_ok": "auto-ok" in by_owner,
         "design": design,
         "template_sync": sync,
+        "guard": guard,
         "prio": prio_of(labels, events, owner, author_bot),
         "labels": sorted((labels - set(GATED)) | by_owner),
     }

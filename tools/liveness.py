@@ -9,6 +9,8 @@ import datetime
 import json
 import subprocess
 
+import guard_mark
+
 # workflow file -> (label, expected interval in minutes)
 SCHEDULED = {
     "orchestrator.yml": ("orchestrator", 24 * 60),
@@ -106,6 +108,7 @@ def ensure_overdue_issue(label, detail, run=gh):
     if any(i["title"] == title for i in found):
         return None
     out = run("issue", "create", "--title", title, "--label", OVERDUE_LABEL, "--body",
+              f"{guard_mark.mark('liveness')}\n"
               f"The scheduled run of the {label} has no successful run within {OVERDUE_FACTOR} intervals. {detail}")
     return out.strip().rsplit("/", 1)[-1]
 

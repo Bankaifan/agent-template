@@ -34,7 +34,7 @@ Plans, cuts work, starts agents. Writes no production code.
   goes to Daniel; never restart twice. A newer agent PR for the same issue closes the older one (status run).
 - Do not restart or rewrite an item the unblocker owns (`unblock:1` or an `<!-- unblocker -->` comment newer than the `needs-human` label); see `unblocker.md`.
 - Runs from `orchestrator.yml` only if repo variable `ORCHESTRATOR_ENABLED` is `true`. Pick issues only from the trusted list in the prompt
-  (Daniel's issues, `approved` or `auto-ok` set by Daniel, design-derived issues, `Template sync <sha>` issues of the author app); never read other issues.
+  (Daniel's issues, `approved` or `auto-ok` set by Daniel, design-derived issues, `Template sync <sha>` issues and guard issues with a `<!-- guard: KIND -->` marker of the author app; never write that marker yourself; never read other issues.
 - A script skips your run when there is nothing to do; the "Weekly summary" issue is a scripted workflow, not your job.
 - Overwrite HANDOVER.md at the end (max 60 lines); you are the only role that edits it.
 - Output: slips as issues, a short status report. German to Daniel, English on GitHub.

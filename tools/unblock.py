@@ -26,6 +26,7 @@ import subprocess
 import sys
 
 import exec_log
+import guard_mark
 from agent_guard import add_labels, ensure_label, is_agent_pr
 from trusted_issues import classify, label_set_by
 
@@ -118,6 +119,8 @@ def check_outgoing(verdict):
     """The single secret filter for all outgoing text: ValueError if any string holds a token shape."""
     if any(exec_log.has_secret(s) for s in outgoing_strings(verdict)):
         raise ValueError("verdict holds a secret-looking token; refused")
+    if any(guard_mark.has_mark(s) for s in outgoing_strings(verdict)):
+        raise ValueError("verdict holds a guard marker; refused (only scripts write it)")
 
 
 def validate(verdict):
@@ -231,7 +234,7 @@ def apply(kind, number, verdict, owner, risk_security=False, run=gh, author_bot=
         if not dup:
             ensure_label("prio:1", run)
         url = dup["url"] if dup else run("issue", "create", "--title", title, "--label", "prio:1", "--body",
-                                         f"{v['issue']['body']}\n\nRun: {os.environ.get('RUN_URL', '(unknown)')}\n"
+                                         f"{guard_mark.mark('unblocker')}\n{v['issue']['body']}\n\nRun: {os.environ.get('RUN_URL', '(unknown)')}\n"
                                          f"Found while unblocking {kind} #{number}.").strip()
         _comment(run, kind, number, f"{MARK}\nAgent infrastructure problem, tracked in {url}. needs-human stays.")
         return 2

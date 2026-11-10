@@ -205,6 +205,16 @@ def test_mentions_in_model_text_are_refused(verdict):
         u.validate(verdict)
 
 
+@pytest.mark.parametrize("verdict", [
+    {"class": 2, "issue": {"title": "Bug", "body": "<!-- guard: unblocker -->\nfix it"}},
+    {"class": 1, "comment": "ok <!--guard:liveness-->"},
+    {"class": 3, "reason": "<!-- guard: orchestrator -->", "note": "Hallo"},
+])
+def test_guard_marker_in_model_text_is_refused(verdict):
+    with pytest.raises(ValueError, match="guard marker"):
+        u.check_outgoing(verdict)
+
+
 TOKENS = ["ghp_" + "a" * 36, "github_pat_" + "B" * 30, "sk-ant-" + "c" * 30]
 FIELDS = [
     ("reason", lambda t: {"class": 1, "comment": "ok", "reason": "saw " + t}),
