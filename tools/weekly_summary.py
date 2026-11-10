@@ -15,6 +15,7 @@ import subprocess
 import sys
 
 import failure_watch
+import friction
 import guard_mark
 import liveness
 
@@ -200,6 +201,14 @@ def failure_watch_summary(run, today, key):
         return None
 
 
+def friction_issues(run=gh):
+    """Create one issue per friction item seen in 2+ merged agent PRs; the summary must not fail because of it."""
+    try:
+        return friction.create_issues(friction.collect(), run)
+    except (subprocess.CalledProcessError, ValueError, OSError, KeyError, TypeError):
+        return []
+
+
 def main() -> int:
     today = datetime.date.today()
     since = (today - datetime.timedelta(days=7)).isoformat()
@@ -213,6 +222,8 @@ def main() -> int:
              if "approved" not in {lab["name"] for lab in i["labels"]}]
     if append_metrics(METRICS, collect_metrics(today)):
         print(f"appended a row to {METRICS}")
+    for title in friction_issues():
+        print(f"created friction issue: {title}")
     body = build_body(merged, human, keeper, ideas, today.isoformat(), status_stale_safe(),
                       failures=failure_watch_summary(gh, today, guard_mark.key_from_env()))
     found = json.loads(gh("issue", "list", "--state", "open", "--search", f'"{TITLE}" in:title',

@@ -45,6 +45,15 @@ def test_existing_title_is_deduped():
     assert friction.issues_to_create(bodies, ["friction: Slow lint"]) == []
 
 
+def test_create_issues_routes_template_items():
+    calls = []
+    items = [{"title": "Friction: a", "template_only": False, "count": 2},
+             {"title": "Friction: b", "template_only": True, "count": 3}]
+    assert friction.create_issues(items, lambda *a: calls.append(a)) == ["Friction: a", "Friction: b"]
+    assert "--repo" not in calls[0]
+    assert calls[1][-2:] == ("--repo", friction.TEMPLATE_REPO)
+
+
 def test_main_prints_issues(monkeypatch, capsys):
     def _run(cmd, **kw):
         out = [{"body": body("- slow lint")}, {"body": body("- slow lint")}] if cmd[1] == "pr" else [{"title": "x"}]

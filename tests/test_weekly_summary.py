@@ -89,6 +89,20 @@ def test_status_stale_safe_skips_warning_when_gh_fails():
     assert mod.status_stale_safe(failing) is False
 
 
+def test_friction_issues_creates_and_survives_gh_failure(monkeypatch):
+    item = {"title": "Friction: x", "template_only": False, "count": 2}
+    monkeypatch.setattr(mod.friction, "collect", lambda: [item])
+    calls = []
+    assert mod.friction_issues(lambda *a: calls.append(a)) == ["Friction: x"]
+    assert calls[0][:2] == ("issue", "create")
+
+    def failing():
+        raise subprocess.CalledProcessError(1, "gh")
+
+    monkeypatch.setattr(mod.friction, "collect", failing)
+    assert mod.friction_issues(lambda *a: None) == []
+
+
 def test_build_body_warns_when_status_stale():
     body = mod.build_body([], [], [], [], "2026-11-09", status_stale=True)
     assert "## Warning" in body and "last 3 hours" in body
