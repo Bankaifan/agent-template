@@ -9,7 +9,7 @@ REPO = "${{ github.repository }}"
 def test_alert_calls_unquoted_and_allowed():
     for src in ("dependabot", "code-scanning"):
         assert f"`gh api repos/{REPO}/{src}/alerts?state=open`" in SCOUT
-        assert f"Bash(gh api repos/{REPO}/{src}/alerts:*)" in SCOUT
+        assert f"Bash(gh api repos/{REPO}/{src}/alerts?state=open)" in SCOUT
         assert f'gh api "repos/{REPO}/{src}' not in SCOUT
 
 
