@@ -20,6 +20,8 @@ CLI: status.py gate   write run=true|false to $GITHUB_OUTPUT (schedule ticks hon
      status.py        do the run
 7. Failure watch (tools/failure_watch.py, design 0008): after the overdue block; FAILURE_WATCH=off skips it; the
    anchor is kept in the status issue line `Failure watch since:`. An error in it never stops the status issue.
+8. Design parents (tools/design_parents.py, issue #335): an open design parent whose split issues are all closed as
+   completed by a merged PR is closed (prio:* and agent:dev removed, one comment). Nothing else is touched.
 Environment: OWNER (default Bankaifan), AUTHOR_BOT, FAILURE_WATCH (off = skip the failure watch), STATUS_INTERVAL (minutes, default 30 public / 60 private repos;
 rounded up to a multiple of 30), EVENT, PRIVATE ("true" for a private repo).
 Prints numbers and titles, never tokens.
@@ -31,6 +33,7 @@ import re
 import subprocess
 import sys
 
+import design_parents
 import failure_watch
 import liveness
 import owner_hold
@@ -504,6 +507,7 @@ def run_status(env, now, run=gh):
     if not any(r["workflowName"] == "agent-fix" for r in runs):  # one fix job at a time
         for p in [c for c in conflict_prs(prs) if not is_held(c)][:1]:
             actions.append(f"conflict PR #{p['number']}: {handle_conflict(p, owner, run)}")
+    actions += safe(design_parents.close_done_parents, run, owner, bot) or []
     ages = {i["number"]: age(labeled_at(i), now) for i in issues}
     successes = safe(liveness.last_successes, run)
     added = {}
