@@ -39,6 +39,9 @@ Idea: **rules a script can check live in CI, not in prompts.** The agents get a 
 - A daily `branch-cleanup` that deletes `agent/*` branches with a closed PR, or no PR and no commit for 7 days (dry-run input on manual runs).
 - An autonomous `orchestrator` (after a merge to `main` via `workflow_run` of `validate`, daily, manual; off unless variable `ORCHESTRATOR_ENABLED=true`) that cuts task slips,
   keeps at most 2 `agent:dev` issues, handles `needs-human` PRs, updates HANDOVER.md via PR and .
+- Orchestrator events (`docs/decisions/0012-orchestrator-events.md`, design 0007): with repo variable `ORCHESTRATOR_EVENTS=on` the orchestrator also wakes on
+  issues, issue comments, PRs and reviews. A gate (`tools/orchestrator_gate.py`) accepts only Daniel and the agent apps, waits 60 s per burst and ignores
+  the echo of its own runs; `tools/prefilter.py` maps each event to a reason and no model runs without one. Off by default; `ORCHESTRATOR_EVENTS=off` turns it off again.
 - A monthly `scout` (haiku) that opens at most `IDEAS_PER_WEEK` (default 3 per run, 0 = off) `idea` issues, also from Dependabot/CodeQL alerts; it adds only `idea`.
 - `make check` is what CI checks: ruff, pytest, actionlint, zizmor (pinned in `tools/ci/install_tools.sh`) and the repo checks; the developer
   and fix jobs install the same tools. `validate` also runs gitleaks. Orchestrator and scout run `tools/prefilter.py` first and skip the model when there is nothing to do;
