@@ -62,3 +62,41 @@ def test_five_waiting_prs_hold_new_security_slips_only():
 
 def test_closing_issues():
     assert mod.closing_issues("Closes #172\nRefs #5") == {172, 5}
+
+
+def load_with_env(monkeypatch, **env):
+    """Import prefilter fresh with MAX_DEV/MAX_PRS set as given (unset when not passed)."""
+    for name in ("MAX_DEV", "MAX_PRS"):
+        monkeypatch.delenv(name, raising=False)
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+    spec = importlib.util.spec_from_file_location("prefilter_env", _path)
+    fresh = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(fresh)
+    return fresh
+
+
+def test_caps_default_when_unset(monkeypatch):
+    fresh = load_with_env(monkeypatch)
+    assert (fresh.MAX_DEV, fresh.MAX_PRS) == (2, 3)
+
+
+def test_caps_default_when_empty_or_blank(monkeypatch):
+    fresh = load_with_env(monkeypatch, MAX_DEV="", MAX_PRS="  ")
+    assert (fresh.MAX_DEV, fresh.MAX_PRS) == (2, 3)
+
+
+def test_caps_override_and_slot_arithmetic_follows(monkeypatch):
+    fresh = load_with_env(monkeypatch, MAX_DEV="4", MAX_PRS="5")
+    assert (fresh.MAX_DEV, fresh.MAX_PRS) == (4, 5)
+    assert fresh.free_slots(3, 5, 0, 0) == (1, 0)
+    assert fresh.free_slots(3, 4, 0, 0) == (1, 1)
+    assert fresh.startable([item(1)], 3) == [1]
+    assert mod.startable([item(1)], 3) == []
+
+
+def test_non_numeric_cap_falls_back_with_warning(monkeypatch, capsys):
+    fresh = load_with_env(monkeypatch, MAX_DEV="four", MAX_PRS="3.5")
+    assert (fresh.MAX_DEV, fresh.MAX_PRS) == (2, 3)
+    err = capsys.readouterr().err
+    assert "MAX_DEV" in err and "MAX_PRS" in err
