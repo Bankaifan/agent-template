@@ -18,7 +18,7 @@ allowlist, does it, confirms in German and closes the block. It also makes a lab
   `gh pr edit --add-label`; none looks at who removed the label before.
 - Only `trusted_issues.label_set_by()` (`tools/trusted_issues.py:60`) reads label events, and only to check who set a label.
 - The unblocker (`unblocker.yml`, `tools/unblock.py`, design 0002) shows the pattern of design 0004: read-only token for gate and fetch, model step without app
-  token and without Bash (`--settings .github/claude-judge-settings.json`, `Write(verdict.json)` only), `validate`, write token created afterwards, `apply`.
+  token and without Bash (`--settings .github/claude-judge-settings.json`, `Edit(verdict.json)` only), `validate`, write token created afterwards, `apply`.
   It starts on `labeled`, not on comments.
 - The German note is free text. Nothing says what "ja"/"nein" do (`AGENTS.md` "Waiting for Daniel", `orchestrator.md:32`, `reviewer.md:16`, `unblock._owner_note`).
 - Likely cause of the #184 re-label (open, not measured here): Daniel removed `needs-human` and `review:3`; `status.limit_prs()` selects agent PRs at `review:N`
@@ -59,7 +59,7 @@ otherwise it exits 0 without a model call. A burst of comments therefore produce
 Order as in `unblocker.yml`: read-only token (`contents`, `issues`, `pull-requests` read) -> `answer.py gate` -> `answer.py fetch` writing masked, capped files
 `untrusted/note.txt` (the last note carrying a decision marker), `untrusted/owner.txt` (Daniel's comments since that note, the trusted input), `untrusted/thread.txt`
 (everything else, untrusted, for context only) -> model step (`--model sonnet`, no `github_token` write scope, no app token, no Bash, `--settings .github/claude-judge-settings.json`,
-tools `Read,Glob,Grep,Write(verdict.json)`) -> clean checkout -> `answer.py validate` -> write token created only now (`issues`, `pull-requests`, `actions` write, `contents` read)
+tools `Read,Glob,Grep,Edit(verdict.json)`) -> clean checkout -> `answer.py validate` -> write token created only now (`issues`, `pull-requests`, `actions` write, `contents` read)
 -> `answer.py apply`. Checkout is the default branch, never PR code.
 
 Verdict file (fixed schema, ASCII, all strings through `exec_log` masking and the secret-shape filter in one function as in `unblock.outgoing_strings`):
