@@ -4,6 +4,7 @@
 /.github/CODEOWNERS @Bankaifan
 /.github/rulesets/ @Bankaifan
 /tools/trusted_issues.py @Bankaifan
+/tools/guard_mark.py @Bankaifan
 /tools/agent_guard.py @Bankaifan
 /tools/exec_log.py @Bankaifan
 /tools/ci/risk.py @Bankaifan

@@ -53,8 +53,8 @@ Quota is scarce: `ORCHESTRATOR_ENABLED` and `IDEAS_PER_WEEK` control the autonom
    - Author: Contents, Pull requests, Issues, Actions and Workflows: read and write (Workflows to push `.github/workflows`;
      Actions to read run logs and dispatch `validate`).
    - Approver: Pull requests: read and write, Contents and Issues: read.
-3. **Add 3 secrets in every repo** (*Settings > Secrets and variables > Actions*; they are not inherited from the template): `CLAUDE_CODE_OAUTH_TOKEN` (from `claude setup-token`),
-   `AUTHOR_APP_KEY`, `APPROVER_APP_KEY` (the `.pem` content).
+3. **Add 4 secrets in every repo** (*Settings > Secrets and variables > Actions*; they are not inherited from the template): `CLAUDE_CODE_OAUTH_TOKEN` (from `claude setup-token`),
+   `AUTHOR_APP_KEY`, `APPROVER_APP_KEY` (the `.pem` content), `GUARD_KEY` (any long random string; signs issues the guard scripts write, so the orchestrator trusts them; without it they stay untrusted).
    Four required **variables** (same page, *Variables* tab): `AUTHOR_CLIENT_ID` and `APPROVER_CLIENT_ID` (the apps' client IDs, not secret;
    `app-id` is deprecated in `actions/create-github-app-token`), and `AUTHOR_BOT` and `APPROVER_BOT`, the apps' bot logins (e.g. `my-author[bot]`,
    `my-approver[bot]`; the forms `x`, `app/x` and `x[bot]` are treated alike). They replace any `allowed_bots: '*'`; `agent-fix` also needs the review to come from `APPROVER_BOT`.

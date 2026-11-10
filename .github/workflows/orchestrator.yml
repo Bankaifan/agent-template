@@ -90,6 +90,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
           OWNER: Bankaifan
           AUTHOR_BOT: ${{ vars.AUTHOR_BOT }}
+          GUARD_KEY: ${{ secrets.GUARD_KEY }}  # script step only, never a model step (tests/test_guard_mark.py)
         run: echo "list=$(python3 tools/trusted_issues.py)" >> "$GITHUB_OUTPUT"
       - name: Count work (no model)
         id: pre
