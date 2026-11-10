@@ -108,7 +108,7 @@ jobs:
           prompt: |
             Act as the reviewer described in .agents/roles/reviewer.md and follow AGENTS.md. If the PR changes
             only files under docs/design/, act as the design reviewer in .agents/roles/design-reviewer.md instead.
-            Design owner mode: ${{ (vars.DESIGN_AUTOMERGE || 'off') == 'on' && 'auto (you decide Owner decisions)' || 'Daniel' }}.
+            Design owner mode: ${{ (vars.DESIGN_AUTOMERGE || (github.repository == 'Bankaifan/agent-template' && 'on' || 'off')) == 'on' && 'auto (you decide Owner decisions)' || 'Daniel' }}.
             Review PR #${{ steps.round.outputs.pr }} in ${{ github.repository }} (CI is green on ${{ env.SHA }}).
             The checkout is main, not the PR: never run or import code from the PR. Read the change with
             `gh pr view` and `gh pr diff`, and the linked issue with `gh issue view`.
