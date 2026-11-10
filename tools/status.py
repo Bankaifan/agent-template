@@ -14,7 +14,7 @@
 6. Red main: an own agent PR (one commit, author OWNER, behind main) whose last validate failed while main was red
    is rebased onto main via the update-branch API once main is green again, so CI runs again. Never merges.
 Read-only except: the status issue, re-triggers, run approvals, the fix dispatch and these labels:
-agent:dev (re-add), status:retriggered, review:N, needs-human, restart:1 (via restart.py). Needs the gh CLI (GH_TOKEN, GH_REPO).
+agent:dev (re-add), status:retriggered, review:N, needs-human, restart:1 (via restart.py), stalled:1 (via stalled_dev.py). Needs the gh CLI (GH_TOKEN, GH_REPO).
 
 CLI: status.py gate   write run=true|false to $GITHUB_OUTPUT (schedule ticks honour STATUS_INTERVAL)
      status.py        do the run
@@ -22,6 +22,8 @@ CLI: status.py gate   write run=true|false to $GITHUB_OUTPUT (schedule ticks hon
    anchor is kept in the status issue line `Failure watch since:`. An error in it never stops the status issue.
 8. Design parents (tools/design_parents.py, issue #335): an open design parent whose split issues are all closed as
    completed by a merged PR is closed (prio:* and agent:dev removed, one comment). Nothing else is touched.
+9. Stalled agent:dev issues (tools/stalled_dev.py, issue #366): no open PR closes it, no agent-dev run covers it, label
+   older than 60 min: agent:dev set again once (stalled:1); a second stall goes to needs-human, OWNER as assignee.
 Environment: OWNER (default Bankaifan), AUTHOR_BOT, FAILURE_WATCH (off = skip the failure watch), STATUS_INTERVAL (minutes, default 30 public / 60 private repos;
 rounded up to a multiple of 30), EVENT, PRIVATE ("true" for a private repo).
 Prints numbers and titles, never tokens.
@@ -37,6 +39,7 @@ import design_parents
 import failure_watch
 import liveness
 import owner_hold
+import stalled_dev
 from agent_guard import add_labels, same_login, tail_text
 from approval import effective_approval
 from restart import close_superseded, handle_limit, superseded
@@ -508,6 +511,7 @@ def run_status(env, now, run=gh):
         for p in [c for c in conflict_prs(prs) if not is_held(c)][:1]:
             actions.append(f"conflict PR #{p['number']}: {handle_conflict(p, owner, run)}")
     actions += safe(design_parents.close_done_parents, run, owner, bot) or []
+    actions += stalled_dev.check(issues, labeled_at, now, run, owner, {i["number"] for i in stuck_i})
     ages = {i["number"]: age(labeled_at(i), now) for i in issues}
     successes = safe(liveness.last_successes, run)
     added = {}
