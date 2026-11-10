@@ -12,6 +12,7 @@ import re
 import subprocess
 import sys
 
+import decision
 import liveness
 import owner_hold
 from agent_guard import add_labels, same_login
@@ -24,7 +25,8 @@ _BLOCKING = 1500  # chars of review text per review in the slip
 NOTE_RESTARTED = (
     "Hallo Daniel, dieser PR haengt fest, auch der automatische Neustart des Auftrags hat nicht gereicht "
     "(ein Neustart ist schon gelaufen). Schlimmster Fall: nichts passiert, der PR wird nur nicht gemergt. "
-    "Frage: Soll der Orchestrator den Auftrag noch einmal anders schneiden (ja) oder der PR geschlossen werden (nein)?"
+    "Frage: Soll der Orchestrator den Auftrag noch einmal anders schneiden (ja) oder der PR geschlossen werden (nein)?\n"
+    + decision.build(yes="restart-recut", no="close-pr")
 )
 
 
