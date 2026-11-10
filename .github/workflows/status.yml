@@ -1,4 +1,5 @@
 name: status
+run-name: "${{ github.event_name == 'schedule' && 'status (scheduled)' || format('status after {0}', github.event.workflow_run.name || 'manual run') }}"
 # No model: tools/status.py keeps the issue "Agent status" up to date, re-triggers orphans, approves held runs of
 # the author app and starts a fix round for PRs with merge conflicts.
 # Schedule: the cron ticks every 30 min; the gate step skips ticks according to repo variable STATUS_INTERVAL
