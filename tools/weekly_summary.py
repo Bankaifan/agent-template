@@ -22,7 +22,9 @@ import run_stats
 
 TITLE = "Weekly summary"
 PROPOSAL_TITLE = "Capacity proposal"
+ROLE_PROPOSAL_TITLE = "Role proposal"
 QUEUE_WAIT = 3  # approved issues waiting while no agent:dev slot is free: threshold for the proposal (design 0014)
+ROLE_REPEATS = 3  # same failure class in this many failed model runs within 4 weeks: role proposal (design 0015)
 METRICS = pathlib.Path("docs/metrics.csv")
 COLUMNS = ["week", "code_lines", "modules", "lines_by_lang", "modules_by_lang", "max_parallel_agent_prs",
            "conflicts_rebuilt", "avg_review_rounds", "median_ci_minutes", "actions_minutes"]
@@ -240,6 +242,22 @@ def model_section(results):
     return "\n".join(lines)
 
 
+def roles_section(results, review_rounds, restarts):
+    """One row per role (design 0015): cost = model runs and failed runs; benefit = review rounds
+    (CHANGES_REQUESTED on agent PRs); rework = restarts (restart:1) or fix runs. results: run_stats.workflow_stats()."""
+    lines = ["## Roles, last 7 days",
+             "| role | model runs | failed | review rounds | rework |", "|---|---|---|---|---|"]
+    for f, role in run_stats.ROLES.items():
+        r = results.get(f)
+        runs, failed = (r["model_runs"], r["failed"]) if r else ("no model step", "-")
+        review = review_rounds if role == "review" else "-"
+        rework = {"dev": f"{restarts} restart(s)", "fix": f"{r['model_runs']} fix run(s)" if r else "-"}.get(role, "-")
+        lines.append(f"| {role} | {runs} | {failed} | {review} | {rework} |")
+    lines.append("- restarts: open issues with restart:1 updated in the last 7 days; closed issues are not counted")
+    lines.append("- denied calls, turns, silent runs and failures caught beyond review rounds: open (not measured here)")
+    return "\n".join(lines)
+
+
 def queue_numbers(issues, prs, max_dev, max_prs, now):
     """Approved issues waiting for a slot, free agent:dev and agent PR slots (an approximation of prefilter.py),
     and the median days since the last update of needs-human items (label times are not read: open)."""
@@ -265,55 +283,81 @@ def queue_section(q):
 
 
 def capacity_sections(today, run=gh, max_dev=2, max_prs=3, now=None):
-    """(model section, queue section, threshold reasons). gh failures give 'unknown' sections, never an abort."""
+    """(model section, queue section, threshold reasons, roles section, role candidates). Role candidates: (failure
+    class, count) for classes repeated ROLE_REPEATS times in 4 weeks. gh failures give 'unknown', never an abort."""
     now = now or datetime.datetime.now(datetime.UTC)
-    since = (today - datetime.timedelta(days=7)).isoformat()
+    since7 = (today - datetime.timedelta(days=7)).isoformat() + "T00:00:00Z"
+    since28 = (today - datetime.timedelta(days=28)).isoformat()
     try:
         files = run_stats.claude_workflows()
-        runs, jobs_of, log_of = run_stats.fetch_all(files, since, run=run)
+        runs, jobs_of, log_of = run_stats.fetch_all(files, since28, run=run)
         results = {f: run_stats.workflow_stats(runs[f], jobs_of, log_of, now=now) for f in files}
+        classes = run_stats.failure_classes(runs, jobs_of, log_of, now=now)
         issues = json.loads(run("issue", "list", "--state", "open", "--limit", "200",
                                 "--json", "number,title,labels,updatedAt"))
         prs = json.loads(run("pr", "list", "--state", "open", "--limit", "100",
                              "--json", "number,title,headRefName,labels,updatedAt"))
+        reviewed = json.loads(run("pr", "list", "--state", "all", "--limit", "100",
+                                  "--search", f"updated:>={since7[:10]}", "--json", "headRefName,reviews"))
         queue = queue_numbers(issues, prs, max_dev, max_prs, now)
     except (subprocess.CalledProcessError, ValueError, OSError, KeyError, TypeError):
-        return "## Model runs, last 7 days\n- unknown", "## Queue\n- unknown", []
+        return ("## Model runs, last 7 days\n- unknown", "## Queue\n- unknown", [],
+                "## Roles, last 7 days\n- unknown", [])
+    review_rounds = sum(1 for p in reviewed if p["headRefName"].startswith("agent/")
+                        for rv in p.get("reviews", [])
+                        if rv.get("state") == "CHANGES_REQUESTED" and rv.get("submittedAt", "") >= since7)
+    restarts = sum(1 for i in issues if "restart:1" in {lab["name"] for lab in i.get("labels", [])}
+                   and i.get("updatedAt", "") >= since7)
     reasons = []
     limit_errors = sum(r["limit_failed"] for r in results.values())
     if limit_errors:
         reasons.append(f"{limit_errors} failed model run(s) with a limit or rate error (last 7 days)")
     if queue["waiting"] >= QUEUE_WAIT and queue["free_dev"] == 0:
         reasons.append(f"{queue['waiting']} approved issues wait while no agent:dev slot is free")
-    return model_section(results), queue_section(queue), reasons
+    candidates = [(cls, n) for cls, n in sorted(classes.items()) if n >= ROLE_REPEATS]
+    return (model_section(results), queue_section(queue), reasons,
+            roles_section(results, review_rounds, restarts), candidates)
 
 
-def proposal_body(reasons, model, queue_text, today):
-    """Text of the Capacity proposal. It names the levers and the numbers; Daniel decides, the script does not."""
+def proposal_body(reasons, model, queue_text, today, roles_text=""):
+    """Text of the Capacity proposal. It names the levers and the numbers; Daniel decides, the script does not.
+    No separate seat or token lever: all roles share CLAUDE_CODE_OAUTH_TOKEN (owner decision, design 0015)."""
     levers = [
         "- `IDEAS_PER_WEEK`: scout cap per run (default 3, 0 = off)",
         "- `ORCHESTRATOR_EVENTS`: on or off for non-label events",
         "- `MAX_DEV` / `MAX_PRS`: agent jobs at once and open agent PRs (current values in Queue above; defaults 2 and 3, agent-template 4 and 5)",
         "- model per role: haiku by default, sonnet for core and security, opus only with Daniel's OK",
-        "- a separate seat or token for selected roles: open, not measured here",
+        "- which roles run at all: see the Roles table (cost and benefit per role); a new role is a Role proposal",
     ]
     parts = [f"Updated {today}. Written by the weekly summary (design 0014). No variable and no secret is changed.",
-             "## Why\n" + "\n".join(f"- {r}" for r in reasons), model, queue_text,
+             "## Why\n" + "\n".join(f"- {r}" for r in reasons), model, queue_text, roles_text,
              "## Levers (Daniel decides)\n" + "\n".join(levers)]
+    return "\n\n".join(p for p in parts if p) + "\n"
+
+
+def role_proposal_body(candidates, roles_text, today):
+    """Text of the Role proposal (design 0015): failure classes that repeat. It proposes only; no role is created."""
+    rows = [f"- `{cls}`: {n} failed model runs in 4 weeks" for cls, n in candidates]
+    parts = [f"Updated {today}. Written by the weekly summary (design 0015). It proposes only; no role, workflow or variable is changed.",
+             "## Repeated failure classes (4 weeks, limit errors excluded)\n" + "\n".join(rows),
+             roles_text,
+             ("## Next step (Daniel decides)\n"
+              "- First check whether a script in `tools/` can catch the class (AGENTS.md: script first, then haiku, then sonnet).\n"
+              "- Only if no script can, a new role or a model change is a design decision (`docs/design/`).")]
     return "\n\n".join(parts) + "\n"
 
 
-def upsert_proposal(body, run=gh):
-    """One open issue titled PROPOSAL_TITLE: updated if it exists, created otherwise."""
-    found = json.loads(run("issue", "list", "--state", "open", "--search", f'"{PROPOSAL_TITLE}" in:title',
+def upsert_proposal(body, run=gh, title=PROPOSAL_TITLE):
+    """One open issue with `title`: updated if it exists, created otherwise."""
+    found = json.loads(run("issue", "list", "--state", "open", "--search", f'"{title}" in:title',
                            "--json", "number,title"))
-    found = [i for i in found if i["title"] == PROPOSAL_TITLE]
+    found = [i for i in found if i["title"] == title]
     if found:
         number = str(found[0]["number"])
         run("issue", "edit", number, "--body", body)
-        print(f"updated proposal #{number}")
+        print(f"updated {title.lower()} #{number}")
     else:
-        url = run("issue", "create", "--title", PROPOSAL_TITLE, "--body", body).strip()
+        url = run("issue", "create", "--title", title, "--body", body).strip()
         print(url)
         number = url.rsplit("/", 1)[-1]
     liveness.verify_body("issue", number, body, run)
@@ -334,10 +378,11 @@ def main() -> int:
         print(f"appended a row to {METRICS}")
     for title in friction_issues():
         print(f"created friction issue: {title}")
-    model, queue_text, reasons = capacity_sections(today, gh, env_int("MAX_DEV", 2), env_int("MAX_PRS", 3))
+    model, queue_text, reasons, roles_text, role_candidates = capacity_sections(
+        today, gh, env_int("MAX_DEV", 2), env_int("MAX_PRS", 3))
     body = build_body(merged, human, keeper, ideas, today.isoformat(), status_stale_safe(),
                       failures=failure_watch_summary(gh, today, guard_mark.key_from_env()),
-                      capacity=[model, queue_text])
+                      capacity=[model, queue_text, roles_text])
     found = json.loads(gh("issue", "list", "--state", "open", "--search", f'"{TITLE}" in:title',
                           "--json", "number,title"))
     found = [i for i in found if i["title"] == TITLE]
@@ -351,7 +396,9 @@ def main() -> int:
         number = url.rsplit("/", 1)[-1]
     liveness.verify_body("issue", number, body, gh)
     if reasons:
-        upsert_proposal(proposal_body(reasons, model, queue_text, today.isoformat()))
+        upsert_proposal(proposal_body(reasons, model, queue_text, today.isoformat(), roles_text))
+    if role_candidates:
+        upsert_proposal(role_proposal_body(role_candidates, roles_text, today.isoformat()), gh, ROLE_PROPOSAL_TITLE)
     return 0
 
 

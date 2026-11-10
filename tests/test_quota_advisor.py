@@ -125,14 +125,16 @@ def test_limit_failure_opens_one_proposal(monkeypatch):
     calls = []
     gh_fake = make_gh({"orchestrator.yml": [run_(1, conclusion="failure")]}, {1: MODEL},
                       {1: "Error: rate limit exceeded"}, [], [], calls=calls)
-    model, queue, reasons = mod.capacity_sections(TODAY, gh_fake, 4, 5, now=NOW)
+    model, queue, reasons, roles, candidates = mod.capacity_sections(TODAY, gh_fake, 4, 5, now=NOW)
     assert reasons == ["1 failed model run(s) with a limit or rate error (last 7 days)"]
     assert "orchestrator.yml (orchestrator): 1 runs" in model
     assert "turns and denied calls: open" in model
-    mod.upsert_proposal(mod.proposal_body(reasons, model, queue, "2026-11-09"), gh_fake)
+    assert candidates == []  # a limit error is not a role failure
+    mod.upsert_proposal(mod.proposal_body(reasons, model, queue, "2026-11-09", roles), gh_fake)
     creates = [c for c in calls if c[:2] == ("issue", "create")]
     assert len(creates) == 1 and creates[0][3] == "Capacity proposal"
     assert "## Levers (Daniel decides)" in creates[0][5] and "MAX_DEV" in creates[0][5]
+    assert "separate seat" not in creates[0][5] and "## Roles, last 7 days" in creates[0][5]
 
 
 def test_no_limit_error_and_short_queue_opens_nothing(monkeypatch):
@@ -164,8 +166,8 @@ def test_capacity_run_only_reads_and_writes_issues(monkeypatch):
     calls = []
     gh_fake = make_gh({"orchestrator.yml": [run_(1, conclusion="failure")]}, {1: MODEL},
                       {1: "usage limit"}, [], [], calls=calls)
-    model, queue, reasons = mod.capacity_sections(TODAY, gh_fake, 2, 3, now=NOW)
-    mod.upsert_proposal(mod.proposal_body(reasons, model, queue, "2026-11-09"), gh_fake)
+    model, queue, reasons, roles, _candidates = mod.capacity_sections(TODAY, gh_fake, 2, 3, now=NOW)
+    mod.upsert_proposal(mod.proposal_body(reasons, model, queue, "2026-11-09", roles), gh_fake)
     assert reasons and {c[0] for c in calls} <= {"run", "api", "issue", "pr"}
 
 
@@ -174,8 +176,51 @@ def test_gh_failure_gives_unknown_sections_and_no_proposal(monkeypatch):
 
     def failing(*args):
         raise subprocess.CalledProcessError(1, "gh")
-    model, queue, reasons = mod.capacity_sections(TODAY, failing, now=NOW)
-    assert model.endswith("- unknown") and queue.endswith("- unknown") and reasons == []
+    model, queue, reasons, roles, candidates = mod.capacity_sections(TODAY, failing, now=NOW)
+    assert model.endswith("- unknown") and queue.endswith("- unknown") and roles.endswith("- unknown")
+    assert reasons == [] and candidates == []
+
+
+SAME_FAILURE = "2026-11-08T08:01:00Z\tBuild failed: 3 tests in 2.5s"
+
+
+def test_failure_class_normalizes_and_skips_limit_and_empty_logs():
+    assert rs.failure_class(f"job\tstep\t{SAME_FAILURE}\n") == "build failed: # tests in #.#s"
+    assert rs.failure_class("job\tstep\t2026-11-08T08:01:00Z usage limit reached\n") is None
+    assert rs.failure_class("job\tstep\t2026-11-08T08:01:00Z all good\n") is None
+
+
+def test_three_same_failures_open_one_role_proposal(monkeypatch):
+    only_claude(monkeypatch, ["agent-dev.yml"])
+    calls = []
+    runs = {"agent-dev.yml": [run_(n, conclusion="failure") for n in (1, 2, 3)]}
+    logs = {n: f"job\tstep\t{SAME_FAILURE}\n" for n in (1, 2, 3)}
+    gh_fake = make_gh(runs, {n: MODEL for n in (1, 2, 3)}, logs, [], [], calls=calls)
+    _model, _queue, _reasons, roles, candidates = mod.capacity_sections(TODAY, gh_fake, 2, 3, now=NOW)
+    assert candidates == [("build failed: # tests in #.#s", 3)]
+    assert "| dev | 3 | 3 | - | 0 restart(s) |" in roles and "| fix | no model step | - | - | - |" in roles
+    mod.upsert_proposal(mod.role_proposal_body(candidates, roles, "2026-11-09"), gh_fake, mod.ROLE_PROPOSAL_TITLE)
+    creates = [c for c in calls if c[:2] == ("issue", "create")]
+    assert len(creates) == 1 and creates[0][3] == "Role proposal"
+    assert "It proposes only" in creates[0][5] and "agent-dev.yml" not in creates[0][5]
+
+
+def test_one_off_failure_opens_no_role_proposal(monkeypatch):
+    only_claude(monkeypatch, ["agent-dev.yml"])
+    runs = {"agent-dev.yml": [run_(n, conclusion="failure") for n in (1, 2)]}
+    logs = {1: f"job\tstep\t{SAME_FAILURE}\n", 2: "job\tstep\t2026-11-08T08:01:00Z other error\n"}
+    gh_fake = make_gh(runs, {1: MODEL, 2: MODEL}, logs, [], [])
+    assert mod.capacity_sections(TODAY, gh_fake, 2, 3, now=NOW)[4] == []
+
+
+def test_failures_older_than_7_days_count_for_roles_not_for_model_runs(monkeypatch):
+    only_claude(monkeypatch, ["agent-dev.yml"])
+    old = [run_(n, conclusion="failure", day=1) for n in (1, 2, 3)]  # 8 days before TODAY: outside the 7-day window
+    gh_fake = make_gh({"agent-dev.yml": old}, {n: MODEL for n in (1, 2, 3)},
+                      {n: f"job\tstep\t{SAME_FAILURE}\n" for n in (1, 2, 3)}, [], [])
+    model, _queue, reasons, _roles, candidates = mod.capacity_sections(TODAY, gh_fake, 2, 3, now=NOW)
+    assert "agent-dev.yml (dev): 0 runs" in model and reasons == []
+    assert candidates == [("build failed: # tests in #.#s", 3)]
 
 
 def test_env_int_falls_back_to_default(monkeypatch):
