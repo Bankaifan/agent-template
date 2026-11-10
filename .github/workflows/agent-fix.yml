@@ -218,6 +218,9 @@ jobs:
               `gh run view ${{ env.RUN_ID }} --log-failed`.
             Fix exactly what is raised, run `make check` and the tests, then squash the branch into ONE commit
             authored by Daniel (no Co-authored-by) on top of current origin/main and `git push --force-with-lease`.
+            The tools for `make check` (and the test dependencies) are already installed: run plain `make check`,
+            never `pip install`. Use one simple command per Bash call: no pipes, `&&`, `;`, `$(...)` or redirects
+            (they do not match the allow list and are denied).
             Use Read/Glob/Grep to read files, not shell reads. If a needed action is denied,
             comment on the issue/PR saying which one instead of stopping silently.
             If the review only asks for a change of the PR body (title or body text, e.g. `Closes #N` -> `Refs #N`),
