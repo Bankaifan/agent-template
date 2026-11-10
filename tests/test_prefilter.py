@@ -100,3 +100,65 @@ def test_non_numeric_cap_falls_back_with_warning(monkeypatch, capsys):
     assert (fresh.MAX_DEV, fresh.MAX_PRS) == (2, 3)
     err = capsys.readouterr().err
     assert "MAX_DEV" in err and "MAX_PRS" in err
+
+
+def facts(**over):
+    base = {"startable": False, "needs_human": False, "agent_dev": False, "linked_open_pr": False, "trusted": False,
+            "receiver_marker": False, "agent_pr": False, "design_pr": False, "closing": set(),
+            "closing_agent_dev": False, "merged": False, "free_prs": 2, "review_state": "", "sender_is_owner": False,
+            "reviewer_ok": False}
+    return dict(base, **over)
+
+
+def reason(event, action, **over):
+    return mod.event_reason(event, action, facts(**over))
+
+
+def test_event_without_row_keeps_count_rule():
+    for ev, act in (("schedule", ""), ("workflow_dispatch", ""), ("workflow_run", "completed")):
+        assert reason(ev, act) is None
+
+
+def test_event_issue_opened_edited_labeled():
+    for act in ("opened", "edited", "labeled"):
+        assert reason("issues", act, startable=True) == (True, "startable-issue")
+        assert reason("issues", act, needs_human=True, sender_is_owner=True) == (True, "owner-reply")
+        assert reason("issues", act, needs_human=True) == (False, "no-match")
+
+
+def test_event_issue_closed():
+    assert reason("issues", "closed", agent_dev=True) == (True, "cleanup-closed-issue")
+    assert reason("issues", "closed", linked_open_pr=True) == (True, "cleanup-closed-issue")
+    assert reason("issues", "closed") == (False, "no-match")
+
+
+def test_event_comment_created():
+    assert reason("issue_comment", "created", sender_is_owner=True, needs_human=True) == (True, "owner-answer")
+    assert reason("issue_comment", "created", sender_is_owner=True, trusted=True) == (True, "owner-comment-trusted")
+    assert reason("issue_comment", "created", sender_is_owner=True, needs_human=True,
+                  receiver_marker=True) == (False, "no-match")
+    assert reason("issue_comment", "created", needs_human=True, trusted=True) == (False, "no-match")
+
+
+def test_event_pr_opened():
+    assert reason("pull_request", "opened", agent_pr=True, free_prs=0) == (True, "pr-over-cap")
+    assert reason("pull_request", "opened", agent_pr=True, design_pr=True) == (True, "design-pr")
+    assert reason("pull_request", "opened") == (True, "unlinked-pr")
+    assert reason("pull_request", "opened", agent_pr=True) == (False, "no-match")
+
+
+def test_event_pr_closed():
+    assert reason("pull_request", "closed", merged=True, closing_agent_dev=True) == (True, "merged-pr")
+    assert reason("pull_request", "closed", merged=True, design_pr=True) == (True, "merged-pr")
+    assert reason("pull_request", "closed", closing={5}) == (True, "closed-unmerged-pr")
+    assert reason("pull_request", "closed", merged=True) == (False, "no-match")
+    assert reason("pull_request", "closed") == (False, "no-match")
+
+
+def test_event_review_submitted():
+    ok = {"agent_pr": True, "reviewer_ok": True}
+    assert reason("pull_request_review", "submitted", review_state="APPROVED", **ok) == (True, "review")
+    assert reason("pull_request_review", "submitted", review_state="CHANGES_REQUESTED", **ok) == (True, "review")
+    assert reason("pull_request_review", "submitted", review_state="COMMENTED", **ok) == (False, "no-match")
+    assert reason("pull_request_review", "submitted", review_state="APPROVED", agent_pr=True) == (False, "no-match")
+    assert reason("pull_request_review", "submitted", review_state="APPROVED", reviewer_ok=True) == (False, "no-match")
