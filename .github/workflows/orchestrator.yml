@@ -100,6 +100,9 @@ jobs:
           GH_REPO: ${{ github.repository }}
           TRUSTED: ${{ steps.cand.outputs.list }}
           APPROVER_BOT: ${{ vars.APPROVER_BOT }}
+          # Parallel work caps; the template itself runs wider than a fresh project.
+          MAX_DEV: ${{ vars.MAX_DEV || (github.repository == 'Bankaifan/agent-template' && '4' || '2') }}
+          MAX_PRS: ${{ vars.MAX_PRS || (github.repository == 'Bankaifan/agent-template' && '5' || '3') }}
         run: python3 tools/prefilter.py orchestrator
       - name: Git identity
         if: steps.gate.outputs.skip != 'true' && steps.pre.outputs.work == 'true'
@@ -170,7 +173,8 @@ jobs:
                features) start directly. Issues in the list with a non-null `design` come from a merged design:
                work them in the order of the design's split.
             1b. Merged design PR (docs/design/ only): create the implementation issues from its split with
-               `gh issue create`, each body containing the line `Design: docs/design/NNNN-<slug>.md` and the
+               `gh issue create`, each body starting with the line `Design: docs/design/NNNN-<slug>.md` (alone on that line, nothing after
+               `.md`, or the issue is not trusted and never starts) and the
                slip; do this once (check `gh issue list --search "Design: docs/design/NNNN"` first).
             1c. Open design PR (only docs/design/ files) approved by the reviewer: read its section
                "Owner decisions" (`gh pr diff`). If empty, leave it to auto-merge. If not, add the label

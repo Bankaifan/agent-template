@@ -2,7 +2,9 @@
 
 Usage: python3 prefilter.py orchestrator|scout
 Needs the gh CLI (GH_TOKEN, GH_REPO) and git history. Environment: OWNER (default Bankaifan),
-IDEAS (scout, issues per run), STALE_DAYS (default 7), TRUSTED (orchestrator, JSON from trusted_issues.py).
+IDEAS (scout, issues per run), STALE_DAYS (default 7), TRUSTED (orchestrator, JSON from trusted_issues.py),
+MAX_DEV (agent:dev issues at once, default 2) and MAX_PRS (open agent PRs, default 3). An empty or non-numeric
+MAX_DEV/MAX_PRS falls back to the default (a warning goes to stderr).
 The Claude step runs only when `work=true`; the counts are printed to the log.
 """
 import json
@@ -14,8 +16,21 @@ import time
 
 import train
 
-MAX_DEV = 2
-MAX_PRS = 3
+
+def env_cap(name, default):
+    """Integer from the environment; empty or non-numeric falls back to the default (warning on stderr)."""
+    raw = (os.environ.get(name) or "").strip()
+    if not raw:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        print(f"{name}={raw!r} is not a number, using {default}", file=sys.stderr)
+        return default
+
+
+MAX_DEV = env_cap("MAX_DEV", 2)  # open agent:dev issues (agent jobs at once)
+MAX_PRS = env_cap("MAX_PRS", 3)  # open agent PRs
 MAX_OPEN_IDEAS = 10
 
 

@@ -108,7 +108,7 @@ So 0006 may land before or after this design; nothing here depends on it.
 ### 4.7 Quota (point 7)
 Measure first, in PR 1: a script `tools/run_stats.py` prints model runs per day for the last 14 days (`gh run list --workflow orchestrator.yml`, conclusion not `skipped`, and whether the
 `claude` step ran, from the job steps API) and the number of gate-skipped runs. The value is written into the PR body as the "before" baseline. After rollout (PR 4) the same
-command over 7 days is the "after". Keep: max 2 agent jobs (`MAX_DEV`, `MAX_PRS` in `prefilter.py` unchanged), model `sonnet`, `--max-turns 40` unchanged. Switch: repo variable `ORCHESTRATOR_EVENTS=off`
+command over 7 days is the "after". Keep: the agent caps (`MAX_DEV`, `MAX_PRS` in `prefilter.py`, repo variables, defaults 2 and 3; this design does not change them), model `sonnet`, `--max-turns 40` unchanged. Switch: repo variable `ORCHESTRATOR_EVENTS=off`
 (gate: events other than today's four are skipped). Acceptance for the rollout: model runs per day after <= 2x before; otherwise tighten the table in 4.3 or turn the switch off. The 2x is a proposal; Daniel
 decides it (section 9).
 

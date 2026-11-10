@@ -48,4 +48,4 @@ marker line, `<!-- decision: yes=<action> no=<action> -->` (grammar and action i
 
 ## Models (subscription quota is scarce)
 Routine work haiku; core, security and architecture sonnet; opus only with Daniel's OK.
-Max 2 agent jobs at once (PRs waiting only for Daniel's approval do not count, max 5 of them, see orchestrator.md). Script first, then haiku, then sonnet. Short reports, never repeat the diff.
+Agent jobs at once: repo variable MAX_DEV (default 2, agent-template 4); open PRs: MAX_PRS (default 3, agent-template 5). PRs waiting only for Daniel's approval do not count (max 5 of them, see orchestrator.md). Script first, then haiku, then sonnet. Short reports, never repeat the diff.
