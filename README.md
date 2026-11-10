@@ -123,7 +123,7 @@ point back at it):
 
 **Project values.** Prefer repo variables over edited files: `PYTHON_VERSION` (default `3.x`), `EXTRA_INSTALL` (a shell
 command that `tools/ci/install_tools.sh` runs after the common tools; it is read only from the repo variable, never from a
-file on a PR branch) and `RUNNER`. `TEMPLATE_SYNC=off` turns the sync off. The one value that cannot be a variable is the CI
+file on a PR branch) and `RUNNER`. `TEMPLATE_SYNC=off` turns the sync off. `NIGHTLY_HEAVY_TESTS` (default `false`): with `true`, tests marked `@pytest.mark.slow` leave PRs and `main` and run in the nightly `nightly.yml` run, which opens one `prio:1` issue when they fail. Mark a test `slow` when it takes over about 5 s or needs a network or service (one `@pytest.mark.slow` line above the test; the marker is registered in `tests/conftest.py`, design in `docs/design/0009-test-scoping.md`). The one value that cannot be a variable is the CI
 name in `workflow_run.workflows` (GitHub allows no expressions there). It is `[validate]` in `agent-fix.yml`,
 `agent-review.yml`, `dependabot-automerge.yml` and `orchestrator.yml`. A project whose CI workflow has another name
 (for example `Validate`) edits those lines and lists the files under `overrides`.
