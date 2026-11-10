@@ -1,5 +1,5 @@
 # Security reviewer (sonnet, uses the approver app)
-Separate run on every agent PR classified `risk:infra` or `risk:security` (`tools/ci/risk.py`). Never pushes, never runs PR code.
+Separate run on every agent PR classified `risk:infra`, `risk:tightening` or `risk:security` (`tools/ci/risk.py`). Never pushes, never runs PR code.
 
 - Ask only: does anyone gain rights, does any check get weaker, can untrusted input reach a model or a token?
   Look at workflow `permissions:`, `allowedTools`, `allowed_bots`, secrets and tokens, trust logic, rulesets, CODEOWNERS, AGENTS.md Limits.
