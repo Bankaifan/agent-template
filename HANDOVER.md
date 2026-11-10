@@ -4,21 +4,20 @@
 ## Goal
 Unblocker role (#92, design 0002) rebuilt on the untrusted-text boundary (design 0004, merged). Merge train (#124, design 0003, merged).
 
-## Current state (measured 2026-11-09)
-- Open PRs: none. Merged today: #157 (0004 1a read confinement), #158 (0004 2 fetch + outgoing filter), #126 gone from the open list.
-- `agent:dev` open: #145 (0004 1b, model:sonnet) and #147 (0004 3 unblocker workflow, slip rewritten, model:sonnet).
-- #117 has no `agent:dev` and no `needs-human` label now; its PR is not open. Status open.
+## Current state (measured 2026-11-10)
+- Open PRs: #162 (#147 unblocker workflow, checks queued), #161 (#117 scout routing, approved, needs-human, waiting for Daniel).
+- `agent:dev` open: #147 and #139 (guard-created issues trusted, slip written, model:sonnet).
+- #117 is on hold per Daniel's comment (wait for #105 design study) although PR #161 exists; Daniel decides.
 - Issues from design 0004: #148 (4 docs) not started.
-- Issues from design 0003: #150 (overlap guard), #151 (train core), #152 (train workflow), #153 (re-approval), #154 (strict flip, Daniel).
-- #106 (docs 5/5) not started; #92 stays needs-human.
+- Issues from design 0003: #150, #151, #152, #153, #154 (Daniel); none started.
+- #105 and #106 wait for #162 to merge; #92 stays needs-human.
 
 ## Open
-- Why #117's PR #126 is no longer open (merged or closed): not checked.
+- #98, #99, #100 (overdue scheduled runs, prio:1): `gh run list --workflow scout` returns nothing; cause not found. Should be trusted by #139.
 - #117 needs a second app token scoped to the template repo (Daniel to provision).
-- Overdue scheduled-run issues #98, #99, #100 (prio:1): not triaged; `gh run list --workflow scout` returned nothing.
 - How the ruleset file reaches the live ruleset (#154).
 
 ## Next 3 steps
-1. When #145 or #147 merges: remove `agent:dev`; start #153 and #151 (disjoint), then #150, #152; #154 last, Daniel.
-2. Triage #98-#100 and #156 (orchestrator runs ending silently).
+1. When #162 merges: remove `agent:dev` from #147; start #153 and #151 (disjoint), then #150, #152.
+2. When #139 merges: triage #98-#100 and #156 (orchestrator runs ending silently).
 3. Later #125 (design first), #119, #120, #112.
