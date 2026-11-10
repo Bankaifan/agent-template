@@ -149,4 +149,6 @@ Rationale: [docs/decisions/0007-template-sync.md](docs/decisions/0007-template-s
 - `allowedTools` is not a security boundary (e.g. `Bash(git:*)` still allows a lot). The boundaries are the token rights of the two apps and the ruleset on `main`.
 - Not verified end to end yet; see `docs/decisions/0001-agent-setup.md`.
 
+All repo variables with defaults, readers, effects and allowed values: [docs/variables.md](docs/variables.md).
+
 German short version: [README.de.md](README.de.md).
