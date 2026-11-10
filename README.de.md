@@ -79,4 +79,6 @@ Zeilen an und trägt die Dateien unter `overrides` ein.
 
 Begründung: [docs/decisions/0007-template-sync.md](docs/decisions/0007-template-sync.md).
 
+Alle Repo-Variablen mit Standardwert, Lesern, Wirkung und erlaubten Werten: [docs/variables.md](docs/variables.md).
+
 Details und Grenzen: [README.md](README.md).
