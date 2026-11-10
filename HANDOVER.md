@@ -6,10 +6,11 @@ Unblocker role (#92, design 0002) on the untrusted-text boundary (design 0004, m
 Risk class tightening (#171, design 0005), Answer receiver (#191, design 0006), Orchestrator events (#125, design 0007), Failure watch (#190, design 0008): designs merged.
 
 ## Current state (measured 2026-11-10)
-- Open PRs: #263 (#206 answer core, risk:security, review:1, review required). #132 wiring merged (352cda8).
-- Main CI: status runs green; review runs in progress at measurement time.
-- Started this run: #135 as a design study (slip for docs/design/0009-test-scoping.md), labeled model:sonnet, agent:dev.
-- Free agent:dev slots after this run 0, free PR slots 2 before the new PR.
+- Open PRs: #263 (#206 answer core, risk:security, CHANGES_REQUESTED at 994fdc0, needs-human; unblocker owns it, its last run ended without a verdict). #132 wiring merged (352cda8).
+- Security review of #263 failed twice as a process failure (diff unreadable, tool calls denied), not as a finding.
+- Main CI: status runs green or cancelled by concurrency; one in progress at measurement time.
+- Design 0009 (test scoping, #135) merged on main (0cf9e76). Implementation issues #269-#273 created this run (prio:3, not started, no free slot).
+- Free agent:dev slots 0 this run, free PR slots 2. Nothing started.
 - #134 friction reports: PR #259 merged; wiring into tools/weekly_summary.py is a follow-up (#254 owns that file).
 - #105: done on main, issue still open, Daniel closes.
 - #92, #191, #124, #125, #190 are design parents with split issues; not started directly.
@@ -27,5 +28,5 @@ Risk class tightening (#171, design 0005), Answer receiver (#191, design 0006), 
 
 ## Next 3 steps
 1. Merge #263 (#206); then #207 and #208.
-2. #135 design PR, then #252 once it is on the trusted list.
+2. Start #269 and #270 (disjoint) when slots free up, then #252 once it is on the trusted list.
 3. Later #112, #148.
