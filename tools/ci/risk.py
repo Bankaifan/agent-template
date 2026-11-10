@@ -7,7 +7,7 @@ security: the diff touches workflow `permissions:`, `allowedTools`, `allowed_bot
 CLI:
   risk.py classify [AGENTS_MD]   read a unified diff on stdin, print the level (AGENTS_MD: base file for the Limits section)
   risk.py pr NUMBER              (env GH_TOKEN, GH_REPO, optional OWNER, AUTHOR_BOT) label the PR, publish the check run
-                                 `risk`. Only a PR that changes a file owned by OWNER in CODEOWNERS (the outsider boundary)
+                                 `risk` (the job exits 0 either way; only the check run carries the gate). Only a PR that changes a file owned by OWNER in CODEOWNERS (the outsider boundary)
                                  waits for him: then `risk` fails until OWNER approved the head SHA. Every other `security`
                                  PR is gated by the AI security reviewer (status `security-review`) alone.
                                  Also starts the status `security-review` (pending for agent PRs that need that review).
@@ -307,7 +307,9 @@ def run_pr(number):
         else:
             set_status(repo, sha, "security-review", "success", "not needed (no agent PR or no infrastructure change)")
     print(f"risk: {level}")
-    return 0 if approved else 1
+    # The gate is the check run `risk` above. The job itself stays green: a red job is an intended wait, not a
+    # failure, and would make the failure watch open a "Failing workflow" issue for every owner-gated PR.
+    return 0
 
 
 def run_verdict(number, sha):
