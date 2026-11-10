@@ -234,7 +234,8 @@ jobs:
             installed. Commit with a plain `git commit -m "..."`: never `git -c ...` and never a `cd` prefix
             (they do not match the allow list and are denied).
             Use one simple command per Bash call: no pipes, `&&`, `;`, `$(...)` or redirects (they do not match
-            the allow list and are denied). Use gh's --json/--jq flags instead of pipes.
+            the allow list and are denied). Use gh's --json/--jq flags instead of pipes; inside `--jq` write a plain
+            path only (e.g. `--jq .comments[-1].body`), no `|`, `{` or `}` (an unquoted `|` is a shell pipe and is denied).
             These calls are NOT allowed and end the run as failed: `gh issue close` (comment instead and leave
             closing to Daniel), `gh workflow list` (use `gh run list`), `gh run view` (also with `--log-failed`; use
             `gh run list --json name,conclusion,headSha,url` and name the red run in the issue slip), `gh api`, `git checkout`, `git switch`,
