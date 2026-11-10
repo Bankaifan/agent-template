@@ -27,6 +27,7 @@ import subprocess
 import sys
 
 import exec_log
+import restart
 from agent_guard import add_labels, ensure_label, is_agent_pr
 from trusted_issues import classify, label_set_by
 
@@ -58,6 +59,14 @@ def load_verdict(text):
     """Parse verdict text; a markdown code fence around the JSON (models add one) is removed first."""
     m = _FENCE.match(text or "")
     return json.loads(m.group(1) if m else text)
+
+STUCK = "stuck-review"  # verdict "case": the block comes from a failed or empty review or a fix run without result
+YES_EFFECT = {
+    "drop-block": "hebt den Block auf",
+    "fix-pr": "startet einen neuen Fix-Lauf fuer den PR",
+    "restart-recut": "schliesst den PR als ersetzt und schneidet die Aufgabe neu",
+    "restart-issue": "startet die Aufgabe neu",
+}
 
 NOTE_AGAIN = ("Hallo Daniel, der automatische Entsperr-Versuch (unblock:1) ist schon gelaufen und hat nicht gereicht. "
               "Schlimmster Fall: die Aufgabe bleibt liegen, sonst passiert nichts. "
@@ -163,6 +172,8 @@ def validate(verdict):
         if bad:
             out = {"class": 3, "reason": f"class 2 issue asked for a forbidden action ({bad.group(0)}); owner decision",
                    "note": NOTE_SECURITY}
+    if cls == 3 and verdict.get("case") == STUCK:
+        out["case"] = STUCK
     for key in ("comment", "note"):
         if "@" in (out.get(key) or ""):
             raise ValueError(f"{key} must not mention anyone (@)")
@@ -251,14 +262,28 @@ def apply(kind, number, verdict, owner, run=gh, author_bot=""):
     return _owner_note(run, kind, number, owner, v, v.get("note"))
 
 
+def _yes_action(run, kind, number, v):
+    """What "ja" does. drop-block only removes the label, so it is right only where that really unblocks. In the
+    stuck case (failed or empty review, fix run without result) the PR must move on: restart-recut if the PR names an
+    issue, else fix-pr; an issue restarts."""
+    if v.get("case") != STUCK:
+        return "drop-block"
+    if kind == "issue":
+        return "restart-issue"
+    body = json.loads(run("pr", "view", str(number), "--json", "body")).get("body")
+    return "restart-recut" if restart.issue_refs(body) else "fix-pr"
+
+
 def _owner_note(run, kind, number, owner, v, note):
     """Class 3: needs-human stays; the German note is the LAST comment, read back to prove it."""
     if not note:
         raise ValueError("class 3 needs a German note")
     mention = "" if kind == "pr" else f"\n\n@{owner}"
     thing = "der PR" if kind == "pr" else "das Issue"
-    effect = f"Ja hebt den Block auf, nein schliesst {thing}."  # script-built, so the answer always maps to the marker
-    marker = decision.build(yes="drop-block", no=f"close-{kind}")
+    yes = _yes_action(run, kind, number, v)
+    # script-built, so the answer always maps to the marker
+    effect = f"Ja {YES_EFFECT[yes]}, nein schliesst {thing}."
+    marker = decision.build(yes=yes, no=f"close-{kind}")
     _comment(run, kind, number, f"{MARK}\n{note}\n{effect}\n{marker}{mention}")
     if kind == "pr":
         try:
