@@ -93,7 +93,8 @@ jobs:
             `gh api repos/${{ github.repository }}/code-scanning/alerts?state=open`.
             Every Bash call is ONE simple command: never chain with `;`, `&&` or pipes, never redirect. Read files with Read/Glob/Grep.
             If a read fails (403, 404), skip that source but say so;
-            never skip silently. Before the Conclusion line print `Alerts: dependabot=<read|skipped (reason)> code-scanning=<read|skipped (reason)>`,
+            never skip silently. A call denied by the tool is not a read: give its exact command as the reason, e.g. `skipped (denied: gh api ...)`.
+            Before the Conclusion line print `Alerts: dependabot=<read|skipped (reason)> code-scanning=<read|skipped (reason)>`,
             and dependency and platform versions (workflow action versions, tool versions) against upstream.
             Look for improvements: code, tests, docs, recurring review remarks, upstream changes.
             Titles already taken (open and recently closed issues, open PRs, design studies). Never propose an idea that
@@ -113,7 +114,7 @@ jobs:
             --max-turns 30
             --setting-sources user
             --settings .github/claude-judge-settings.json
-            --allowedTools "Read,Glob,Grep,Bash(gh issue list:*),Bash(gh issue view:*),Bash(gh pr list:*),Bash(gh pr view:*),Bash(python3 tools/idea_route.py create:*),Bash(gh label create:*),Bash(gh api repos/${{ github.repository }}/dependabot/alerts:*),Bash(gh api repos/${{ github.repository }}/code-scanning/alerts:*)"
+            --allowedTools "Read,Glob,Grep,Bash(gh issue list:*),Bash(gh issue view:*),Bash(gh pr list:*),Bash(gh pr view:*),Bash(python3 tools/idea_route.py create:*),Bash(gh label create:*),Bash(gh api repos/${{ github.repository }}/dependabot/alerts?state=open),Bash(gh api repos/${{ github.repository }}/code-scanning/alerts?state=open)"
       - name: Run report (script, no model)
         if: ${{ !cancelled() && steps.claude.outcome != 'skipped' }}
         env:
