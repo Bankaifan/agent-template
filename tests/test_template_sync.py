@@ -116,6 +116,29 @@ def test_render_issue_contents():
     assert body.rstrip().endswith("Template-Sync: " + "c" * 40)
 
 
+def test_render_issue_splits_large_change_with_reviewer_files():
+    clean = [{"path": f"tools/f{i}.py", "status": "added"} for i in range(98)]
+    clean.append({"path": "tools/ci/risk.py", "status": "modified"})
+    over = [{"path": ".github/workflows/agent-review.yml", "status": "modified", "why": "mine"}]
+    _, body = mod.render_issue("c" * 40, clean, over, "")
+    p1, p2 = body.index("## Part 1: reviewer pipeline"), body.index("## Part 2: rest")
+    assert p1 < p2
+    assert p1 < body.index("`tools/ci/risk.py`") < p2
+    assert p1 < body.index("agent-review.yml`") < p2
+    assert body.index("`tools/f0.py`") > p2
+    assert body.rstrip().endswith("Template-Sync: " + "c" * 40)
+
+
+def test_render_issue_small_or_no_reviewer_files_stays_flat():
+    small = [{"path": f"tools/f{i}.py", "status": "added"} for i in range(9)]
+    small.append({"path": "tools/ci/risk.py", "status": "modified"})
+    _, body = mod.render_issue("c" * 40, small, [], "")
+    assert "Part 1" not in body and "## Clean (port as is)" in body
+    big = [{"path": f"tools/f{i}.py", "status": "added"} for i in range(100)]
+    _, body = mod.render_issue("c" * 40, big, [], "")
+    assert "Part 1" not in body and "## Clean (port as is)" in body
+
+
 def test_pick_issue_returns_first_open_only():
     issues = [{"number": 1, "title": "Other"}, {"number": 2, "title": "Template sync abc1234"},
               {"number": 3, "title": "Template sync def5678"}]
