@@ -7,16 +7,15 @@ Risk class tightening (#171, design 0005), Answer receiver (#191, design 0006), 
 Test scoping (#135, design 0009): design on main, implementation issues #269-#273 exist.
 
 ## Current state (measured 2026-11-10)
-- Open PRs: #263 only (#206 answer core, risk:security, needs-human, CHANGES_REQUESTED, round:9390f74). #276 and #278 are no longer open.
-- Free agent:dev slots 3, free PR slots 4 at start of this run.
-- Started this run: #237 (orchestrator events 1/5, quota baseline), slip comment written, model:sonnet and agent:dev set.
-- Main CI: latest status runs success or in progress, none red at measurement time.
-- #263: second security review could not read the diff earlier; unblocker ended without a verdict twice. Not touched again.
+- Open PRs: #283 (answer receiver workflow, #207) and #284 (orchestrator gate, #238). Both risk:security, review approved, review:1.
+- Free agent:dev slots 2, free PR slots 3 at start of this run.
+- Started this run: #252 (failure watch 2/4) and #269 (test scoping 1/5). Slip comments written, overlap check passed, model:sonnet and agent:dev set.
+- Main CI: status runs queued or success, none red at measurement time.
 - #105: done on main, issue still open, Daniel closes.
-- #92, #191, #124, #125, #190 are design parents with split issues; not started directly.
+- #92, #191, #124, #125, #190, #135 are design parents with split issues; not started directly.
 - #120 needs Daniel's decision (permission change vs. drop alert step): not started.
 - #154 is Daniel's (risk:security flip of main ruleset): not started by the orchestrator.
-- #207, #208 wait for #206 to merge.
+- #208 waits for #207 (PR #283) to merge. #239-#241 follow #238.
 
 ## Open
 - Design 0005 section 9 (Limit 5 exception) is a yes/no question for Daniel; it blocks #201 only.
@@ -24,9 +23,9 @@ Test scoping (#135, design 0009): design on main, implementation issues #269-#27
 - #117 follow-up: second app token scoped to the template repo (Daniel to provision).
 - How the ruleset file reaches the live ruleset (#154).
 - Whether the parent issues #171, #191, #125, #190 close once splits land: open.
-- Why the unblocker and the second security review fail on #263: open.
+- #282 (owner issue, not approved): not started.
 
 ## Next 3 steps
-1. Get #263 and the #237 PR through review; then #207 and #208 follow #206.
-2. Next approved issues: #252, #269, #270 (disjoint files, check overlap first).
-3. Later #112, #148.
+1. Get #283, #284 and the #252/#269 PRs through review; then #208 and #239 follow.
+2. Next approved issues: #253, #270, #148 (check overlap first).
+3. Later #112, #134.
