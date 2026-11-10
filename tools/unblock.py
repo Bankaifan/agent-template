@@ -3,6 +3,7 @@
 CLI (gh CLI with GH_TOKEN and GH_REPO; the model step is not here, the verdict is data in a JSON file):
   unblock.py gate KIND NUMBER      exit 0 = the unblocker may look at it, 1 = leave it to Daniel (reason on stdout)
   unblock.py fetch KIND NUMBER DIR  write masked, capped untrusted input to DIR/untrusted/*.txt for the model step
+  unblock.py validate FILE         check a verdict file (shape, limits, secret filter) without acting; exit 0 = valid
   unblock.py apply KIND NUMBER FILE  apply the verdict in FILE ({"class": 1|2|3, "reason", "comment", "issue", "note"})
 Environment: OWNER (default Bankaifan), AUTHOR_BOT, APPROVER_BOT, RUN_URL.
 
@@ -292,6 +293,15 @@ def main(argv):
         text = exec_log.read_exec(args[3])
         print(apply(kind, number, json.loads(text), owner, author_bot=os.environ.get("AUTHOR_BOT", "")))
         return 0
+    if len(args) == 2 and args[0] == "validate":
+        try:
+            v = json.loads(exec_log.read_exec(args[1]))
+            check_outgoing(v)
+            print(f"valid, class {validate(v)['class']}")
+            return 0
+        except ValueError as exc:  # json.JSONDecodeError is a ValueError
+            print(f"invalid verdict: {exc}")
+            return 1
     if len(args) == 4 and args[0] == "fetch" and args[2].isdigit() and args[1] in ("pr", "issue"):
         print("\n".join(fetch(args[1], args[2], args[3])))
         return 0
