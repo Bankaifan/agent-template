@@ -1,8 +1,9 @@
 """Create or update the issue "Weekly summary" without a model.
 
 Sections: merged PRs of the last 7 days, PRs labelled needs-human, rule-keeper PRs,
-ideas without `approved`. Also appends one row per week to docs/metrics.csv (the workflow opens a PR
-for it). Needs the gh CLI (GH_TOKEN, GH_REPO).
+ideas without `approved`, failure watch (open, closed and reopened failure issues, design 0008).
+Also appends one row per week to docs/metrics.csv (the workflow opens a PR for it). Needs the gh CLI
+(GH_TOKEN, GH_REPO).
 """
 import csv
 import datetime
@@ -13,6 +14,8 @@ import statistics
 import subprocess
 import sys
 
+import failure_watch
+import guard_mark
 import liveness
 
 TITLE = "Weekly summary"
@@ -31,11 +34,25 @@ def section(heading, rows):
     return "\n".join(lines)
 
 
-def build_body(merged, needs_human, rule_keeper, ideas, today, status_stale=False):
+def failure_section(watch):
+    """Open, closed this week and reopened this week; None (gh could not read them) prints unknown."""
+    if watch is None:
+        return "## Failure watch\n- unknown"
+    parts = ["## Failure watch"]
+    # "reopened" = Reopened counter >= 1 and updated this week: an approximation (design 0008 4.7), not the reopen date
+    for key, label in (("open", "open"), ("closed", "closed this week"),
+                       ("reopened", "reopened at least once, updated this week")):
+        parts.append(f"- {label}: {len(watch[key])}")
+        parts += [f"  - #{r['number']} {r['title']}" for r in watch[key]]
+    return "\n".join(parts)
+
+
+def build_body(merged, needs_human, rule_keeper, ideas, today, status_stale=False, failures=None):
     parts = [f"Updated {today}.", section("Merged in the last 7 days", merged),
              section("PRs labelled needs-human", needs_human),
              section("Rule-keeper PRs", rule_keeper),
-             section("Ideas waiting for approval", ideas)]
+             section("Ideas waiting for approval", ideas),
+             failure_section(failures)]
     if status_stale:
         parts.append("## Warning\n- The status run has no successful run in the last 3 hours.")
     return "\n\n".join(parts) + "\n"
@@ -166,6 +183,23 @@ def status_stale_safe(run=gh):
         return False
 
 
+def failure_watch_summary(run, today, key):
+    """Signed failure issues (failure_watch.load_issues): open, closed in the last 7 days, reopened (see failure_section).
+    None without GUARD_KEY (nothing verifies), or if gh cannot list them or the output is not as expected."""
+    if not key:
+        return None
+    week_start = (today - datetime.timedelta(days=7)).isoformat() + "T00:00:00Z"
+    try:
+        failing = list(failure_watch.load_issues(key, run).values())
+        reopened = [i for i in failing if failure_watch.parse_body(i["body"])["reopened"] >= 1
+                    and i["updatedAt"] >= week_start]
+        return {"open": [i for i in failing if i["state"] == "OPEN"],
+                "closed": [i for i in failing if i["state"] == "CLOSED" and (i["closedAt"] or "") >= week_start],
+                "reopened": reopened}
+    except (subprocess.CalledProcessError, ValueError, OSError, KeyError, TypeError):
+        return None
+
+
 def main() -> int:
     today = datetime.date.today()
     since = (today - datetime.timedelta(days=7)).isoformat()
@@ -179,7 +213,8 @@ def main() -> int:
              if "approved" not in {lab["name"] for lab in i["labels"]}]
     if append_metrics(METRICS, collect_metrics(today)):
         print(f"appended a row to {METRICS}")
-    body = build_body(merged, human, keeper, ideas, today.isoformat(), status_stale_safe())
+    body = build_body(merged, human, keeper, ideas, today.isoformat(), status_stale_safe(),
+                      failures=failure_watch_summary(gh, today, guard_mark.key_from_env()))
     found = json.loads(gh("issue", "list", "--state", "open", "--search", f'"{TITLE}" in:title',
                           "--json", "number,title"))
     found = [i for i in found if i["title"] == TITLE]
