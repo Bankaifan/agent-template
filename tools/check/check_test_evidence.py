@@ -62,7 +62,8 @@ def red_without_change(base, tests):
             if (root / t).exists():
                 (pathlib.Path(work) / t).parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy(root / t, pathlib.Path(work) / t)
-        existing = [t for t in tests if (root / t).exists()]
+        # data files under tests/ (e.g. scope.json) are copied but are not pytest targets (pytest exits 4 on them)
+        existing = [t for t in tests if t.endswith(".py") and (root / t).exists()]
         if not existing:
             return False
         r = subprocess.run([sys.executable, "-m", "pytest", "-q", "--timeout=60", *existing], check=False, cwd=work,
