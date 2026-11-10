@@ -6,14 +6,15 @@ Unblocker role (#92, design 0002) on the untrusted-text boundary (design 0004, m
 Risk class tightening (#171, design 0005), Answer receiver (#191, design 0006), Orchestrator events (#125, design 0007): designs merged.
 
 ## Current state (measured 2026-11-10)
-- No open PRs. No open agent:dev issues before this run. Main CI: no red main (last status runs green).
-- #99/#100 no longer carry agent:dev; result not verified this run (open).
-- Started this run: #133 (role text, developer.md and reviewer.md) and #132 (check_test_evidence.py plus test, no workflow wiring).
-  Slips posted, model:sonnet and agent:dev set, overlap exit 0 for both.
+- No open PRs. Main CI: last runs green (validate on main was in_progress at measurement).
+- Merged this session: #246 (roles, closes #133), #247 (check_test_evidence.py, Refs #132).
+- Removed agent:dev from #132 (PR #247 merged). Wiring into CI/Makefile is a carry, not yet an issue (open).
+- Started #190 (failure watch) as a design task: slip posted, model:sonnet and agent:dev set. Output: docs/design/0008-failure-watch.md.
 - #92, #191, #124, #125 are design parents with split issues; not started directly.
 - #105: done on main, issue still open, Daniel closes.
 - Design 0007 split issues #237-#241 exist (open, not on the trusted list, so not started).
 - #148 not started. #154 is Daniel's. #244 is not approved.
+- #99/#100 may still be open; #190 should auto-close such issues (open).
 
 ## Open
 - Design 0005 section 9 (Limit 5 exception) is a yes/no question for Daniel; it blocks #201 only.
@@ -25,6 +26,6 @@ Risk class tightening (#171, design 0005), Answer receiver (#191, design 0006), 
 - Wiring of check_test_evidence.py into CI needs a follow-up slip (workflow file, risk:security).
 
 ## Next 3 steps
-1. Results of #133 and #132; remove agent:dev when their PRs merge.
-2. #205, #206 (answer receiver), #190.
+1. Design 0008 PR for #190: after merge remove agent:dev, create split issues.
+2. #205, #206 (answer receiver), wiring slip for check_test_evidence.py.
 3. Later #119, #120, #112, #148.
