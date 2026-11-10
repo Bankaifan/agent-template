@@ -7,12 +7,21 @@ CLI (env: GH_REPO optional): run_stats.py [DAYS (default 14)] [WORKFLOW_FILE (de
 """
 import datetime
 import json
+import pathlib
+import re
+import statistics
 import sys
 
 import liveness
 
 WORKFLOW = "orchestrator.yml"
 LIMIT = 1000
+CLAUDE_MARK = "claude-code-action"
+# Heuristic (design 0014): a failed run whose failed-step log mentions a limit or rate error. Not a guarantee.
+LIMIT_RE = re.compile(r"rate.?limit|usage limit|too many requests|\b429\b", re.IGNORECASE)
+ROLES = {"orchestrator.yml": "orchestrator", "agent-dev.yml": "dev", "agent-fix.yml": "fix",
+         "agent-review.yml": "review", "agent-security-review.yml": "security review", "scout.yml": "scout",
+         "unblocker.yml": "unblocker", "answer-receiver.yml": "answer receiver", "rule-keeper.yml": "rule keeper"}
 
 
 def parse_time(text):
@@ -55,16 +64,60 @@ def format_stats(result):
     return "\n".join(lines)
 
 
-def fetch(workflow=WORKFLOW, repo=None, run=liveness.gh):
-    base = ["--repo", repo] if repo else []
-    runs = json.loads(run("run", "list", "--workflow", workflow, *base, "--limit", str(LIMIT),
-                          "--json", "databaseId,conclusion,createdAt"))
+def jobs_getter(repo, run):
     slug = repo or "{owner}/{repo}"
 
     def jobs_of(run_id):
         return json.loads(run("api", f"repos/{slug}/actions/runs/{run_id}/jobs", "--paginate",
                               "--jq", "{jobs: .jobs}")).get("jobs", [])
-    return runs, jobs_of
+    return jobs_of
+
+
+def fetch(workflow=WORKFLOW, repo=None, run=liveness.gh):
+    base = ["--repo", repo] if repo else []
+    runs = json.loads(run("run", "list", "--workflow", workflow, *base, "--limit", str(LIMIT),
+                          "--json", "databaseId,conclusion,createdAt"))
+    return runs, jobs_getter(repo, run)
+
+
+def claude_workflows(directory=".github/workflows"):
+    """Workflow file names (not paths) whose YAML uses claude-code-action, i.e. have a model step."""
+    return sorted(p.name for p in pathlib.Path(directory).glob("*.yml")
+                  if CLAUDE_MARK in p.read_text(encoding="utf-8"))
+
+
+def fetch_all(files, since, repo=None, run=liveness.gh):
+    """Runs of each workflow file created on or after `since` (YYYY-MM-DD), with a jobs and a failed-log getter."""
+    base = ["--repo", repo] if repo else []
+    fields = "databaseId,conclusion,createdAt,startedAt,updatedAt"
+    runs = {f: json.loads(run("run", "list", "--workflow", f, *base, "--created", f">={since}",
+                              "--limit", str(LIMIT), "--json", fields)) for f in files}
+
+    def log_of(run_id):
+        return run("run", "view", str(run_id), *base, "--log-failed")
+    return runs, jobs_getter(repo, run), log_of
+
+
+def workflow_stats(runs, jobs_of, log_of, days=7, now=None):
+    """Model runs of one workflow in the last `days` days (same rule as stats()). Failed-log text is read only
+    for failed model runs. median_min: median duration of model runs (None without timestamps)."""
+    now = now or datetime.datetime.now(datetime.UTC)
+    cutoff = now - datetime.timedelta(days=days)
+    per_day, durations, failed, limit_failed = {}, [], 0, 0
+    for run in runs:
+        created = parse_time(run["createdAt"])
+        if created < cutoff or run.get("conclusion") == "skipped" or not ran_model(jobs_of(run["databaseId"])):
+            continue
+        day = created.date().isoformat()
+        per_day[day] = per_day.get(day, 0) + 1
+        if run.get("startedAt") and run.get("updatedAt"):
+            durations.append((parse_time(run["updatedAt"]) - parse_time(run["startedAt"])).total_seconds())
+        if run.get("conclusion") == "failure":
+            failed += 1
+            limit_failed += bool(LIMIT_RE.search(log_of(run["databaseId"])))
+    return {"days": days, "model_runs": sum(per_day.values()), "per_day": dict(sorted(per_day.items())),
+            "failed": failed, "limit_failed": limit_failed,
+            "median_min": round(statistics.median(durations) / 60, 1) if durations else None}
 
 
 def main(argv):
