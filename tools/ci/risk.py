@@ -55,6 +55,37 @@ def limits_range(text):
     return (start, last) if start else None
 
 
+_HEADER = re.compile(r'diff --git (?:"a/((?:[^"\\]|\\.)*)"|a/(.*?)) (?:"b/((?:[^"\\]|\\.)*)"|b/(.*))$')
+_ESC = {"n": 10, "t": 9, "r": 13, "a": 7, "b": 8, "f": 12, "v": 11, '"': 34, "\\": 92}
+
+
+def _unquote(s):
+    """Decode git's C-style quoting (octal bytes, \\n, \\", ...) of a quoted path body."""
+    out, i = bytearray(), 0
+    while i < len(s):
+        if s[i] != "\\" or i + 1 >= len(s):
+            out += s[i].encode("utf-8")
+            i += 1
+        elif s[i + 1] in "01234567":
+            m = re.match(r"[0-7]{1,3}", s[i + 1:])
+            out.append(int(m.group(0), 8) & 255)
+            i += 1 + len(m.group(0))
+        else:
+            out += bytes([_ESC[s[i + 1]]]) if s[i + 1] in _ESC else s[i + 1].encode("utf-8")
+            i += 2
+    return out.decode("utf-8", "replace")
+
+
+def parse_header(line):
+    """(old, new) paths of a `diff --git` line, plain or quoted form; ("", "") if it cannot be parsed."""
+    m = _HEADER.match(line.rstrip("\n"))
+    if not m:
+        return "", ""
+    old = _unquote(m.group(1)) if m.group(1) is not None else m.group(2)
+    new = _unquote(m.group(3)) if m.group(3) is not None else m.group(4)
+    return old, new
+
+
 def classify(diff, agents_md=""):
     """Level of a unified diff. `agents_md` is the base version of AGENTS.md (locates the Limits section)."""
     level = "none"
@@ -62,8 +93,7 @@ def classify(diff, agents_md=""):
     limits = limits_range(agents_md)
     for line in diff.splitlines():
         if line.startswith("diff --git "):
-            m = re.match(r"diff --git a/(.*?) b/(.*)$", line)
-            paths = (m.group(1), m.group(2)) if m else ("", "")
+            paths = parse_header(line)
             path, old, header = paths[1], 0, True
             if any(p.startswith(s) for p in paths for s in SECURITY_FILES):
                 return "security"
