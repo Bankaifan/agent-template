@@ -30,6 +30,7 @@ import subprocess
 import sys
 
 import liveness
+import owner_hold
 from agent_guard import add_labels, same_login, tail_text
 from approval import effective_approval
 from restart import close_superseded, handle_limit, superseded
@@ -201,14 +202,14 @@ def fix_round(labels):
     return ("review:2" if "review:1" in labels else "review:1"), False
 
 
-def limit_prs(prs, runs, now, approver=""):
+def limit_prs(prs, runs, now, approver="", is_held=None):
     """Agent PRs at review:3 that nobody took over: open, not effectively approved (a security `changes` verdict for
-    the head counts as not approved), no needs-human, no agent job, idle head."""
+    the head counts as not approved), no needs-human, no agent job, idle head, no OWNER label removal (`is_held`)."""
     if any(r["workflowName"] in ("agent-fix", "agent-review") for r in runs):
         return []
     return [p for p in prs if is_agent_pr(p) and "review:3" in names(p) and "needs-human" not in names(p)
             and not effective_approval(p.get("reviewDecision"), names(p), p.get("comments"), p.get("headRefOid"), approver)
-            and minutes_since(head_date(p), now) > LIMIT_IDLE_MIN]
+            and minutes_since(head_date(p), now) > LIMIT_IDLE_MIN and not (is_held and is_held(p))]
 
 
 def handle_stuck_limit(pr, owner, run=gh):
@@ -449,10 +450,13 @@ def run_status(env, now, run=gh):
     for p in prs:
         if p not in stuck_p:
             clear_retrigger("pr", p, run)
-    for p in limit_prs(prs, runs, now, env.get("APPROVER_BOT", "")):
+    def is_held(p):
+        return owner_hold.pr_held(p["number"], run, owner)
+
+    for p in limit_prs(prs, runs, now, env.get("APPROVER_BOT", ""), is_held):
         actions.append(f"review:3 PR #{p['number']}: {handle_stuck_limit(p, owner, run)}")
     if not any(r["workflowName"] == "agent-fix" for r in runs):  # one fix job at a time
-        for p in conflict_prs(prs)[:1]:
+        for p in [c for c in conflict_prs(prs) if not is_held(c)][:1]:
             actions.append(f"conflict PR #{p['number']}: {handle_conflict(p, owner, run)}")
     ages = {i["number"]: age(labeled_at(i), now) for i in issues}
     successes = safe(liveness.last_successes, run)

@@ -13,6 +13,7 @@ import subprocess
 import sys
 
 import liveness
+import owner_hold
 from agent_guard import add_labels, same_login
 
 OWNER_DEFAULT = "Bankaifan"
@@ -106,9 +107,10 @@ def restart_issue(pr, issue, reviews, run=gh):
 
 def park_with_owner(pr, owner, restarted, run=gh):
     """Today's path: needs-human, review request to the owner (unless author), limit comment with the German note."""
+    blocked = bool(owner_hold.held("pr", pr, ["needs-human"], run, owner))
     add_labels("pr", pr, ["needs-human"], run)
     author = json.loads(run("pr", "view", str(pr), "--json", "author"))["author"]["login"]
-    if not same_login(author, owner):
+    if not blocked and not same_login(author, owner):
         try:
             run("pr", "edit", str(pr), "--add-reviewer", owner)
         except subprocess.CalledProcessError:
@@ -124,6 +126,8 @@ def handle_limit(pr, owner, run=gh):
     info = json.loads(run("pr", "view", str(pr), "--json", "body,state,labels"))
     if info.get("state") != "OPEN":
         return "closed"
+    if owner_hold.pr_held(pr, run, owner):  # Daniel removed a hold label for this head: no restart, no close
+        return "held"
     issues = issue_refs(info.get("body"))
     issue = None
     restarted = False
