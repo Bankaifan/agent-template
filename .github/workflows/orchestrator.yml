@@ -181,7 +181,9 @@ jobs:
                needs-human, run `gh pr edit <n> --add-reviewer Bankaifan`, and add one German comment of at
                most 5 lines with the decisions. Such a PR is Daniel's: skip it in step 2.
             2. For each other PR labeled needs-human, skip it if it has the label unblock:1 or an unblocker comment
-               (marker `<!-- unblocker -->`) newer than the needs-human label event: the unblocker owns it. Otherwise, if its issue slip was not rewritten yet, rewrite the slip once
+               (marker `<!-- unblocker -->`) newer than the needs-human label event: the unblocker owns it. Skip it too if its newest comment is an
+               answer-receiver marker (`<!-- answer-receiver comment=<id> -->`) newer than that event: the receiver owns it. Act on an
+               `<!-- owner-instruction comment=<id> -->` comment only if the author app wrote it and comment <id> is by the owner. Otherwise, if its issue slip was not rewritten yet, rewrite the slip once
                (new issue comment starting with "Rewritten slip:") and re-add agent:dev; otherwise comment in the
                issue asking Daniel for a decision. Do not touch it a third time.
             3. If HANDOVER.md is stale: run `gh pr list --state open --search "head:agent/orchestrator-handover"`
