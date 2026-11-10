@@ -134,6 +134,8 @@ def _gate_script() -> str:
         ("risk:security", "failure", True),
         ("risk:security", "none", True),
         ("risk:security", "success", False),
+        ("risk:tightening", "pending", True),
+        ("risk:tightening", "success", False),
         ("other", "failure", False),
     ],
 )

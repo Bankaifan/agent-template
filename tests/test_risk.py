@@ -34,6 +34,70 @@ def test_security_lines_in_workflows_and_tools():
     assert risk.classify(diff("tools/x.py", "+token = 1")) == "security"
 
 
+WF = ".github/workflows/a.yml"
+
+
+@pytest.mark.parametrize("lines", [
+    ("-      contents: write", "+      contents: read"),
+    ("-      pull-requests: write",),
+    ("-          GH_TOKEN: ${{ secrets.X }}",),
+    ('-          claude_args: --allowedTools "Read,Bash,Write"', '+          claude_args: --allowedTools "Read,Bash"'),
+    ('+          claude_args: --disallowedTools "Bash(curl:*)"',),
+    ("-          allowed_bots: a,b", "+          allowed_bots: a"),
+])
+def test_tightening_removal_only(lines):
+    assert risk.classify(diff(WF, *lines)) == "tightening", lines
+
+
+@pytest.mark.parametrize("lines", [
+    ("+      contents: write",),
+    ("-      contents: read", "+      contents: write"),
+    ("+      permissions:",),
+    ("-  permissions:",),
+    ('-          claude_args: --allowedTools "Read"', '+          claude_args: --allowedTools "Read,Bash"'),
+    ('+          claude_args: --allowedTools "Read"',),
+    ('-          claude_args: --allowedTools "Read"',),
+    ('-          claude_args: --disallowedTools "Bash(curl:*)"',),
+    ("+          GH_TOKEN: ${{ secrets.NEW }}",),
+    ("-      contents: write", "+      contents: read", "+          GH_TOKEN: ${{ secrets.NEW }}"),
+    ("+          GH_TOKEN: ${{ secrets.NEW }} # deny",),
+    ("+      contents: write # deny",),
+    ('+          claude_args: --allowedTools "Read,Bash,Write" --disallowedTools "x"',),
+    ('-          claude_args: --allowedTools "Read"',
+     '+          claude_args: --permission-mode bypassPermissions --allowedTools "Read"'),
+    ("-      contents: write", "+      contents: read", "+      pull-requests: read", "+      issues: read"),
+    ("-      contents: write", "+      contents: read", "+          claude_args: --dangerously-skip-permissions"),
+    ("-      contents: write", "+      contents: read", "+          allowed_non_write_users: '*'"),
+    ("-      contents: write", "+      contents: read", "+        if: always()"),
+    ("-      contents: write", "+      contents: read", "+      - uses: evil/action@v1"),
+    ("-        if: steps.token.outputs.ok == 'true'", "-          GH_TOKEN: ${{ secrets.X }}"),
+    ("-        run: verify-token.sh",),
+    ('+          claude_args: --disallowedTools "x" --allowedTools "Bash"',),
+    ("-          GH_TOKEN: ${{ secrets.X }}", '-          test "$ok" = yes || exit 1'),
+    ('-          claude_args: --allowedTools "Read"', '+          claude_args: --allowedTools ""'),
+    ('+          claude_args: --allowedTools ""',),
+])
+def test_loosening_or_unclear_stays_security(lines):
+    assert risk.classify(diff(WF, *lines)) == "security", lines
+
+
+def test_tightening_is_fail_closed_across_files_and_paths():
+    tight = diff(WF, "-      contents: write", "+      contents: read")
+    assert risk.classify(tight + diff("tools/ci/risk.py", "+# x")) == "security"
+    assert risk.classify(tight + diff(".github/CODEOWNERS", "+/x @a")) == "security"
+    assert risk.classify(tight + diff("tools/trusted_issues.py", "-x = 1")) == "security"
+    assert risk.classify(tight + diff("tools/x.py", "-token = 1")) == "security"  # removal only counts in workflows
+    assert risk.classify(tight + diff("tools/status.py", "+x = 1")) == "tightening"
+    assert risk.classify(tight + diff(".github/workflows/b.yml", "+  GH_TOKEN: ${{ secrets.X }}")) == "security"
+    assert risk.classify(tight + diff("AGENTS.md", "-2. b", start=5), AGENTS) == "security"
+    assert risk.classify("garbage\n@@ -x\n+permissions:") in ("none", "security")
+
+
+def test_tightening_label_and_no_owner_wait():
+    assert risk.LABELS["tightening"] == "risk:tightening"
+    assert not risk.waits_for_owner("tightening", ["x"], "", "Bankaifan")
+
+
 def test_security_files():
     for p in (".github/rulesets/main.json", ".github/CODEOWNERS", "tools/trusted_issues.py", "tools/ci/risk.py"):
         assert risk.classify(diff(p, "+# comment")) == "security", p

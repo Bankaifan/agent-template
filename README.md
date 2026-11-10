@@ -28,7 +28,9 @@ Idea: **rules a script can check live in CI, not in prompts.** The agents get a 
 - `.github/CODEOWNERS`: `@Bankaifan` owns only the security-relevant files: `AGENTS.md`, CODEOWNERS, `.github/rulesets/`, `tools/trusted_issues.py`, `tools/agent_guard.py`, `tools/ci/risk.py`, `risk.yml`.
 - Risk classes (`tools/ci/risk.py`, workflow `risk`): a diff touching `permissions:`, `allowedTools`, `allowed_bots`, secrets/tokens, trust logic,
   rulesets, CODEOWNERS or the AGENTS.md Limits is `security` (label `risk:security`; the required check `risk` fails until Daniel approves the head SHA);
-  other agent-infrastructure changes are `infra`. Every `infra`/`security` agent PR also needs the security reviewer
+  a diff whose security-relevant hunks only remove or narrow (permission lowered/removed, allow-list entry or secret removed, deny entry added) is
+  `tightening` (label `risk:tightening`): the security reviewer's approval is enough, Daniel is not asked. Mixed or unclear diffs, `risk.py`,
+  rulesets, CODEOWNERS and trust files stay `security`; other agent-infrastructure changes are `infra`. Every `infra`/`security` agent PR also needs the security reviewer
   (`.agents/roles/security-reviewer.md`, workflow `agent-security-review.yml`, required status `security-review`), then it auto-merges.
   Whatever waits for Daniel ends with a plain-German note (what, worst case, recommendation, yes/no question). Add `risk` and `security-review` to the ruleset's required checks.
 - A weekly rule keeper that opens one PR proposing rule removals, new checks, contradiction fixes and scripts for recurring agent work steps (Daniel merges).

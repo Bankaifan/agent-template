@@ -63,7 +63,7 @@ jobs:
         run: |
           n=$(gh api --paginate "repos/$GH_REPO/pulls/$PR/files" --jq '.[] | select(.filename | startswith("docs/design/")) | .filename' | wc -l)
           if [ "$n" -gt 0 ]; then echo "design=true" >> "$GITHUB_OUTPUT"; echo "PR touches docs/design/: no auto-merge"; fi
-      # A risk:security PR merges only when security-review is success for exactly the current head SHA.
+      # A risk:security or risk:tightening PR merges only when security-review is success for exactly the current head SHA.
       # Pending or failed is not an error: the PR waits, and the status event re-runs this workflow on success.
       - name: Wait for security-review on risk:security PRs
         id: gate
@@ -74,7 +74,7 @@ jobs:
           PR: ${{ steps.pr.outputs.number }}
         run: |
           view=$(gh pr view "$PR" --json labels,headRefOid)
-          if [ "$(jq '[.labels[].name] | index("risk:security") != null' <<<"$view")" != "true" ]; then exit 0; fi
+          if [ "$(jq '[.labels[].name] | (index("risk:security") != null) or (index("risk:tightening") != null)' <<<"$view")" != "true" ]; then exit 0; fi
           sha=$(jq -r .headRefOid <<<"$view")
           state=$(gh api "repos/$GH_REPO/commits/$sha/statuses" --jq '[.[] | select(.context == "security-review")][0].state // "none"')
           if [ "$state" != "success" ]; then

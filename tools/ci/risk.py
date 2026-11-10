@@ -1,5 +1,8 @@
-"""Risk classification of a PR diff: `security`, `infra` or `none`.
+"""Risk classification of a PR diff: `security`, `tightening`, `infra` or `none`.
 
+tightening: the security-relevant hunks only remove or narrow (permission lowered, allow-list entry removed, secret/token
+  line removed, deny entry added) in workflows or .claude/; the security reviewer's approval is enough, no owner review.
+  A mixed, unclear or unparsable diff is `security` (fail closed).
 security: the diff touches workflow `permissions:`, `allowedTools`, `allowed_bots`, secrets/token handling,
   trust logic (tools/trusted_issues.py, tools/agent_guard.py), `.github/rulesets/`, CODEOWNERS, this check,
   or the "Limits" section of AGENTS.md. infra: any other change to agent infrastructure. none: everything else.
@@ -32,7 +35,7 @@ INFRA_PATHS = (".github/", ".agents/", "tools/", "AGENTS.md", "CLAUDE.md", "Make
 SECURITY_LINES = re.compile(
     r"permissions:|allowedTools|allowed_bots|secrets\.|_TOKEN|\btoken\b|app-token|APP_KEY", re.IGNORECASE)
 LINE_SCANNED = (".github/", "tools/", ".claude/", ".mcp.json", "Makefile")  # prose in docs and roles is no token handling
-LABELS = {"security": "risk:security", "infra": "risk:infra"}
+LABELS = {"security": "risk:security", "tightening": "risk:tightening", "infra": "risk:infra"}
 OWNER_DEFAULT = "Bankaifan"
 VERDICT = re.compile(r"^security-review:\s*(approve|changes)\s+([0-9a-f]{7,40})\b", re.IGNORECASE | re.MULTILINE)
 
@@ -54,13 +57,110 @@ def limits_range(text):
     return (start, last) if start else None
 
 
+LIST_LINE = re.compile(  # the WHOLE line is one allow/deny list; any other flag or text before/after makes it unparsable
+    r"""^\s*(?:claude_args:\s*)?(?:(--allowedTools|--disallowedTools)\s+|(allowed_bots|allowed_tools|disallowed_tools):\s*)"""
+    r"""("[^"]*"|'[^']*'|[^\s"'#]+)\s*$""")
+PERM_ENTRY = re.compile(r"^\s*([\w-]+):\s*(read|write|none)\s*(#.*)?$")  # `contents: write` inside a permissions block
+ENV_ASSIGN = re.compile(r"^\s*[A-Z][A-Z0-9_]*:\s*\S")  # `GH_TOKEN: ${{ secrets.X }}`
+GUARD_LINE = re.compile(r"^\s*(-\s*)?(if|run|uses):")  # removing a guard or step weakens a check
+RANK = {"none": 0, "read": 1, "write": 2}
+REMOVAL_OK = (".github/workflows/", ".claude/", ".mcp.json")  # only here may a removed line count as tightening
+
+
+def relevant(path, text):
+    return bool(SECURITY_LINES.search(text) or (path.startswith(".github/") and PERM_ENTRY.match(text)))
+
+
+def parse_list(text):
+    """`(key, entries)` of a line that is exactly one allow/deny list, else None. key: allowedtools/disallowedtools/allowedbots."""
+    m = LIST_LINE.match(text)
+    if not m:
+        return None
+    v = m.group(3).strip("\"'")
+    if "--" in v or "${{" in v:
+        return None
+    key = (m.group(1) or m.group(2)).lower().replace("-", "").replace("_", "")
+    return key, {x.strip() for x in v.split(",")} - {""}
+
+
+def skip_line(t):
+    return not t.strip() or t.strip().startswith("#")
+
+
+def hunk_verdict(path, lines):
+    """`None` (no security-relevant line), `tightening` (every changed line provably only removes or narrows) or `security`.
+    Fails closed: any added line that is not a recognised narrowing, any removed guard, and every file outside
+    REMOVAL_OK, is `security`. Narrowing is paired one-to-one with a removed line of the same key."""
+    if not any(relevant(path, t) for _, t in lines):
+        return None
+    if not path.startswith(REMOVAL_OK):
+        return "security"
+    all_removed = [t for sign, t in lines if sign == "-"]
+    all_added = [t for sign, t in lines if sign == "+"]
+    if any(GUARD_LINE.match(t) for t in all_removed):
+        return "security"
+    free_perm = [om for o in all_removed if (om := PERM_ENTRY.match(o))]  # removed entries not yet paired with an added one
+    free_allow = [pl for o in all_removed if (pl := parse_list(o)) and not pl[0].startswith("dis")]
+    for t in all_added:
+        if skip_line(t):
+            continue
+        pl, pm = parse_list(t), PERM_ENTRY.match(t)
+        if pl and pl[0].startswith("dis"):
+            continue  # a longer deny list (the whole line is only a deny list)
+        if pl:
+            if not pl[1]:
+                return "security"  # an empty allow list is unclear (some tools read it as "no restriction")
+            hit = next((o for o in free_allow if o[0] == pl[0] and pl[1] <= o[1]), None)
+            if hit is None:
+                return "security"
+            free_allow.remove(hit)  # a narrower allow list
+        elif pm and not SECURITY_LINES.search(t):
+            if pm.group(2) == "none":
+                continue
+            hit = next((om for om in free_perm if om.group(1) == pm.group(1) and RANK[om.group(2)] > RANK[pm.group(2)]), None)
+            if hit is None:
+                return "security"
+            free_perm.remove(hit)  # lowered, e.g. write -> read
+        else:
+            return "security"
+    for t in all_removed:
+        if skip_line(t):
+            continue
+        pl = parse_list(t)
+        if pl and pl[0].startswith("dis"):
+            if any((a := parse_list(x)) and a[0] == pl[0] and a[1] >= pl[1] for x in all_added):
+                continue
+            return "security"
+        if pl:
+            if any((a := parse_list(x)) and a[0] == pl[0] for x in all_added):
+                continue  # replaced by a line already checked above
+            return "security"
+        if PERM_ENTRY.match(t) or ENV_ASSIGN.match(t):
+            continue  # a dropped permission entry or env/secret assignment
+        return "security"  # any other removed line (a check, a guard in a run body, ...) may weaken a protection
+    return "tightening"
+
+
 def classify(diff, agents_md=""):
-    """Level of a unified diff. `agents_md` is the base version of AGENTS.md (locates the Limits section)."""
-    level = "none"
+    """Level of a unified diff: `security`, `tightening` (security-relevant hunks only remove or narrow), `infra`, `none`.
+    `agents_md` is the base version of AGENTS.md (locates the Limits section)."""
+    level, tight = "none", False
     path, old, header = "", 0, False
     limits = limits_range(agents_md)
+    hunk = []
+
+    def flush():
+        """True if the finished hunk is `security`; remembers `tightening`."""
+        nonlocal tight
+        v = hunk_verdict(path, hunk) if hunk and path.startswith(LINE_SCANNED) else None
+        hunk.clear()
+        tight = tight or v == "tightening"
+        return v == "security"
+
     for line in diff.splitlines():
         if line.startswith("diff --git "):
+            if flush():
+                return "security"
             m = re.match(r"diff --git a/(.*?) b/(.*)$", line)
             paths = (m.group(1), m.group(2)) if m else ("", "")
             path, old, header = paths[1], 0, True
@@ -69,20 +169,23 @@ def classify(diff, agents_md=""):
             if any(p.startswith(s) for p in paths for s in INFRA_PATHS):
                 level = "infra"
         elif line.startswith("@@"):
+            if flush():
+                return "security"
             m = re.match(r"@@ -(\d+)", line)
             old, header = (int(m.group(1)) if m else 0), False
         elif header:  # ---/+++/index/mode lines between `diff --git` and the first hunk
             continue
         elif line[:1] in ("+", "-"):
-            if path.startswith(LINE_SCANNED) and SECURITY_LINES.search(line[1:]):
-                return "security"
+            hunk.append((line[0], line[1:]))
             if path == "AGENTS.md" and limits and limits[0] <= old <= limits[1]:
                 return "security"
             if line[0] == "-":
                 old += 1
         else:
             old += 1
-    return level
+    if flush():
+        return "security"
+    return "tightening" if tight else level
 
 
 def gh(*args):
