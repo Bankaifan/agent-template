@@ -15,19 +15,26 @@ def exec_file(result, denials=()):
                        {"type": "result", "result": result, "permission_denials": list(denials)}])
 
 
+def pr_view(a, labels, head=SHA):
+    """Fake `gh pr view`: the head SHA for the headRefOid query, else the label names."""
+    if a[:2] != ("pr", "view"):
+        return ""
+    return head + "\n" if "headRefOid" in a else labels
+
+
 def test_changes_posts_comment_and_requests_changes(tmp_path):
     calls = []
 
     def run(*a):
         calls.append(a)
-        return "risk:security\n" if a[:2] == ("pr", "view") else ""
+        return pr_view(a, "risk:security\n")
 
     text = f"Looked at it.\n\nsecurity-review: changes {SHA[:7]}\n\n- a.yml:3: Write is unscoped"
     assert pv.post(5, SHA, exec_file(text), run, tmp_path) == 0
-    assert calls[0][:3] == ("pr", "comment", "5")
-    body = pathlib.Path(calls[0][4]).read_text()
+    comment = next(c for c in calls if c[:2] == ("pr", "comment"))
+    body = pathlib.Path(comment[4]).read_text()
     assert body.startswith(f"security-review: changes {SHA}\n\n- a.yml:3")
-    assert ("pr", "edit", "5", "--add-label", "review:1") in calls
+    assert ("pr", "edit", "5", "--add-label", "review:1", "--add-label", "round:b9f7de0") in calls
     assert calls[-1][:3] == ("pr", "review", "5") and "--request-changes" in calls[-1]
 
 
@@ -36,7 +43,7 @@ def test_changes_after_round_limit_requests_no_review(tmp_path):
 
     def run(*a):
         calls.append(a)
-        return "review:3\n" if a[:2] == ("pr", "view") else ""
+        return pr_view(a, "review:3\n")
 
     assert pv.post(5, SHA, exec_file(f"security-review: changes {SHA}\n- x"), run, tmp_path) == 0
     assert not any(c[:2] in (("pr", "review"), ("pr", "edit")) for c in calls)
@@ -45,9 +52,9 @@ def test_changes_after_round_limit_requests_no_review(tmp_path):
 def test_approve_posts_only_the_comment(tmp_path, monkeypatch):
     monkeypatch.delenv("APPROVER_BOT", raising=False)
     calls = []
-    assert pv.post(5, SHA, exec_file(f"`security-review: approve {SHA}`\n- fine"), lambda *a: calls.append(a),
-                   tmp_path) == 0
-    assert len(calls) == 1
+    assert pv.post(5, SHA, exec_file(f"`security-review: approve {SHA}`\n- fine"),
+                   lambda *a: calls.append(a) or pr_view(a, ""), tmp_path) == 0
+    assert [c[:2] for c in calls if "headRefOid" not in c] == [("pr", "comment")]
 
 
 def test_no_verdict_or_other_sha_logs_denials(tmp_path, capsys):
@@ -125,5 +132,40 @@ def test_dismissal_failure_does_not_break_the_approve(tmp_path, monkeypatch):
 def test_approve_without_approver_bot_dismisses_nothing(tmp_path, monkeypatch):
     monkeypatch.delenv("APPROVER_BOT", raising=False)
     calls = []
-    assert pv.post(5, SHA, exec_file(f"security-review: approve {SHA}"), lambda *a: calls.append(a) or "", tmp_path) == 0
-    assert len(calls) == 1
+    assert pv.post(5, SHA, exec_file(f"security-review: approve {SHA}"),
+                   lambda *a: calls.append(a) or pr_view(a, ""), tmp_path) == 0
+    assert [c[:2] for c in calls if "headRefOid" not in c] == [("pr", "comment")]
+
+
+def _labelled(labels, head=SHA):
+    calls = []
+
+    def run(*a):
+        calls.append(a)
+        return pr_view(a, labels, head)
+
+    return calls, run
+
+
+def _bumps(calls):
+    return [c for c in calls if c[:3] == ("pr", "edit", "5") and any(x.startswith("review:") for x in c)]
+
+
+def test_both_reviewers_on_one_head_count_one_round(tmp_path):
+    calls, run = _labelled("review:1\nround:" + SHA[:7] + "\n")  # the code reviewer counted this head
+    assert pv.post(5, SHA, exec_file(f"security-review: changes {SHA}\n- x"), run, tmp_path) == 0
+    assert _bumps(calls) == []
+    assert any(c[:3] == ("pr", "review", "5") and "--request-changes" in c for c in calls)
+
+
+def test_first_verdict_for_a_new_head_counts_and_replaces_the_marker(tmp_path):
+    calls, run = _labelled("review:1\nround:1111111\n")
+    pv.post(5, SHA, exec_file(f"security-review: changes {SHA}\n- x"), run, tmp_path)
+    assert ("pr", "edit", "5", "--add-label", "review:2", "--add-label", "round:" + SHA[:7]) in calls
+    assert ("pr", "edit", "5", "--remove-label", "round:1111111") in calls
+
+
+def test_verdict_for_a_superseded_head_is_discarded(tmp_path):
+    calls, run = _labelled("", head="2" * 40)
+    assert pv.post(5, SHA, exec_file(f"security-review: changes {SHA}\n- x"), run, tmp_path) == 0
+    assert not any(c[:2] in (("pr", "comment"), ("pr", "review")) or "--add-label" in c for c in calls)

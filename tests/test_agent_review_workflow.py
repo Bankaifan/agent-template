@@ -42,3 +42,22 @@ def test_approver_token_scope_is_unchanged():
     assert "permission-pull-requests: write" in TEXT
     assert TEXT.count("permission-") == 1
     assert "permissions:\n  contents: read\n  pull-requests: read\n" in TEXT
+
+
+SEC = (WORKFLOW.parent / "agent-security-review.yml").read_text(encoding="utf-8")
+
+
+def test_superseded_heads_are_cancelled_in_both_reviews():
+    assert "cancel-in-progress: true" in TEXT and "cancel-in-progress: false" not in TEXT
+    assert "cancel-in-progress: true" in SEC and "cancel-in-progress: false" not in SEC
+
+
+def test_cancelled_runs_report_nothing():
+    for text in (TEXT, SEC):
+        assert "always()" not in text.split("jobs:")[1]
+
+
+def test_review_round_is_counted_per_head_not_per_label_case():
+    block = TEXT[step_index("id: round"):step_index("id: reapprove")]
+    assert 'guard round "$num" "$SHA"' in block
+    assert "guard label pr \"$num\" review:" not in block

@@ -148,6 +148,8 @@ def stub_gh(tmp_path, monkeypatch):
         '    print(json.dumps({"comments": posted}))\n'
         'elif a[:2] == ["pr", "list"]:\n'
         '    sys.stdout.write(os.environ["GH_PR_LIST"])\n'
+        'elif a[:2] == ["pr", "view"] and "--jq" in a and "headRefOid" in a:\n'
+        '    print(os.environ.get("GH_HEAD", "sha1"))\n'
         'elif a[:2] == ["pr", "view"]:\n'
         '    sys.stdout.write(os.environ["GH_PR_VIEW"])\n'
         'elif a[:2] == ["api", "--paginate"]:\n'
@@ -425,3 +427,45 @@ def test_orchestrator_old_failure_does_not_count(orch_env):
     g.escalate_orchestrator("denied", "57", "o/r", BOT, r,
                             now=NOW)
     assert not r.made("issue", "create")
+
+
+def _pr_run(labels="", head="a" * 40):
+    calls = []
+
+    def run(*a):
+        calls.append(a)
+        if a[:2] == ("pr", "view"):
+            return head + "\n" if "headRefOid" in a else labels
+        return ""
+
+    return calls, run
+
+
+def test_round_is_counted_once_per_head():
+    sha = "a" * 40
+    calls, run = _pr_run("review:1\nround:" + sha[:7] + "\n")
+    assert g.count_round(5, sha, run) == "already"
+    assert not any("--add-label" in c for c in calls)
+    calls, run = _pr_run("review:1\nround:bbbbbbb\n")
+    assert g.count_round(5, sha, run) == "counted"
+    assert ("pr", "edit", "5", "--add-label", "review:2", "--add-label", "round:aaaaaaa") in calls
+    assert ("pr", "edit", "5", "--remove-label", "round:bbbbbbb") in calls
+    calls, run = _pr_run("review:3\n")
+    assert g.count_round(5, sha, run) == "limit"
+    assert not any("--add-label" in c for c in calls)
+
+
+def test_stale_head_is_detected_and_fails_open():
+    assert g.is_stale_head(5, "b" * 40, _pr_run()[1])
+    assert not g.is_stale_head(5, "a" * 40, _pr_run()[1])
+
+    def broken(*a):
+        raise subprocess.CalledProcessError(1, "gh")
+
+    assert not g.is_stale_head(5, "b" * 40, broken)
+
+
+def test_silent_review_check_ignores_a_superseded_head(monkeypatch):
+    monkeypatch.setattr(g, "gh", _pr_run(head="c" * 40)[1])
+    monkeypatch.setattr(g, "reviews_of", lambda *a: pytest.fail("must not look for a review of a stale head"))
+    assert g.silent_check(["review", "5", "d" * 40], "Bankaifan") == 0
