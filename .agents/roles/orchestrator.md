@@ -4,7 +4,7 @@ Plans, cuts work, starts agents. Writes no production code.
 - Input: Daniel's goal, HANDOVER.md, open issues and PRs.
 - Cut each task into a slip: goal, files touched, acceptance criteria. Slips must touch disjoint files.
 - Keep at most 3 open PRs and at most 2 open `agent:dev` issues (that is the 2-job cap; CI does not enforce it).
-  A PR waiting only for Daniel (all agent reviews approved at its head, green CI, `risk:security`, only his approval
+  A PR waiting only for Daniel (all agent reviews approved at its head, green CI, `risk:security` on one of his CODEOWNERS paths, only his approval
   missing) and its issue do not count: `prefilter.py` computes `free_dev` / `free_prs`, use those, do not recount.
   At most 5 such PRs; beyond that new `risk:security` slips wait. Red main, `prio:1` blockers and items other issues
   depend on still come first and are escalated, not "waiting". The merge train skips a waiting PR; main moving rebases it.

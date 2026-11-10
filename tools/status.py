@@ -311,7 +311,19 @@ def scheduled_rows(successes, now, added=None):
     return rows
 
 
-def build_body(runs, prs, issues, ages, orchestrator, ideas, actions, now, owner, scheduled=None, added=None):
+def merged_rows(merged, now, hours=24):
+    """PRs merged in the last `hours`: what landed without Daniel, so he can revert it (button on the PR page)."""
+    rows = []
+    for p in merged or []:
+        at = p.get("mergedAt")
+        if at and minutes_since(at, now) <= hours * 60:
+            risk = [n for n in names(p) if n.startswith("risk:")]
+            rows.append(f"- #{p['number']} {p['title']}" + (f" ({', '.join(risk)})" if risk else ""))
+    return rows
+
+
+def build_body(runs, prs, issues, ages, orchestrator, ideas, actions, now, owner, scheduled=None, added=None,
+               merged=None):
     run_rows = [f"- [{r['workflowName']}]({r['url']}) {r.get('displayTitle', '')} ({r['status']}, "
                 f"{age(r['createdAt'], now)})" for r in runs]
     pr_rows = [pr_line(p, owner) for p in prs]
@@ -326,6 +338,8 @@ def build_body(runs, prs, issues, ages, orchestrator, ideas, actions, now, owner
              section("Running agent jobs", run_rows), section("Pull requests", pr_rows),
              section("Issues with agent:dev", issue_rows), section("Last orchestrator run", [orch]),
              section("Open ideas", idea_rows)]
+    if merged is not None:
+        parts.append(section("Merged in the last 24 h (undo: Revert button on the PR)", merged_rows(merged, now)))
     if scheduled is not None:
         parts.append(section("Last successful scheduled runs", scheduled_rows(scheduled, now, added)))
     parts.append(section("Actions of this run", [f"- {a}" for a in actions]))
@@ -444,7 +458,10 @@ def run_status(env, now, run=gh):
         added = safe(liveness.added_dates, successes, run) or {}
         late, new = liveness.flag_overdue(successes, now, run, added)
         actions += [f"overdue run: {label}" for label in late] + [f"opened overdue issue #{n}" for n in new]
-    number = update_issue(build_body(runs, prs, issues, ages, orch, ideas, actions, now, owner, successes, added), run)
+    merged = safe(jlist, run, "pr", "list", "--state", "merged", "--limit", "30", "--json",
+                  "number,title,mergedAt,labels")
+    number = update_issue(build_body(runs, prs, issues, ages, orch, ideas, actions, now, owner, successes, added,
+                                     merged), run)
     print(f"status issue #{number}; actions: {len(actions)}")
     for a in actions:
         print(a)
