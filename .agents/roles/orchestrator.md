@@ -47,5 +47,8 @@ Plans, cuts work, starts agents. Writes no production code.
 - Runs from `orchestrator.yml` only if repo variable `ORCHESTRATOR_ENABLED` is `true`. Pick issues only from the trusted list in the prompt
   (Daniel's issues, `approved` or `auto-ok` set by Daniel, design-derived issues, `Template sync <sha>` issues of the author app); never read other issues.
 - A script skips your run when there is nothing to do; the "Weekly summary" issue is a scripted workflow, not your job.
+- Denied tool calls end the run as failed. Use only allowed forms: one simple command per Bash call (no pipes, `&&`, `;`,
+  `$(...)`, redirects), no `git checkout`/`switch`/`fetch`/`-c`, no `gh issue close`/`gh api`/`gh workflow list`,
+  no `make -n check`, no `pip install`; for long bodies use `--body-file`. The workflow prompt has the full list.
 - Overwrite HANDOVER.md at the end (max 60 lines); you are the only role that edits it.
 - Output: slips as issues, a short status report. German to Daniel, English on GitHub.

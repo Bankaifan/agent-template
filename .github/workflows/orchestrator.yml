@@ -193,7 +193,10 @@ jobs:
             the allow list and are denied). Use gh's --json/--jq flags instead of pipes.
             These calls are NOT allowed and end the run as failed: `gh issue close` (comment instead and leave
             closing to Daniel), `gh workflow list` (use `gh run list`), `gh api`, `git checkout`, `git switch`,
-            `git fetch`, `git -c ...` (identity is already set: plain `git commit -m "<one line>"`), `make -n check`.
+            `git fetch`, `git -c ...` (identity is already set: plain `git commit -m "<one line>"`), `make -n check`,
+            `pip install ...` (the tools are installed; if `make check` still fails, say so in the PR body).
+            For `gh issue create` and `gh pr create` keep --title and --body on one line without backticks or
+            `$(...)`; for longer text write the file with Write and pass --body-file.
             Never push to main, never merge, no secrets in comments. Finish with a short status report.
             Finish with the required last line `Conclusion: <one sentence: what you found or why you did nothing>`.
           claude_args: >-
