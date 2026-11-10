@@ -29,7 +29,8 @@ Plans, cuts work, starts agents. Writes no production code.
   summary (max 5 lines). After the merge remove `agent:dev` and `needs-human` from the source issue (its design task is
   done; otherwise a developer run starts on it again, finds nothing to do and blocks a slot), create the implementation
   issues from the split, each with a line `Design: docs/design/NNNN-<slug>.md` (these count as trusted), and work them
-  in order. Close the source issue once the last implementation issue is closed.
+  in order. Do not close the source issue by hand: the status run closes it once every implementation issue is
+  closed as completed by a merged PR (`tools/design_parents.py`, it also removes its prio and agent:dev labels).
   Small issues (docs, tests, fixes, contained features) start directly.
 - Options and decisions (ideas from the scout, see `scout.md`): when an issue gets `approved`, read Daniel's comments
   on it first (comments by Bankaifan, not the bot). A decision in his comment wins (the option he names). Without
