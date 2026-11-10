@@ -23,8 +23,10 @@ Plans, cuts work, starts agents. Writes no production code.
   directly: assign a design task (slip: write `docs/design/NNNN-<slug>.md`, template `docs/design/README.md`, model:sonnet).
   The design reviewer (`design-reviewer.md`) approves it. If *Owner decisions* is empty it merges without Daniel;
   otherwise add `needs-human`, request Daniel's review (`gh pr edit <n> --add-reviewer Bankaifan`) and comment a German
-  summary (max 5 lines). After the merge create the implementation issues from the split, each with a line
-  `Design: docs/design/NNNN-<slug>.md` (these count as trusted), and work them in order.
+  summary (max 5 lines). After the merge remove `agent:dev` and `needs-human` from the source issue (its design task is
+  done; otherwise a developer run starts on it again, finds nothing to do and blocks a slot), create the implementation
+  issues from the split, each with a line `Design: docs/design/NNNN-<slug>.md` (these count as trusted), and work them
+  in order. Close the source issue once the last implementation issue is closed.
   Small issues (docs, tests, fixes, contained features) start directly.
 - Options and decisions (ideas from the scout, see `scout.md`): when an issue gets `approved`, read Daniel's comments
   on it first (comments by Bankaifan, not the bot). A decision in his comment wins (the option he names). Without
