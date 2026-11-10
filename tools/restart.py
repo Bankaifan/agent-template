@@ -20,6 +20,7 @@ from agent_guard import add_labels, same_login
 OWNER_DEFAULT = "Bankaifan"
 RESTART = "restart:1"
 _REFS = re.compile(r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?|refs?)\s+#(\d+)", re.IGNORECASE)
+_CLOSING = re.compile(r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)", re.IGNORECASE)
 _BLOCKING = 1500  # chars of review text per review in the slip
 
 NOTE_RESTARTED = (
@@ -43,6 +44,13 @@ def issue_refs(body):
     return seen
 
 
+def own_issues(body):
+    """The issues a PR works on: the ones it closes. `Refs` count only when it closes none (design or partial step),
+    so sibling PRs that share a parent through `Refs #parent` do not replace each other."""
+    closing = list(dict.fromkeys(int(n) for n in _CLOSING.findall(body or "")))
+    return closing or issue_refs(body)
+
+
 def is_agent_branch(pr):
     return (pr.get("headRefName") or "").startswith("agent/") and not pr.get("isCrossRepository")
 
@@ -53,13 +61,13 @@ def superseded(prs):
     for p in prs:
         if not is_agent_branch(p):
             continue
-        for n in issue_refs(p.get("body")):
+        for n in own_issues(p.get("body")):
             newest[n] = max(newest.get(n, 0), p["number"])
     out = {}
     for p in prs:
         if not is_agent_branch(p):
             continue
-        newer = [newest[n] for n in issue_refs(p.get("body")) if newest[n] > p["number"]]
+        newer = [newest[n] for n in own_issues(p.get("body")) if newest[n] > p["number"]]
         if newer:
             out[p["number"]] = max(newer)
     return sorted(out.items())
@@ -130,7 +138,7 @@ def handle_limit(pr, owner, run=gh):
         return "closed"
     if owner_hold.pr_held(pr, run, owner):  # Daniel removed a hold label for this head: no restart, no close
         return "held"
-    issues = issue_refs(info.get("body"))
+    issues = own_issues(info.get("body"))
     issue = None
     restarted = False
     for n in issues:

@@ -188,7 +188,7 @@ def act_restart_issue(c):
 
 def act_restart_recut(c):
     _need_agent_pr(c)
-    issues = restart.issue_refs(c.body)
+    issues = restart.own_issues(c.body)
     if not issues:
         raise Refuse("restart-recut: the PR names no issue")
     pages = json.loads(c.run("api", "--paginate", "--slurp", f"repos/{os.environ['GH_REPO']}/pulls/{c.number}/reviews"))
