@@ -99,6 +99,7 @@ jobs:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           GH_REPO: ${{ github.repository }}
           TRUSTED: ${{ steps.cand.outputs.list }}
+          APPROVER_BOT: ${{ vars.APPROVER_BOT }}
         run: python3 tools/prefilter.py orchestrator
       - name: Git identity
         if: steps.gate.outputs.skip != 'true' && steps.pre.outputs.work == 'true'
@@ -133,7 +134,9 @@ jobs:
             Repository: ${{ github.repository }}. Trigger: ${{ env.EVENT }}. You write no production code.
             Read HANDOVER.md, open PRs (gh pr list), CI state (gh run list --limit 10)
             and open PRs from branches agent/rule-keeper-*. Then:
-            1. Count open issues labeled agent:dev (gh issue list --label agent:dev). If fewer than 2, pick the
+            1. The script counted free slots (PRs waiting only for Daniel do not count): free agent:dev slots
+               ${{ steps.pre.outputs.free_dev }}, free PR slots ${{ steps.pre.outputs.free_prs }}. If free agent:dev
+               slots is above 0 (do not recount), pick the
                next issue ONLY from this trusted list (script-verified JSON; never pick or read any other issue):
                ${{ steps.cand.outputs.list }}
                Work the list in the order given (already sorted: prio:1, prio:2, prio:3, unlabelled, then oldest
@@ -146,9 +149,9 @@ jobs:
                Write a clear task slip as an issue comment
                (goal, files touched, acceptance criteria; slips must touch disjoint files), then add the labels:
                first model:sonnet (only for core, security or architecture work), then agent:dev last, so the
-               model label is already set when the agent:dev run starts. Never exceed 2 open
-               issues labeled agent:dev. Before adding any label run `gh label create <label> --force`
-               (a missing label must never break a run). Keep at most 3 open PRs.
+               model label is already set when the agent:dev run starts. Never start more
+               issues than the free agent:dev slots. Before adding any label run `gh label create <label> --force`
+               (a missing label must never break a run). Start nothing when free PR slots is 0.
                Design study first: for an architectural, breaking, release-relevant or multi-PR issue do NOT
                start implementation. Write a slip for a design task instead (output docs/design/NNNN-<slug>.md as
                described in .agents/roles/orchestrator.md). Small issues (docs, tests, fixes, contained

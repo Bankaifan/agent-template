@@ -8,7 +8,10 @@ Model-free. The workflow (a later PR) runs it on push to main, on a schedule and
    The run does nothing; the push of that merge starts the next run.
 3. The oldest BEHIND candidate with auto-merge enabled is rebased (PUT pulls/N/update-branch, update_method=rebase).
 4. The oldest DIRTY candidate gets status.handle_conflict at once, unless an agent-fix run is queued or running.
-5. Prints numbers and actions, never tokens. A failed gh call is reported and ends the run with exit 1, before
+5. A PR waiting only for the owner (waiting_for_owner) is skipped: it never counts as in flight, so the next ready PR
+   lands. When main moves it is still rebased (BEHIND, even without auto-merge) or sent to agent-fix (DIRTY), so the
+   owner approves the current head; the push re-runs the agent reviews. After his approval it is a normal candidate.
+6. Prints numbers and actions, never tokens. A failed gh call is reported and ends the run with exit 1, before
    any label change of that run.
 
 CLI: train.py   do the run. Environment: GH_REPO, APPROVER_BOT (unset: nothing is approved, nothing happens),
@@ -25,7 +28,7 @@ import status
 IN_FLIGHT = {"CLEAN", "UNSTABLE", "HAS_HOOKS"}
 ACTIVE_RUN = {"in_progress", "queued", "waiting", "requested", "pending"}
 LIST_FIELDS = ("number,title,url,headRefName,headRefOid,labels,mergeStateStatus,statusCheckRollup,"
-               "isCrossRepository,files,autoMergeRequest")
+               "isCrossRepository,files,autoMergeRequest,reviewRequests")
 
 
 def jlist(run, *args):
@@ -41,6 +44,18 @@ def approved_on_head(pr, reviews, approver):
     """Only APPROVED reviews count: has_review alone also matches a CHANGES_REQUESTED review on the same head."""
     approved = [r for r in reviews if (r.get("state") or "").upper() == "APPROVED"]
     return agent_guard.has_review(approved, approver, pr["headRefOid"])
+
+
+MAX_WAITING = 5  # waiting-for-owner PRs at once; beyond that new security slips wait
+
+
+def waiting_for_owner(pr, reviews, approver, owner):
+    """Agent PR with every agent review approved at its head, green CI (security-review included) and only the
+    owner's approval missing: risk:security, a review request to the owner, no needs-human, not a design PR."""
+    return (status.is_agent_pr(pr) and "risk:security" in status.names(pr) and "needs-human" not in status.names(pr)
+            and not is_design_pr(pr) and status.ci_state(pr.get("statusCheckRollup")) == "green"
+            and any(status.same_login(r.get("login"), owner) for r in pr.get("reviewRequests") or [])
+            and approved_on_head(pr, reviews, approver))
 
 
 def candidates(prs, reviews_of, approver):
@@ -59,12 +74,14 @@ def in_flight(pr):
     return state in IN_FLIGHT or (state == "BLOCKED" and status.ci_state(pr.get("statusCheckRollup")) == "running")
 
 
-def plan(cands, fix_busy):
-    """(PR in flight or None, PR to rebase or None, PR for a conflict fix or None). Nothing else happens while one is in flight."""
-    busy = next((p for p in cands if in_flight(p)), None)
+def plan(cands, fix_busy, waiting=()):
+    """(PR in flight or None, PR to rebase or None, PR for a conflict fix or None). Nothing else happens while one is in flight.
+    `waiting` = numbers of waiting-for-owner PRs: never in flight, rebased when BEHIND even without auto-merge."""
+    busy = next((p for p in cands if p["number"] not in waiting and in_flight(p)), None)
     if busy:
         return busy, None, None
-    rebase = next((p for p in cands if p.get("mergeStateStatus") == "BEHIND" and p.get("autoMergeRequest")), None)
+    rebase = next((p for p in cands if p.get("mergeStateStatus") == "BEHIND"
+                   and (p.get("autoMergeRequest") or p["number"] in waiting)), None)
     conflict = None if fix_busy else next(iter(status.conflict_prs(cands)), None)
     return None, rebase, conflict
 
@@ -81,9 +98,10 @@ def run_train(env, run=status.gh):
             return [r for page in pages for r in page]
 
         cands = candidates(prs, reviews_of, approver)
+        waiting = {p["number"] for p in cands if waiting_for_owner(p, reviews_of(p["number"]), approver, owner)}
         fix_runs = jlist(run, "run", "list", "--workflow", "agent-fix.yml", "--limit", "5", "--json", "status")
         fix_busy = any(r.get("status") in ACTIVE_RUN for r in fix_runs)
-        busy, rebase, conflict = plan(cands, fix_busy)
+        busy, rebase, conflict = plan(cands, fix_busy, waiting)
         if busy:
             print(f"waiting: PR #{busy['number']} is about to merge; the train runs again after its push")
             return 0
@@ -93,7 +111,7 @@ def run_train(env, run=status.gh):
         if conflict:
             print(f"conflict PR #{conflict['number']}: {status.handle_conflict(conflict, owner, run)}")
         if not rebase and not conflict:
-            print(f"nothing to do; approved candidates: {len(cands)}")
+            print(f"nothing to do; approved candidates: {len(cands)}, waiting for owner: {len(waiting)}")
     except subprocess.CalledProcessError as e:
         print(f"train stopped: a gh call exited {e.returncode}; this run changed no labels")
         return 1
