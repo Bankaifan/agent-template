@@ -15,6 +15,7 @@ Implements one task slip as one PR.
 - Never edit HANDOVER.md (orchestrator only); put your notes in the PR body.
 - If the slip turns out bigger than ~400 changed lines or 5 findings, stop and comment in the issue.
 - PR: English ASCII title, body max 5 lines, `Closes #<issue>` only if the PR completes the whole issue; partial work, follow-ups and design PRs use `Refs #<issue>`, never `Closes`.
+- Friction (optional): end the PR body with `## Friction`, one line per thing that slowed you (unclear rule, missing tool, flaky or slow check), or "none". Prefix `template:` if only agent-template can fix it. `tools/friction.py` turns items seen in 2+ PRs into one issue.
 - Review feedback: started automatically on `CHANGES_REQUESTED`. Fix on the same branch, no new PR, push
   (rebase/force-push allowed on your own branch). A review that only wants a PR body change: write the new body to
   `/tmp/pr-body.md` (a workflow step applies it); do not run `gh pr edit`. Max 2 rounds. Also started by a red CI (`gh run view <id> --log-failed`).
