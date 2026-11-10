@@ -16,6 +16,7 @@ import sys
 MIN_PRS = 2
 MAX_ITEM = 100
 TEMPLATE_PREFIX = "template:"
+TEMPLATE_REPO = "Bankaifan/agent-template"
 HEADING = re.compile(r"^#{2,}\s*friction\s*$", re.IGNORECASE)
 ANY_HEADING = re.compile(r"^#{1,6}\s")
 NONE = {"none", "n/a", "-", ""}
@@ -89,11 +90,29 @@ def gh_json(*args):
     return json.loads(subprocess.run(["gh", *args], check=True, capture_output=True, text=True).stdout)
 
 
-def main() -> int:
+def collect():
+    """[{title, template_only, count}] from merged agent PRs and the existing issue titles (needs gh)."""
     bodies = [pr.get("body") or "" for pr in gh_json(
         "pr", "list", "--state", "merged", "--search", "head:agent/", "--limit", "100", "--json", "body")]
     titles = [i["title"] for i in gh_json("issue", "list", "--state", "all", "--limit", "500", "--json", "title")]
-    print(json.dumps(issues_to_create(bodies, titles), indent=2))
+    return issues_to_create(bodies, titles)
+
+
+def create_issues(items, run, template_repo=TEMPLATE_REPO):
+    """Create one issue per item with run(*gh_args); template-only items go to template_repo. Returns the titles."""
+    made = []
+    for it in items:
+        body = f"Reported as friction in {it['count']} merged agent PRs (`## Friction` section)."
+        args = ["issue", "create", "--title", it["title"], "--body", body]
+        if it["template_only"]:
+            args += ["--repo", template_repo]
+        run(*args)
+        made.append(it["title"])
+    return made
+
+
+def main() -> int:
+    print(json.dumps(collect(), indent=2))
     return 0
 
 
