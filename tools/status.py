@@ -31,6 +31,7 @@ import sys
 
 import liveness
 from agent_guard import add_labels, same_login, tail_text
+from approval import effective_approval
 from restart import close_superseded, handle_limit, superseded
 
 TITLE = "Agent status"
@@ -200,12 +201,14 @@ def fix_round(labels):
     return ("review:2" if "review:1" in labels else "review:1"), False
 
 
-def limit_prs(prs, runs, now):
-    """Agent PRs at review:3 that nobody took over: open, not approved, no needs-human, no agent job, idle head."""
+def limit_prs(prs, runs, now, approver=""):
+    """Agent PRs at review:3 that nobody took over: open, not effectively approved (a security `changes` verdict for
+    the head counts as not approved), no needs-human, no agent job, idle head."""
     if any(r["workflowName"] in ("agent-fix", "agent-review") for r in runs):
         return []
     return [p for p in prs if is_agent_pr(p) and "review:3" in names(p) and "needs-human" not in names(p)
-            and p.get("reviewDecision") != "APPROVED" and minutes_since(head_date(p), now) > LIMIT_IDLE_MIN]
+            and not effective_approval(p.get("reviewDecision"), names(p), p.get("comments"), p.get("headRefOid"), approver)
+            and minutes_since(head_date(p), now) > LIMIT_IDLE_MIN]
 
 
 def handle_stuck_limit(pr, owner, run=gh):
@@ -401,7 +404,7 @@ def run_status(env, now, run=gh):
     runs = [r for r in runs if r["workflowName"] in AGENT_WORKFLOWS]
     prs = jlist(run, "pr", "list", "--state", "open", "--limit", str(PR_LIMIT), "--json",
                 "number,title,url,headRefName,headRefOid,labels,reviewDecision,reviewRequests,statusCheckRollup,"
-                "mergeStateStatus,isCrossRepository,author,commits,createdAt,body")
+                "mergeStateStatus,isCrossRepository,author,commits,createdAt,body,comments")
     issues = jlist(run, "issue", "list", "--state", "open", "--label", "agent:dev", "--limit", "50",
                    "--json", "number,title,labels,createdAt")
     ideas = jlist(run, "issue", "list", "--state", "open", "--label", "idea", "--limit", "50",
@@ -446,7 +449,7 @@ def run_status(env, now, run=gh):
     for p in prs:
         if p not in stuck_p:
             clear_retrigger("pr", p, run)
-    for p in limit_prs(prs, runs, now):
+    for p in limit_prs(prs, runs, now, env.get("APPROVER_BOT", "")):
         actions.append(f"review:3 PR #{p['number']}: {handle_stuck_limit(p, owner, run)}")
     if not any(r["workflowName"] == "agent-fix" for r in runs):  # one fix job at a time
         for p in conflict_prs(prs)[:1]:

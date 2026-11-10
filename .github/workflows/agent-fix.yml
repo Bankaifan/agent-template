@@ -26,7 +26,7 @@ jobs:
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'pull_request_review' &&
-       github.event.review.state == 'changes_requested' &&
+       (github.event.review.state == 'changes_requested' || github.event.review.state == 'approved') &&
        startsWith(github.event.pull_request.head.ref, 'agent/') &&
        github.event.pull_request.head.repo.full_name == github.repository) ||
       (github.event_name == 'workflow_run' &&
@@ -50,6 +50,8 @@ jobs:
       RUN_BRANCH: ${{ github.event.workflow_run.head_branch }}
       RUN_SHA: ${{ github.event.workflow_run.head_sha }}
       REVIEWER: ${{ github.event.review.user.login }}
+      REVIEW_STATE: ${{ github.event.review.state }}
+      REVIEW_COMMIT: ${{ github.event.review.commit_id }}
       APPROVER_BOT: ${{ vars.APPROVER_BOT }}
     steps:
       - name: Fail if a required repo variable is unset
@@ -91,6 +93,19 @@ jobs:
           }
           if [ "$EVENT" = pull_request_review ]; then
             pr="$REVIEW_PR"; branch="$REVIEW_BRANCH"
+            if [ "$REVIEW_STATE" = approved ]; then
+              # The code reviewer's approval must not mask a security `changes` verdict for the same head
+              # (the later review of the same app replaces the request-changes review in reviewDecision).
+              head=$(gh pr view "$pr" --json headRefOid --jq .headRefOid)
+              if [ "$head" != "$REVIEW_COMMIT" ] || [ "$(python3 tools/approval.py security-changes "$pr")" != yes ]; then
+                echo "Approval without a security 'changes' verdict for the head: no fix round"
+                echo "fix=false" >> "$GITHUB_OUTPUT"; exit 0
+              fi
+              if [ "$(gh run list --workflow agent-fix.yml --status in_progress --json databaseId --jq length)" -gt 1 ]; then
+                echo "A fix run is already active; not starting a second one"
+                echo "fix=false" >> "$GITHUB_OUTPUT"; exit 0
+              fi
+            fi
           elif [ "$EVENT" = workflow_dispatch ]; then
             case "$DISPATCH_PR" in ''|*[!0-9]*) echo "Bad PR number"; echo "fix=false" >> "$GITHUB_OUTPUT"; exit 0 ;; esac
             pr="$DISPATCH_PR"
