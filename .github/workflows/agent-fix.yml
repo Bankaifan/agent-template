@@ -93,6 +93,11 @@ jobs:
           }
           if [ "$EVENT" = pull_request_review ]; then
             pr="$REVIEW_PR"; branch="$REVIEW_BRANCH"
+            # A merged or closed PR has no branch to check out any more (#311): no fix round.
+            if [ "$(gh pr view "$pr" --json state --jq .state)" != OPEN ]; then
+              echo "PR $pr is not open: no fix round"
+              echo "fix=false" >> "$GITHUB_OUTPUT"; exit 0
+            fi
             if [ "$REVIEW_STATE" = approved ]; then
               # The code reviewer's approval must not mask a security `changes` verdict for the same head
               # (the later review of the same app replaces the request-changes review in reviewDecision).
