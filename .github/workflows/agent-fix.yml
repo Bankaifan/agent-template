@@ -212,6 +212,14 @@ jobs:
         env:
           EXTRA_INSTALL: ${{ vars.EXTRA_INSTALL }}
         run: bash tools/ci/install_tools.sh
+      # A large `gh run view --log-failed` output lands in a tool-results file the agent may not read, and pipes are
+      # denied; so the failing lines are fetched here into the checkout (git-ignored) and the agent reads that file.
+      - name: Fetch the failed CI log
+        if: env.EVENT == 'workflow_run'
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: |
+          gh run view "$RUN_ID" --log-failed | tail -n 400 > ci-failure.log || echo "log not available" > ci-failure.log
       - id: claude
         uses: anthropics/claude-code-action@61a9c274fa7110a66dfafc1bbbced03833eb25fe # v1.0.269
         env:
@@ -229,8 +237,9 @@ jobs:
             - pull_request_review: a review requests changes. Read it with `gh pr view ${{ env.PR }} --comments --json reviews,comments`.
             - workflow_dispatch: the PR conflicts with main. Rebase the branch onto current origin/main, resolve
               the conflicts keeping the intent of the PR (rebase, never merge main into the branch).
-            - workflow_run: the validate run ${{ env.RUN_ID }} failed. Read the log with
-              `gh run view ${{ env.RUN_ID }} --log-failed`.
+            - workflow_run: the validate run ${{ env.RUN_ID }} failed. Its failing lines are in `ci-failure.log`
+              (read it with Read; never commit it). CI tests the PR merged with current main: rebase onto
+              origin/main first, then reproduce with `make check`.
             Fix exactly what is raised, run `make check` and the tests, then squash the branch into ONE commit
             authored by Daniel (no Co-authored-by) on top of current origin/main and `git push --force-with-lease`.
             The tools for `make check` (and the test dependencies) are already installed: run plain `make check`,
