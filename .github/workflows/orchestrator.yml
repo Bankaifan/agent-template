@@ -173,6 +173,9 @@ jobs:
                To drop your HANDOVER.md edit use `git restore HANDOVER.md`.
             Use one simple command per Bash call: no pipes, `&&`, `;`, `$(...)` or redirects (they do not match
             the allow list and are denied). Use gh's --json/--jq flags instead of pipes.
+            These calls are NOT allowed and end the run as failed: `gh issue close` (comment instead and leave
+            closing to Daniel), `gh workflow list` (use `gh run list`), `gh api`, `git checkout`, `git switch`,
+            `git fetch`, `git -c ...` (identity is already set: plain `git commit -m "<one line>"`), `make -n check`.
             Never push to main, never merge, no secrets in comments. Finish with a short status report.
           claude_args: >-
             --model sonnet
