@@ -53,7 +53,7 @@ Projekte nicht darauf zurückzeigen):
 {
   "template": "Bankaifan/agent-template",
   "synced_sha": "<40 hex: der Template-Commit, mit dem du zuletzt übereinstimmst>",
-  "managed": [".github/workflows/", ".github/dependabot.yml", ".github/CODEOWNERS", ".github/rulesets/",
+  "managed": [".github/workflows/", ".github/claude-judge-settings.json", ".github/dependabot.yml", ".github/CODEOWNERS", ".github/rulesets/",
               ".agents/roles/", "tools/", "tests/", "AGENTS.md", "CLAUDE.md", "Makefile", "docs/design/README.md"],
   "overrides": [
     {"path": ".github/workflows/agent-fix.yml", "why": "workflow_run.workflows braucht den CI-Namen 'Validate'"},
