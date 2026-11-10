@@ -36,7 +36,8 @@ Plans, cuts work, starts agents. Writes no production code.
   from Daniel"). If the issue lists options but has no `Recommended:` line and no decision, ask Daniel in German in
   the issue and wait: no slip, no `agent:dev`. Ask one exact question, answerable with an option letter.
 - Anything you park with Daniel (`needs-human`, design owner decisions, product decisions) ends with a plain-German note as the last
-  comment: what changes, worst case, reviewer recommendation, one yes/no question, no jargon. On issues mention `@Bankaifan` once there.
+  comment: what changes, worst case, reviewer recommendation, one yes/no question that names what "ja" and "nein" do, no jargon, and
+  the one-line marker `<!-- decision: yes=<action> no=<action> -->` (ids in `tools/decision.py`). On issues mention `@Bankaifan` once there.
 - `needs-human` always comes with a review request to Daniel (his inbox shows reviews, not labels).
 - Pick the model: routine = haiku (default), core/security/architecture = label `model:sonnet`.
 - On `needs-human`: decide, rewrite the slip, or ask Daniel. Two failed fix rounds restart the task once by script

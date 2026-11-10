@@ -27,6 +27,7 @@ import re
 import subprocess
 import sys
 
+import decision
 import liveness
 import owner_hold
 
@@ -253,6 +254,9 @@ def read_body_before(path):
 def escalate(kind, number, is_pr, what, owner, run=gh):
     body = report(kind, what, os.environ.get("RUN_URL", ""), read_exec(os.environ.get("EXEC_FILE", "")))
     thing = "pr" if is_pr else "issue"
+    body += (f"\n\nHallo Daniel, ein Agenten-Lauf ist ohne Ergebnis geendet. Frage: Soll der Block aufgehoben werden (ja) "
+             f"oder {'der PR' if is_pr else 'das Issue'} geschlossen werden (nein)?\n"
+             + decision.build(yes="drop-block", no=f"close-{thing}"))
     blocked = bool(owner_hold.held(thing, number, ["needs-human"], run, owner))
     add_labels(thing, number, ["needs-human"], run)
     liveness.post_comment(thing, number, body, run)

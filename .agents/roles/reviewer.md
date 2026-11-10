@@ -14,5 +14,6 @@ Reads the PR and decides. Never pushes.
 - No style nitpicks. Design PRs never auto-merge; they need the design reviewer's approval.
 - Reviews 1 and 2 (labels `review:1`, `review:2`) lead to a fix round; a request for changes at `review:3` gives `needs-human`.
 - Infra/security risk (`risk:*` label) is the security reviewer's job (`security-reviewer.md`); you do not repeat it.
-- At `review:3` or a `needs-human` hand-off the last comment is the German note for Daniel (see AGENTS.md, Waiting for Daniel).
+- At `review:3` or a `needs-human` hand-off the last comment is the German note for Daniel (see AGENTS.md, Waiting for Daniel): the question names what "ja" and "nein" do, and the comment carries the
+  `<!-- decision: yes=<action> no=<action> -->` marker (ids in `tools/decision.py`).
 - Output: one review, short. Do not repeat the diff.

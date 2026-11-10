@@ -40,8 +40,9 @@ Also trusted: an issue the liveness guard wrote (`Overdue scheduled run`): autho
 ## Waiting for Daniel
 Daniel approves only what needs him: PRs that change his CODEOWNERS paths (check `risk`, see `tools/ci/risk.py`),
 `needs-human`, design owner decisions, dependabot majors, product decisions. Whoever parks something with him leaves, as the
-LAST comment, a short plain-German note: what changes, the worst case, what the reviewers recommend, one exact yes/no question;
-technical terms explained in a few words. PRs get a review request to Bankaifan; only issues that wait for him mention
+LAST comment, a short plain-German note: what changes, the worst case, what the reviewers recommend, one exact yes/no question
+that names what "ja" and what "nein" do; technical terms explained in a few words. The same comment carries one hidden decision
+marker line, `<!-- decision: yes=<action> no=<action> -->` (grammar and action ids: `tools/decision.py`). PRs get a review request to Bankaifan; only issues that wait for him mention
 `@Bankaifan` once in that note. No other comment mentions him. Every infra/security PR also needs the security reviewer
 (`.agents/roles/security-reviewer.md`, status `security-review`) besides the normal review, agent-smoke and zizmor.
 

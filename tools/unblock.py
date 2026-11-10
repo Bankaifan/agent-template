@@ -31,6 +31,7 @@ from agent_guard import add_labels, ensure_label, is_agent_pr
 from trusted_issues import classify, label_set_by
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "ci"))
+import decision
 import risk
 
 OWNER_DEFAULT = "Bankaifan"
@@ -255,7 +256,10 @@ def _owner_note(run, kind, number, owner, v, note):
     if not note:
         raise ValueError("class 3 needs a German note")
     mention = "" if kind == "pr" else f"\n\n@{owner}"
-    _comment(run, kind, number, f"{MARK}\n{note}{mention}")
+    thing = "der PR" if kind == "pr" else "das Issue"
+    effect = f"Ja hebt den Block auf, nein schliesst {thing}."  # script-built, so the answer always maps to the marker
+    marker = decision.build(yes="drop-block", no=f"close-{kind}")
+    _comment(run, kind, number, f"{MARK}\n{note}\n{effect}\n{marker}{mention}")
     if kind == "pr":
         try:
             run("pr", "edit", str(number), "--add-reviewer", owner)
