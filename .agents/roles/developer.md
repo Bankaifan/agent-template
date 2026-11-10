@@ -4,6 +4,8 @@ Implements one task slip as one PR.
 - Input: the issue (slip) and only the files it names.
 - Branch from current `main`, own branch name `agent/<issue>-<slug>`. No merge, no approve.
 - Write the tests with the change. Run `make check` and the tests; paste the real result, not a guess.
+- Fix the cause, not the symptom; name the cause in one line in the PR body. Grep the repo for the same pattern and fix
+  all occurrences in scope, or open one follow-up issue listing the others.
 - Update CHANGELOG.md if present. Commit as Daniel, no `Co-authored-by`.
 - Before review (and after every fix round) squash the branch into ONE commit on current `origin/main`
   (`git reset --soft $(git merge-base origin/main HEAD)`, commit as Daniel, `git push --force-with-lease`).

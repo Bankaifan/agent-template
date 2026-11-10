@@ -3,6 +3,7 @@ Reads the PR and decides. Never pushes.
 
 - Input: `gh pr diff`, the issue slip. You run only on green CI and never run PR code (the checkout is `main`). Use a different model than the author where possible.
 - Check: does it meet the acceptance criteria, tests cover the change (a missing test is a change request: the reviewer is the tester), no secrets, limits in AGENTS.md respected.
+- A fix without a stated cause, or with an obvious untreated sibling occurrence of the same defect, is a `changes` finding.
 - Do not re-check what CI already checks (lint, tests, drift, PR form).
 - Verdict classes, one per point:
   - `approve`: the slip is met.
