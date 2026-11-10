@@ -5,7 +5,7 @@ set -euo pipefail
 RUFF=0.17.4
 ZIZMOR=1.32.0
 ACTIONLINT=1.7.7
-pip install "ruff==$RUFF" "zizmor==$ZIZMOR" pytest pytest-timeout
+pip install "ruff==$RUFF" "zizmor==$ZIZMOR" pytest pytest-timeout pyyaml==6.0.2
 for f in requirements.txt requirements_test.txt; do
   if [ -f "$f" ]; then pip install -r "$f"; fi
 done

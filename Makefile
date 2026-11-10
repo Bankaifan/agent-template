@@ -6,6 +6,7 @@ check:
 		actionlint && zizmor --no-progress .github/workflows; else echo "no workflows"; fi
 	python3 tools/check/check_version.py
 	python3 tools/check/check_pr_form.py
+	python3 tools/managed_guard.py check
 	python3 tools/check/check_no_bytecode.py
 	python3 tools/check/check_var_defaults.py
 	bash tools/check/check_drift.sh
