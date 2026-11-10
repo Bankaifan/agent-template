@@ -62,6 +62,15 @@ def test_red_without_change_passes(repo, capsys):
     assert "red without the change" in capsys.readouterr().out
 
 
+def test_data_file_under_tests_is_not_a_pytest_target(repo, capsys):
+    commit_change(repo, "import sys\nsys.path.insert(0, '.')\nimport lib\n\ndef test_f():\n    assert lib.f() == 2\n")
+    (repo / "tests" / "data.json").write_text("{}\n")
+    git(repo, "add", ".")
+    git(repo, "commit", "-q", "-m", "data")
+    assert mod.main(["main"]) == 0
+    assert "red without the change" in capsys.readouterr().out
+
+
 def test_always_green_test_fails(repo, capsys):
     commit_change(repo, "import sys\nsys.path.insert(0, '.')\nimport lib\n\ndef test_f():\n    assert lib.f() in (1, 2)\n")
     assert mod.main(["main"]) == 1
