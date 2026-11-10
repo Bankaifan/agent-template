@@ -85,9 +85,18 @@ jobs:
             *) guard label pr "$num" review:1 ;;
           esac
           echo "pr=$num" >> "$GITHUB_OUTPUT"; echo "bhash=$bhash" >> "$GITHUB_OUTPUT"
+      # Cheap re-approval: same patch as an earlier approved head and same body-hash -> script approval, no model.
+      # Runs from main with the approver token; exit 1 (refused) just means the model reviews as before.
+      - id: reapprove
+        if: steps.round.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          PR: ${{ steps.round.outputs.pr }}
+        run: |
+          if python3 tools/reapprove.py "$PR" "$SHA"; then echo "done=true" >> "$GITHUB_OUTPUT"; fi
       - id: claude
         uses: anthropics/claude-code-action@61a9c274fa7110a66dfafc1bbbced03833eb25fe # v1.0.269
-        if: steps.round.outputs.skip != 'true'
+        if: steps.round.outputs.skip != 'true' && steps.reapprove.outputs.done != 'true'
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
         with:
