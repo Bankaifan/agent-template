@@ -112,7 +112,7 @@ def parse_body(body):
 def load_issues(key, run=liveness.gh):
     """{title: issue} of signature-verified failure issues (open and closed). Unverified ones are ignored."""
     found = json.loads(run("issue", "list", "--state", "all", "--search", f'"{TITLE_PREFIX.strip()}" in:title',
-                           "--limit", "200", "--json", "number,title,state,body,labels"))
+                           "--limit", "200", "--json", "number,title,state,body,labels,closedAt,updatedAt"))
     return {i["title"]: i for i in found
             if i["title"].startswith(TITLE_PREFIX) and guard_mark.verify(i["title"], i["body"], key)}
 
