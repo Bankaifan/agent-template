@@ -21,6 +21,7 @@ Idea: **rules a script can check live in CI, not in prompts.** The agents get a 
   hidden decision marker (`<!-- decision: yes=<action> no=<action> -->`, allowlist in `tools/decision.py`); a sonnet step without app token or shell only
   picks which answer he gave, and a script applies that action and confirms in German. Labels Daniel removes are not set again by agents (`tools/owner_hold.py`).
   `ANSWER_RECEIVER=off` disables it (`docs/decisions/0011-answer-receiver.md`).
+- Untrusted text: all model steps get a deny list for reads outside the workspace. The unblocker and answer receiver also read masked files instead of calling `gh` and write one validated verdict that a script applies; the other steps are not migrated yet (`docs/decisions/0013-untrusted-text-boundary.md`).
 - Dependabot PRs are not reviewed by AI: a model-free workflow approves patch/minor once `validate` is green and
   enables auto-merge; majors get `needs-human`. The update type comes from `dependabot/fetch-metadata` (grouped PRs: highest type wins),
   falling back to the title ("Update x requirement from A to B" is parsed too); unknown means major.
