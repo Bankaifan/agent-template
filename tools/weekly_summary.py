@@ -18,8 +18,11 @@ import failure_watch
 import friction
 import guard_mark
 import liveness
+import run_stats
 
 TITLE = "Weekly summary"
+PROPOSAL_TITLE = "Capacity proposal"
+QUEUE_WAIT = 3  # approved issues waiting while no agent:dev slot is free: threshold for the proposal (design 0014)
 METRICS = pathlib.Path("docs/metrics.csv")
 COLUMNS = ["week", "code_lines", "modules", "lines_by_lang", "modules_by_lang", "max_parallel_agent_prs",
            "conflicts_rebuilt", "avg_review_rounds", "median_ci_minutes", "actions_minutes"]
@@ -48,12 +51,14 @@ def failure_section(watch):
     return "\n".join(parts)
 
 
-def build_body(merged, needs_human, rule_keeper, ideas, today, status_stale=False, failures=None):
+def build_body(merged, needs_human, rule_keeper, ideas, today, status_stale=False, failures=None, capacity=None):
     parts = [f"Updated {today}.", section("Merged in the last 7 days", merged),
              section("PRs labelled needs-human", needs_human),
              section("Rule-keeper PRs", rule_keeper),
              section("Ideas waiting for approval", ideas),
              failure_section(failures)]
+    if capacity:
+        parts += list(capacity)
     if status_stale:
         parts.append("## Warning\n- The status run has no successful run in the last 3 hours.")
     return "\n\n".join(parts) + "\n"
@@ -209,6 +214,111 @@ def friction_issues(run=gh):
         return []
 
 
+def env_int(name, default):
+    try:
+        return int(os.environ.get(name) or default)
+    except ValueError:
+        return default
+
+
+def model_section(results):
+    """results: {workflow file: run_stats.workflow_stats() or None (unknown)}."""
+    lines = ["## Model runs, last 7 days"]
+    done = {f: r for f, r in results.items() if r}
+    for f, r in results.items():
+        role = run_stats.ROLES.get(f, f)
+        if r is None:
+            lines.append(f"- {f} ({role}): unknown")
+            continue
+        median = "n/a" if r["median_min"] is None else f"{r['median_min']} min"
+        lines.append(f"- {f} ({role}): {r['model_runs']} runs, {r['model_runs'] / r['days']:.2f} per day, "
+                     f"median {median}, failed {r['failed']}, limit or rate errors {r['limit_failed']}")
+    if done:
+        top = max(done, key=lambda f: done[f]["model_runs"])
+        lines.append(f"- most model runs: {run_stats.ROLES.get(top, top)} ({done[top]['model_runs']})")
+    lines.append("- turns and denied calls: open (the execution file stays on the runner; not measured here)")
+    return "\n".join(lines)
+
+
+def queue_numbers(issues, prs, max_dev, max_prs, now):
+    """Approved issues waiting for a slot, free agent:dev and agent PR slots (an approximation of prefilter.py),
+    and the median days since the last update of needs-human items (label times are not read: open)."""
+    def names(item):
+        return {lab["name"] for lab in item.get("labels", [])}
+    dev = [i for i in issues if "agent:dev" in names(i)]
+    waiting = [i for i in issues if "approved" in names(i) and "agent:dev" not in names(i)]
+    agent_prs = [p for p in prs if p["headRefName"].startswith("agent/") and "needs-human" not in names(p)]
+    human = [x for x in issues + prs if "needs-human" in names(x)]
+    ages = [(now - datetime.datetime.fromisoformat(x["updatedAt"])).days for x in human]
+    return {"waiting": len(waiting), "free_dev": max(0, max_dev - len(dev)),
+            "free_prs": max(0, max_prs - len(agent_prs)), "max_dev": max_dev, "max_prs": max_prs,
+            "needs_human": len(human), "human_median_days": statistics.median(ages) if ages else None}
+
+
+def queue_section(q):
+    median = "n/a" if q["human_median_days"] is None else f"{q['human_median_days']} days"
+    return "\n".join([
+        "## Queue",
+        f"- approved issues waiting for a slot: {q['waiting']}",
+        f"- free slots: agent:dev {q['free_dev']} of {q['max_dev']}, agent PRs {q['free_prs']} of {q['max_prs']}",
+        f"- needs-human items: {q['needs_human']}, median days since last update: {median} (approximation)"])
+
+
+def capacity_sections(today, run=gh, max_dev=2, max_prs=3, now=None):
+    """(model section, queue section, threshold reasons). gh failures give 'unknown' sections, never an abort."""
+    now = now or datetime.datetime.now(datetime.UTC)
+    since = (today - datetime.timedelta(days=7)).isoformat()
+    try:
+        files = run_stats.claude_workflows()
+        runs, jobs_of, log_of = run_stats.fetch_all(files, since, run=run)
+        results = {f: run_stats.workflow_stats(runs[f], jobs_of, log_of, now=now) for f in files}
+        issues = json.loads(run("issue", "list", "--state", "open", "--limit", "200",
+                                "--json", "number,title,labels,updatedAt"))
+        prs = json.loads(run("pr", "list", "--state", "open", "--limit", "100",
+                             "--json", "number,title,headRefName,labels,updatedAt"))
+        queue = queue_numbers(issues, prs, max_dev, max_prs, now)
+    except (subprocess.CalledProcessError, ValueError, OSError, KeyError, TypeError):
+        return "## Model runs, last 7 days\n- unknown", "## Queue\n- unknown", []
+    reasons = []
+    limit_errors = sum(r["limit_failed"] for r in results.values())
+    if limit_errors:
+        reasons.append(f"{limit_errors} failed model run(s) with a limit or rate error (last 7 days)")
+    if queue["waiting"] >= QUEUE_WAIT and queue["free_dev"] == 0:
+        reasons.append(f"{queue['waiting']} approved issues wait while no agent:dev slot is free")
+    return model_section(results), queue_section(queue), reasons
+
+
+def proposal_body(reasons, model, queue_text, today):
+    """Text of the Capacity proposal. It names the levers and the numbers; Daniel decides, the script does not."""
+    levers = [
+        "- `IDEAS_PER_WEEK`: scout cap per run (default 3, 0 = off)",
+        "- `ORCHESTRATOR_EVENTS`: on or off for non-label events",
+        "- `MAX_DEV` / `MAX_PRS`: agent jobs at once and open agent PRs (current values in Queue above; defaults 2 and 3, agent-template 4 and 5)",
+        "- model per role: haiku by default, sonnet for core and security, opus only with Daniel's OK",
+        "- a separate seat or token for selected roles: open, not measured here",
+    ]
+    parts = [f"Updated {today}. Written by the weekly summary (design 0014). No variable and no secret is changed.",
+             "## Why\n" + "\n".join(f"- {r}" for r in reasons), model, queue_text,
+             "## Levers (Daniel decides)\n" + "\n".join(levers)]
+    return "\n\n".join(parts) + "\n"
+
+
+def upsert_proposal(body, run=gh):
+    """One open issue titled PROPOSAL_TITLE: updated if it exists, created otherwise."""
+    found = json.loads(run("issue", "list", "--state", "open", "--search", f'"{PROPOSAL_TITLE}" in:title',
+                           "--json", "number,title"))
+    found = [i for i in found if i["title"] == PROPOSAL_TITLE]
+    if found:
+        number = str(found[0]["number"])
+        run("issue", "edit", number, "--body", body)
+        print(f"updated proposal #{number}")
+    else:
+        url = run("issue", "create", "--title", PROPOSAL_TITLE, "--body", body).strip()
+        print(url)
+        number = url.rsplit("/", 1)[-1]
+    liveness.verify_body("issue", number, body, run)
+
+
 def main() -> int:
     today = datetime.date.today()
     since = (today - datetime.timedelta(days=7)).isoformat()
@@ -224,8 +334,10 @@ def main() -> int:
         print(f"appended a row to {METRICS}")
     for title in friction_issues():
         print(f"created friction issue: {title}")
+    model, queue_text, reasons = capacity_sections(today, gh, env_int("MAX_DEV", 2), env_int("MAX_PRS", 3))
     body = build_body(merged, human, keeper, ideas, today.isoformat(), status_stale_safe(),
-                      failures=failure_watch_summary(gh, today, guard_mark.key_from_env()))
+                      failures=failure_watch_summary(gh, today, guard_mark.key_from_env()),
+                      capacity=[model, queue_text])
     found = json.loads(gh("issue", "list", "--state", "open", "--search", f'"{TITLE}" in:title',
                           "--json", "number,title"))
     found = [i for i in found if i["title"] == TITLE]
@@ -238,6 +350,8 @@ def main() -> int:
         print(url)
         number = url.rsplit("/", 1)[-1]
     liveness.verify_body("issue", number, body, gh)
+    if reasons:
+        upsert_proposal(proposal_body(reasons, model, queue_text, today.isoformat()))
     return 0
 
 
