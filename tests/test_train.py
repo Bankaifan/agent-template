@@ -149,6 +149,54 @@ def test_rebase_and_conflict_in_one_run():
     assert ("workflow", "run", "agent-fix.yml", "-f", "pr=3") in run.calls
 
 
+def sec(n, **kw):
+    p = pr(n, labels=["risk:security"], checks=[{"conclusion": "SUCCESS"}], **kw)
+    p["reviewRequests"] = [{"login": "Bankaifan"}]
+    return p
+
+
+def test_waiting_for_owner_needs_everything_but_owner_approval():
+    p = sec(1)
+    ok = [review("sha1")]
+    assert train.waiting_for_owner(p, ok, "app/approver", "Bankaifan")
+    assert not train.waiting_for_owner(p, [review("old")], "app/approver", "Bankaifan")
+    assert not train.waiting_for_owner(pr(1, labels=["risk:security"]), ok, "app/approver", "Bankaifan")
+    assert not train.waiting_for_owner(dict(p, labels=[{"name": "risk:security"}, {"name": "needs-human"}]),
+                                       ok, "app/approver", "Bankaifan")
+    assert not train.waiting_for_owner(dict(p, statusCheckRollup=RUNNING), ok, "app/approver", "Bankaifan")
+
+
+def test_train_skips_waiting_pr_and_next_ready_pr_lands():
+    prs = [sec(1, merge="BLOCKED"), pr(2, merge="BEHIND")]
+    run = Gh(prs, approved(*prs))
+    assert train.run_train(ENV, run) == 0
+    assert ("api", "-X", "PUT", "repos/o/r/pulls/2/update-branch", "-f", "update_method=rebase") in run.calls
+
+
+def test_waiting_pr_never_counts_as_in_flight():
+    p = sec(1, merge="UNSTABLE")
+    assert train.plan([p], False, waiting=set())[0] is p
+    assert train.plan([p], False, waiting={1})[0] is None
+
+
+def test_waiting_pr_is_rebased_without_auto_merge_when_main_moves():
+    prs = [sec(1, merge="BEHIND", auto=False)]
+    run = Gh(prs, approved(*prs))
+    assert train.run_train(ENV, run) == 0
+    assert ("api", "-X", "PUT", "repos/o/r/pulls/1/update-branch", "-f", "update_method=rebase") in run.calls
+
+
+def test_waiting_pr_with_conflict_goes_to_fix():
+    prs = [sec(1, merge="DIRTY")]
+    run = Gh(prs, approved(*prs))
+    assert train.run_train(ENV, run) == 0
+    assert ("workflow", "run", "agent-fix.yml", "-f", "pr=1") in run.calls
+
+
+def test_waiting_bound_is_five():
+    assert train.MAX_WAITING == 5
+
+
 def test_failed_rebase_is_reported_and_no_label_changes():
     prs = [pr(2, merge="BEHIND"), pr(3, merge="DIRTY")]
     run = Gh(prs, approved(*prs), fail=("api", "-X", "PUT"))
