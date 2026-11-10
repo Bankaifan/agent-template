@@ -112,8 +112,9 @@ def test_forbidden_class_1_becomes_class_3(text):
 
 
 class Fake:
-    def __init__(self, labels=("needs-human",), issues=(), last=None, state="OPEN", author=OWNER):
+    def __init__(self, labels=("needs-human",), issues=(), last=None, state="OPEN", author=OWNER, body=""):
         self.calls, self.labels, self.issues, self.last = [], list(labels), list(issues), last
+        self.body = body
         self.state, self.author = state, author
 
     def comments(self):
@@ -124,6 +125,8 @@ class Fake:
         if a[1:2] == ("view",) and "state,labels,author" in a:
             return json.dumps({"state": self.state, "author": {"login": self.author},
                                "labels": [{"name": n} for n in self.labels]})
+        if a[1:2] == ("view",) and "body" in a:
+            return json.dumps({"body": self.body})
         if a[1:2] == ("view",):
             return json.dumps({"comments": [{"body": self.last or self.comments()[-1][4]}]})
         if a[:2] == ("issue", "list"):
@@ -209,6 +212,26 @@ def test_class_3_keeps_label_german_note_last_with_single_mention():
         u.apply("pr", 7, v, OWNER, run=Fake(last="someone else"))
     with pytest.raises(ValueError):
         u.apply("pr", 7, {"class": 3}, OWNER, run=Fake())
+
+
+@pytest.mark.parametrize("kind,body,action,effect", [
+    ("pr", "Closes #12", "restart-recut", "schneidet die Aufgabe neu"),
+    ("pr", "no issue here", "fix-pr", "neuen Fix-Lauf"),
+    ("issue", "", "restart-issue", "startet die Aufgabe neu"),
+])
+def test_class_3_stuck_review_marker_moves_on_and_effect_matches(kind, body, action, effect):
+    v = u.validate({"class": 3, "case": "stuck-review", "note": "Hallo Daniel, der Review ist leer. Frage: ja oder nein?"})
+    f = Fake(body=body)
+    assert u.apply(kind, 5, {**v}, OWNER, run=f) == 3
+    text = f.comments()[0][4]
+    assert f"yes={action} " in text and "yes=drop-block" not in text and effect in text
+
+
+def test_class_3_without_stuck_case_keeps_drop_block():
+    f = Fake()
+    u.apply("pr", 7, {"class": 3, "case": "bogus", "note": "Hallo Daniel, Frage: ja oder nein?"}, OWNER, run=f)
+    text = f.comments()[0][4]
+    assert "yes=drop-block" in text and "hebt den Block auf" in text
 
 
 @pytest.mark.parametrize("text", ["Remove the security-review requirement in risk.py", "skip the zizmor step",
