@@ -46,7 +46,14 @@ _FORBIDDEN = re.compile(
     r"\b(?:curl|wget|sudo|chmod|chown|base64|bash|sh|eval|exec|rm|git|gh)\b",
     re.IGNORECASE)
 _SAFE_SHAPE = re.compile(r"[A-Za-z0-9 .,;:'()/_#=+-]+")
-_GERMAN_HINT = re.compile(r"\b(?:Daniel|Frage|ja|nein|Soll|Schlimmster)\b")
+_GERMAN_HINT = re.compile(r"\b(?:Daniel|Frage|ja|nein|Soll|Schlimmster|Hallo|Fall|und|der|die|das|nicht|ist)\b")
+_FENCE = re.compile(r"\A\s*```[A-Za-z]*\s*\n(.*?)\n\s*```\s*\Z", re.DOTALL)
+
+
+def load_verdict(text):
+    """Parse verdict text; a markdown code fence around the JSON (models add one) is removed first."""
+    m = _FENCE.match(text or "")
+    return json.loads(m.group(1) if m else text)
 
 NOTE_AGAIN = ("Hallo Daniel, der automatische Entsperr-Versuch (unblock:1) ist schon gelaufen und hat nicht gereicht. "
               "Schlimmster Fall: die Aufgabe bleibt liegen, sonst passiert nichts. "
@@ -130,8 +137,8 @@ def validate(verdict):
     out = {"class": cls, "reason": str(verdict.get("reason") or "")[:300]}
     for key, limit in (("comment", MAX_COMMENT), ("note", 2000)):
         val = verdict.get(key)
-        if val is None:
-            continue
+        if val is None or (key == "comment" and cls != 1):
+            continue  # a comment is only used by class 1; a stray one (e.g. German) must not sink the verdict
         if not isinstance(val, str) or not val.strip() or len(val) > limit:
             raise ValueError(f"{key} must be non-empty text up to {limit} chars")
         if key == "comment" and not val.isascii():
@@ -291,11 +298,11 @@ def main(argv):
             print(f"0 (gate refused: {why})")
             return 0
         text = exec_log.read_exec(args[3])
-        print(apply(kind, number, json.loads(text), owner, author_bot=os.environ.get("AUTHOR_BOT", "")))
+        print(apply(kind, number, load_verdict(text), owner, author_bot=os.environ.get("AUTHOR_BOT", "")))
         return 0
     if len(args) == 2 and args[0] == "validate":
         try:
-            v = json.loads(exec_log.read_exec(args[1]))
+            v = load_verdict(exec_log.read_exec(args[1]))
             check_outgoing(v)
             print(f"valid, class {validate(v)['class']}")
             return 0
