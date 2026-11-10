@@ -90,8 +90,9 @@ jobs:
           gh api --paginate "repos/$GH_REPO/pulls/$PR/files" --jq '.[] | select(.status != "removed") | .filename' > .review/files.txt
           while IFS= read -r f; do
             case "$f" in ""|/*|*..*) echo "path skipped: $f"; continue ;; esac
+            enc=$(jq -rn --arg p "$f" '$p | split("/") | map(@uri) | join("/")')
             mkdir -p ".review/files/$(dirname "$f")"
-            gh api -H "Accept: application/vnd.github.raw" "repos/$GH_REPO/contents/$f?ref=$SHA" > ".review/files/$f" \
+            gh api -H "Accept: application/vnd.github.raw" "repos/$GH_REPO/contents/$enc?ref=$SHA" > ".review/files/$f" \
               || echo "not fetched: $f"
           done < .review/files.txt
           wc -l .review/pr.diff .review/files.txt
