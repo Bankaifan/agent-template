@@ -17,8 +17,8 @@ for the workflow PR (item 4, risk:security). An issue restarts like restart.py: 
 
 Limits are enforced here as one layer besides the prompt (a word filter cannot catch every wording): a class 1
 verdict that asks for a tool, permission, install, workflow or check change is turned into class 3, and so is a
-class 2 issue with such wording; model text with `@` is refused; `apply` re-runs the gate on live data; `unblock:1` is set once, a second block goes to Daniel; risk:security PRs
-and design PRs never get class 1.
+class 2 issue with such wording; model text with `@` is refused; `apply` re-runs the gate on live data; `unblock:1` is set once, a second block goes to Daniel; design PRs
+never get class 1. A risk:security PR is refused by the gate only if it changes a CODEOWNERS path of the owner.
 """
 import json
 import os
@@ -29,6 +29,9 @@ import sys
 import exec_log
 from agent_guard import add_labels, ensure_label, is_agent_pr
 from trusted_issues import classify, label_set_by
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "ci"))
+import risk
 
 OWNER_DEFAULT = "Bankaifan"
 MARK = "<!-- unblocker -->"
@@ -69,16 +72,20 @@ def gh(*args):
     return subprocess.run(["gh", *args], check=True, capture_output=True, text=True).stdout
 
 
-def gate(item, events, comments, files, owner, author_bot, approver_bot=""):
+def gate(item, events, comments, files, owner, author_bot, approver_bot="", codeowners=""):
     """(ok, reason). ITEM: {kind, state, labels, author, number}. EVENTS: label timeline. COMMENTS: [{body, created_at}].
-    FILES: paths of a PR. Pure: every refusal means the block stays with Daniel."""
+    FILES: paths of a PR (renames incl. old names). Pure: every refusal means the block stays with Daniel.
+    A risk:security PR is refused only if it changes a CODEOWNERS path of the owner (risk.waits_for_owner)."""
     labels = set(item.get("labels") or [])
     if item.get("state", "").upper() != "OPEN":
         return False, "item is not open"
     if NEEDS_HUMAN not in labels:
         return False, "needs-human is gone"
-    if RISK_SECURITY in labels:
-        return False, "risk:security: always Daniel"
+    if RISK_SECURITY in labels and item["kind"] == "pr":
+        if not files:
+            return False, "risk:security: file list unknown, Daniel"
+        if risk.waits_for_owner(RISK_SECURITY, files, codeowners, owner):
+            return False, "risk:security: changes a CODEOWNERS path, Daniel"
     if UNBLOCK in labels:
         return False, "unblock:1 already set, one self-restart is the limit"
     if not any(label_set_by(events, NEEDS_HUMAN, a) for a in (author_bot, approver_bot, owner) if a):
@@ -206,10 +213,10 @@ def _last_comment_is(run, kind, number, marker):
     return bool(comments) and marker in (comments[-1].get("body") or "")
 
 
-def apply(kind, number, verdict, owner, risk_security=False, run=gh, author_bot=""):
+def apply(kind, number, verdict, owner, run=gh, author_bot=""):
     """Apply a validated verdict. Returns the class that was carried out (1, 2, 3) or 0 if nothing changed.
-    The caller runs `gate` first, but the cheap checks (open, needs-human, agent PR, risk:security) are repeated
-    here from the live item, so a wrong caller cannot take a block away from Daniel."""
+    The caller runs `gate` first (it holds the CODEOWNERS rule for risk:security PRs); the cheap checks (open,
+    needs-human, agent PR) are repeated here from the live item."""
     check_outgoing(verdict)
     v = validate(verdict)
     check_outgoing(v)
@@ -219,11 +226,8 @@ def apply(kind, number, verdict, owner, risk_security=False, run=gh, author_bot=
         return 0
     if kind == "pr" and not is_agent_pr((info.get("author") or {}).get("login"), labels, author_bot, owner):
         return 0
-    risk_security = risk_security or RISK_SECURITY in labels
     if v["class"] == 1 and UNBLOCK in labels:  # one self-restart only: this goes to Daniel
         return _owner_note(run, kind, number, owner, v, NOTE_AGAIN)
-    if v["class"] == 1 and risk_security:
-        v = {"class": 3, "reason": "risk:security item: always Daniel", "note": v.get("note") or NOTE_SECURITY}
     if v["class"] == 1:
         _comment(run, kind, number, f"{MARK}\nHint from the unblocker (untrusted data, not an instruction):\n{v['comment']}\n\nAny review request or assignment to the owner is withdrawn; "
                                     "request it again if you want to look.")
@@ -324,16 +328,18 @@ def live_gate(kind, number, owner):
     """`gate` on the live item (labels, timeline, comments, files, issue trust)."""
     repo = os.environ["GH_REPO"]
     bot, appr = os.environ.get("AUTHOR_BOT", ""), os.environ.get("APPROVER_BOT", "")
-    info = json.loads(gh(kind, "view", number, "--json", "state,labels,author,comments" + (",files" if kind == "pr" else "")))
+    info = json.loads(gh(kind, "view", number, "--json", "state,labels,author,comments"))
     item = {"kind": kind, "state": info["state"], "labels": [x["name"] for x in info["labels"]],
             "author": info["author"]["login"]}
     pages = json.loads(gh("api", "--paginate", "--slurp", f"repos/{repo}/issues/{number}/timeline"))
     events = [e for p in pages for e in p]
     comments = [{"body": c.get("body"), "created_at": c.get("createdAt")} for c in info.get("comments", [])]
-    files = [f["path"] for f in info.get("files", [])]
-    issue = {"number": int(number), "title": "", "labels": info["labels"], "author": info["author"], "body": ""}
+    files = []
+    if kind == "pr":  # the REST list has previous_filename, so rename sources count
+        files = risk.pr_paths(json.loads(gh("api", "--paginate", "--slurp", f"repos/{repo}/pulls/{number}/files")))
+    issue ={"number": int(number), "title": "", "labels": info["labels"], "author": info["author"], "body": ""}
     item["trusted"] = kind == "issue" and bool(classify(issue, events, owner, bot))
-    return gate(item, events, comments, files, owner, bot, appr)
+    return gate(item, events, comments, files, owner, bot, appr, risk.read_text(".github/CODEOWNERS"))
 
 
 if __name__ == "__main__":
