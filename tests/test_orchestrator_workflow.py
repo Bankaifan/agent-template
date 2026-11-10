@@ -70,8 +70,10 @@ def test_no_untrusted_text_in_run_blocks():
     risky = ("github.event.comment.body", "github.event.issue.title", "github.event.issue.body",
              "github.event.pull_request.title", "github.event.pull_request.body", "github.event.review.body",
              "head_ref")
+    # run-name: is display only (never executed), so the issue title may show there; nowhere else in the file.
+    without_run_name = "\n".join(line for line in TEXT.splitlines() if not line.startswith("run-name:"))
     for r in risky:
-        assert r not in TEXT
+        assert r not in without_run_name
     in_run = False
     for line in TEXT.splitlines():
         s = line.strip()

@@ -1,4 +1,5 @@
 name: orchestrator
+run-name: "${{ github.event_name == 'issues' && github.event.issue.title || github.event_name == 'workflow_run' && format('orchestrator: {0}', github.event.workflow_run.display_title) || github.event_name == 'schedule' && 'orchestrator (scheduled)' || github.event_name == 'workflow_dispatch' && 'orchestrator (manual)' || 'orchestrator' }}"
 # Sonnet. Runs only when repo variable ORCHESTRATOR_ENABLED is "true". Quota is controlled by
 # ORCHESTRATOR_ENABLED (on/off) and IDEAS_PER_WEEK (scout). A script (tools/prefilter.py) skips the Claude step when there is nothing to do.
 # claude-code-action does not support `push`, so merges are seen through workflow_run of `validate`

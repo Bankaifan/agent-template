@@ -1,4 +1,5 @@
 name: agent-review
+run-name: "review: ${{ github.event.workflow_run.display_title || github.event.workflow_run.head_branch }}"
 # Review only on green CI: runs when `validate` completed successfully on a same-repo agent/* branch.
 # The reviewer never runs PR code: it checks out main and reads the change from staged files (.review/) and gh pr view.
 on:

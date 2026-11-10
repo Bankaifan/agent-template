@@ -1,4 +1,5 @@
 name: agent-security-review
+run-name: "security-review: ${{ github.event.workflow_run.display_title || github.event.workflow_run.head_branch }}"
 # Separate run (sonnet, own role) for agent PRs classified infra/security by tools/ci/risk.py. It only asks whether
 # anyone gains rights, a check gets weaker or untrusted input can reach a model or a token, and reports the
 # status `security-review` (required by the ruleset). PRs that do not need it get that status from the `risk` workflow.
