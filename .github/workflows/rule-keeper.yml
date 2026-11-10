@@ -66,7 +66,14 @@ jobs:
             1. rules a script could check (propose the script in tools/check/, remove the rule text),
             2. rules that never mattered (propose removal),
             3. repeated failures where a rule was missing,
-            4. contradictions between AGENTS.md, role files and CI.
+            4. contradictions between AGENTS.md, role files and CI,
+            5. recurring work steps of agent runs: fixed command sequences or decisions without judgement that every run
+            repeats (counting and setting labels, round counters, the same gh queries, fixed-format texts). Evidence:
+            the PRs above, the agent workflow files in .github/workflows/. The run logs are not readable with your tools
+            (the execution files sit in the runner temp dir, which is denied): do not try to fetch them and do not guess
+            counts; write "open" where a number is unknown. For each step, propose a script in tools/ (wired into the
+            workflow before or instead of the model step) with the runs per week it affects. Template-managed files are
+            not edited here; name them in the PR body.
             If nothing is worth changing, do nothing. Otherwise first run `gh pr list --state open --search "head:agent/rule-keeper-"`
             and stop if one is open. Then run `date +%F` on its own, and create the branch with the literal result
             (`git checkout -b agent/rule-keeper-<that date>`, no shell substitution) from main, make the edits,

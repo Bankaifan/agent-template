@@ -31,7 +31,7 @@ Idea: **rules a script can check live in CI, not in prompts.** The agents get a 
   other agent-infrastructure changes are `infra`. Every `infra`/`security` agent PR also needs the security reviewer
   (`.agents/roles/security-reviewer.md`, workflow `agent-security-review.yml`, required status `security-review`), then it auto-merges.
   Whatever waits for Daniel ends with a plain-German note (what, worst case, recommendation, yes/no question). Add `risk` and `security-review` to the ruleset's required checks.
-- A weekly rule keeper that opens one PR proposing rule removals, new checks and contradiction fixes (Daniel merges).
+- A weekly rule keeper that opens one PR proposing rule removals, new checks, contradiction fixes and scripts for recurring agent work steps (Daniel merges).
 - A daily `branch-cleanup` that deletes `agent/*` branches with a closed PR, or no PR and no commit for 7 days (dry-run input on manual runs).
 - An autonomous `orchestrator` (after a merge to `main` via `workflow_run` of `validate`, daily, manual; off unless variable `ORCHESTRATOR_ENABLED=true`) that cuts task slips,
   keeps at most 2 `agent:dev` issues, handles `needs-human` PRs, updates HANDOVER.md via PR and .
