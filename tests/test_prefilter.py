@@ -20,6 +20,14 @@ def test_startable_empty_when_dev_slots_full():
     assert mod.startable([item(1)], 2) == []
 
 
+def test_no_free_pr_slot_means_nothing_to_start():
+    # Issue #313: candidates existed but MAX_PRS was full; the model started nothing, and STARTABLE=true with no
+    # visible action made the guard fail the run.
+    assert mod.start_candidates([item(1)], 0, 0) == []
+    assert mod.start_candidates([item(1)], 0, 1) == [1]
+    assert mod.start_candidates([item(1)], 2, 1) == []
+
+
 def test_handover_stale():
     assert mod.handover_stale(8, 3, 7)
     assert not mod.handover_stale(8, 0, 7)

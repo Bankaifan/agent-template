@@ -66,6 +66,14 @@ def startable(trusted, dev_open, stuck=0, waiting=0, waiting_prs=0):
     return out
 
 
+def start_candidates(trusted, dev_open, free_prs, stuck=0, waiting=0, waiting_prs=0):
+    """What the orchestrator may start. No free PR slot means nothing (the prompt says so), and the guard reads
+    STARTABLE=true with no visible action as a silent run: the same rule as `event_facts`, not only the dev slots."""
+    if free_prs <= 0:
+        return []
+    return startable(trusted, dev_open, stuck, waiting, waiting_prs)
+
+
 def handover_stale(age_days, newer_commits, stale_days):
     """HANDOVER.md is stale if it is old and main moved on since."""
     return age_days >= stale_days and newer_commits > 0
@@ -209,7 +217,8 @@ def main(mode) -> int:
         free_dev, free_prs = free_slots(dev_open, count("pr", "list", "--state", "open"), w_dev, w_prs)
         trusted = json.loads(os.environ.get("TRUSTED") or subprocess.run(
             [sys.executable, "tools/trusted_issues.py"], check=True, capture_output=True, text=True).stdout)
-        cands = startable(trusted, dev_open, stuck_slots() if dev_open - w_dev >= MAX_DEV else 0, w_dev, w_prs)
+        cands = start_candidates(trusted, dev_open, free_prs, stuck_slots() if dev_open - w_dev >= MAX_DEV else 0,
+                                 w_dev, w_prs)
         human = count("pr", "list", "--state", "open", "--label", "needs-human")
         age, newer = handover_state()
         stale = handover_stale(age, newer, float(os.environ.get("STALE_DAYS", "7")))
