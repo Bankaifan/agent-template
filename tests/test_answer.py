@@ -304,3 +304,13 @@ def test_reapprove_fails_loudly_when_the_block_cannot_be_restored(monkeypatch):
 def test_restart_recut_without_issue_in_pr_is_refused():
     with pytest.raises(a.Refuse, match="names no issue"):
         a.run_action("restart-recut", reapprove_ctx(lambda *x: ""))
+
+
+def test_restart_recut_restarts_the_closed_issue_not_the_parent_ref(monkeypatch):
+    restarted = []
+    monkeypatch.setattr(a.restart, "restart_issue", lambda pr, issue, reviews, run: restarted.append((pr, issue)))
+    c = reapprove_ctx(lambda *x: json.dumps([[]]))
+    c.author = c.author_bot
+    c.body = "Refs #352\n\nCloses #357"
+    a.run_action("restart-recut", c)
+    assert restarted == [(5, 357)]
