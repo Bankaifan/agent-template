@@ -66,10 +66,11 @@ def test_reviewer_reads_staged_files_before_the_model_runs():
 
 
 def test_staging_loops_url_encode_the_path():
-    for text in (TEXT, SEC):
-        assert "@uri" in text
-        assert "contents/$enc?ref=$SHA" in text
-        assert "contents/$f?ref" not in text
+    # agent-review keeps its inline loop; the security review stages through tools/ci/stage_review.py (urllib quote)
+    assert "@uri" in TEXT
+    assert "contents/$enc?ref=$SHA" in TEXT
+    assert "contents/$f?ref" not in TEXT
+    assert "contents/$f?ref" not in SEC
 
 
 def test_developer_role_names_the_current_pr_body_file():
