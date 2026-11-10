@@ -76,6 +76,34 @@ def add_labels(kind, number, labels, run=gh):
     run(kind, "edit", str(number), *[a for name in labels for a in ("--add-label", name)])
 
 
+def count_round(number, sha, run=gh):
+    """One review round per head SHA, shared by both reviewers. Marker label `round:<sha7>` (older markers are removed).
+    Returns "already" (this head was counted), "limit" (review:3 is set, nothing bumped) or "counted" (review:N bumped)."""
+    labels = set(run("pr", "view", str(number), "--json", "labels", "--jq", ".labels[].name").split())
+    mark = f"round:{sha[:7]}"
+    if mark in labels:
+        return "already"
+    if "review:3" in labels:
+        return "limit"
+    nxt = "review:3" if "review:2" in labels else "review:2" if "review:1" in labels else "review:1"
+    add_labels("pr", number, [nxt, mark], run)
+    for old in sorted(n for n in labels if n.startswith("round:")):
+        try:
+            run("pr", "edit", str(number), "--remove-label", old)
+        except (subprocess.CalledProcessError, OSError):
+            pass
+    return "counted"
+
+
+def is_stale_head(number, sha, run=gh):
+    """True if the PR head is known and no longer SHA. Unknown (lookup failed) is not stale: fail open."""
+    try:
+        head = run("pr", "view", str(number), "--json", "headRefOid", "--jq", ".headRefOid").strip()
+    except (subprocess.CalledProcessError, OSError):
+        return False
+    return bool(head) and not head.startswith(sha) and not sha.startswith(head)
+
+
 def is_agent_pr(author, labels, author_bot, owner):
     """Own-branch PRs by the author app or by the owner's account are reviewed; others only with agent:review."""
     return same_login(author, author_bot) or same_login(author, owner) or "agent:review" in labels
@@ -255,6 +283,9 @@ def silent_check(args, owner):
             escalate("fix", number, True, "no fix was produced (no new commit, PR body unchanged)", owner)
     elif kind == "review" and len(args) >= 3:
         bh = args[3] if len(args) >= 4 else None
+        if is_stale_head(number, args[2], gh):  # the head moved during the run: that review is discarded, not silent
+            print(f"head moved past {args[2][:7]}: stale run, nothing to report")
+            return 0
         if not has_review(reviews_of(number), os.environ.get("APPROVER_BOT", ""), args[2], bh):
             escalate("review", number, True, "no review by the approver app exists for the head commit", owner)
     elif kind == "orchestrator" and len(args) >= 3:
@@ -293,6 +324,8 @@ def main(argv):
         return 0 if same_login(*args) else 1
     elif cmd == "label" and len(args) >= 3 and args[0] in ("pr", "issue"):
         add_labels(args[0], args[1], args[2:])
+    elif cmd == "round" and len(args) == 2:
+        print(count_round(args[0], args[1]))
     elif cmd == "agent-pr" and len(args) in (1, 2):
         labels = (args[1] if len(args) == 2 else "").split(",")
         return 0 if is_agent_pr(args[0], labels, os.environ.get("AUTHOR_BOT", ""), owner) else 1

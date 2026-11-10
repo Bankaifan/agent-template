@@ -4,7 +4,7 @@
 
 The final reply must contain a line `security-review: approve|changes <SHA>`; that line and everything after it is
 posted as one PR comment (secrets masked). A `changes` verdict also gets a request-changes review by the same app and the
-round label review:N is bumped, so agent-fix starts a normal fix round. An `approve` dismisses the app's own open
+round label review:N is bumped (once per head SHA, shared with agent-review; a verdict for a superseded head is discarded), so agent-fix starts a normal fix round. An `approve` dismisses the app's own open
 "Security review asks for changes" reviews (env APPROVER_BOT names the app; unset: nothing is dismissed). No verdict: the denied tool calls are printed and the exit code is 1.
 """
 import json
@@ -52,15 +52,12 @@ def gh(*args):
     return subprocess.run(["gh", *args], check=True, capture_output=True, text=True).stdout
 
 
-def bump_round(number, run=gh):
-    """Count the round like agent-review does (review:1 -> 2 -> 3). agent-fix starts a fix on review:1/2 and applies
-    the round limit on review:3. Returns False when review:3 was already set (the limit was handled before)."""
-    labels = set(run("pr", "view", str(number), "--json", "labels", "--jq", ".labels[].name").split())
-    if "review:3" in labels:
-        return False
-    nxt = "review:3" if "review:2" in labels else "review:2" if "review:1" in labels else "review:1"
-    agent_guard.add_labels("pr", number, [nxt], run)
-    return True
+def bump_round(number, sha, run=gh):
+    """Count the round like agent-review does (review:1 -> 2 -> 3), once per head SHA: if the code reviewer already
+    counted this head, nothing is bumped. agent-fix starts a fix on review:1/2 and applies the round limit on review:3.
+    Returns True when a `changes` review should be requested: the head is newly counted or was counted already
+    (the round is open, the fix is still to be started); False at the limit (handled before)."""
+    return agent_guard.count_round(number, sha, run) != "limit"
 
 
 def dismiss_own_requests(number, sha, run=gh, approver=None):
@@ -100,11 +97,14 @@ def post(number, sha, exec_text, run=gh, tmpdir=None):
             print(f"  denied: {line}")
         return 1
     kind, body = got
+    if agent_guard.is_stale_head(number, sha, run):  # pushed during the review: discard, the next head is reviewed
+        print(f"post_verdict: head of #{number} moved past {sha[:7]}; verdict discarded")
+        return 0
     fd, path = tempfile.mkstemp(suffix=".md", dir=tmpdir or os.environ.get("RUNNER_TEMP") or None)
     with os.fdopen(fd, "w", encoding="utf-8") as f:
         f.write(body + "\n")
     run("pr", "comment", str(number), "--body-file", path)
-    if kind == "changes" and bump_round(number, run):
+    if kind == "changes" and bump_round(number, sha, run):
         run("pr", "review", str(number), "--request-changes", "--body",
             f"Security review asks for changes at {sha[:7]}: see the `security-review: changes` comment.")
     if kind == "approve":
