@@ -47,6 +47,7 @@ jobs:
           STATUS_INTERVAL: ${{ vars.STATUS_INTERVAL }}
           UNBLOCKER: ${{ vars.UNBLOCKER }}
           ANSWER_RECEIVER: ${{ vars.ANSWER_RECEIVER }}
+          NIGHTLY_HEAVY_TESTS: ${{ vars.NIGHTLY_HEAVY_TESTS }}
         run: |
           # row NAME DEFAULT VALUE: an unset or empty variable means the default, as in the workflows' || fallbacks
           row() {
@@ -64,6 +65,7 @@ jobs:
             row STATUS_INTERVAL "30 public / 60 private" "$STATUS_INTERVAL"
             row UNBLOCKER on "$UNBLOCKER"
             row ANSWER_RECEIVER on "$ANSWER_RECEIVER"
+            row NIGHTLY_HEAVY_TESTS false "$NIGHTLY_HEAVY_TESTS"
           } | tee -a "$GITHUB_STEP_SUMMARY"
       - id: app
         if: steps.check.outputs.author == 'true'

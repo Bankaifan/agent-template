@@ -72,7 +72,7 @@ Projekte nicht darauf zurückzeigen):
 
 **Projektwerte.** Lieber Repo-Variablen als geänderte Dateien: `PYTHON_VERSION` (Standard `3.x`), `EXTRA_INSTALL` (Shell-Befehl,
 den `tools/ci/install_tools.sh` nach den üblichen Tools ausführt; nur aus der Repo-Variable, nie aus einer Datei im PR-Branch)
-und `RUNNER`. `TEMPLATE_SYNC=off` schaltet den Sync ab. Nur der CI-Name in `workflow_run.workflows` kann keine Variable sein
+und `RUNNER`. `TEMPLATE_SYNC=off` schaltet den Sync ab. `NIGHTLY_HEAVY_TESTS` (Standard `false`): bei `true` verlassen Tests mit `@pytest.mark.slow` PRs und `main` und laufen im nächtlichen Lauf `nightly.yml`, der bei Fehlschlag ein `prio:1`-Issue öffnet. Ein Test wird `slow` markiert, wenn er etwa 5 s braucht oder ein Netzwerk bzw. einen Dienst benötigt (eine Zeile `@pytest.mark.slow` über dem Test; der Marker ist in `tests/conftest.py` registriert, Design in `docs/design/0009-test-scoping.md`). Nur der CI-Name in `workflow_run.workflows` kann keine Variable sein
 (GitHub erlaubt dort keine Ausdrücke). Er steht als `[validate]` in `agent-fix.yml`, `agent-review.yml`,
 `dependabot-automerge.yml` und `orchestrator.yml`. Heißt die CI eines Projekts anders (z. B. `Validate`), passt es diese
 Zeilen an und trägt die Dateien unter `overrides` ein.
