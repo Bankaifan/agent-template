@@ -3,6 +3,9 @@
 ## [Unreleased]
 - README (EN and DE) and `docs/decisions/0007-template-sync.md`: six-step setup for the template sync, version gate, reuse by other projects.
 
+## [1.12] - 2026-11-11
+- `orchestrator.yml`: comments by the author app no longer start an orchestrator run (they displaced pending runs, which ended `cancelled`; #440).
+
 ## [1.11] - 2026-11-11
 - `.github/workflows/dispatch.yml` runs `tools/dispatch.py` on issue, comment, merge and hourly events when repo variable `DISPATCH` is `on` (default off). With it the orchestrator model only gets issues without a slip (`needs_slip`) and a due handover (`handover_due`), and a merged PR no longer wakes it (design 0015 step 4, #415).
 
