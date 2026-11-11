@@ -27,8 +27,8 @@ Unknown facts are marked "open".
 | `DESIGN_AUTOMERGE` | `on` in `Bankaifan/agent-template`, `off` elsewhere | `automerge.yml` (refuses design PRs unless `on`); `agent-review.yml` (design owner mode text) | `on` lets design PRs (`docs/design/`) auto-merge after the design reviewer approves, and the design reviewer decides Owner decisions; otherwise Daniel merges them | `on` / `off` |
 | `ORCHESTRATOR_ENABLED` | not set (off) | `orchestrator.yml` (job `if`); `setup.yml` (shown) | `true` enables the orchestrator (after merges to `main`, daily, and by hand) | `true`; anything else keeps it off |
 | `ORCHESTRATOR_EVENTS` | `off` | `orchestrator.yml` (`if`, and env for `tools/orchestrator_gate.py`); `setup.yml` (shown) | `on` also wakes the orchestrator on issues, issue comments, PRs and reviews (`docs/decisions/0012-orchestrator-events.md`) | `on` / `off`; anything other than `on` is off |
-| `MAX_DEV` | `2` (`4` in `Bankaifan/agent-template`) | `orchestrator.yml` and `weekly-summary.yml` (env); `tools/prefilter.py`; `tools/weekly_summary.py` | maximum number of open `agent:dev` issues, i.e. agent jobs at once | integer. Empty or non-numeric falls back to the default with a warning |
-| `MAX_PRS` | `3` (`5` in `Bankaifan/agent-template`) | `orchestrator.yml` and `weekly-summary.yml` (env); `tools/prefilter.py`; `tools/weekly_summary.py` | maximum number of open agent PRs | integer. Empty or non-numeric falls back to the default with a warning |
+| `MAX_DEV` | `4` | `orchestrator.yml` and `weekly-summary.yml` (env); `tools/prefilter.py`; `tools/weekly_summary.py` | maximum number of open `agent:dev` issues that hold a slot, i.e. agent jobs at once (parked `needs-human` issues and issues with a merged PR do not count) | integer. Empty or non-numeric falls back to the default with a warning |
+| `MAX_PRS` | `5` | `orchestrator.yml` and `weekly-summary.yml` (env); `tools/prefilter.py`; `tools/weekly_summary.py` | maximum number of open agent PRs | integer. Empty or non-numeric falls back to the default with a warning |
 
 ## Environment inputs that are not repo variables
 
