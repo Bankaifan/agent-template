@@ -212,20 +212,30 @@ def handover_state():
     return (time.time() - int(ts)) / 86400, newer
 
 
+def start_state():
+    """Slots and start list, read live (one definition for prefilter and dispatch): a dict with dev, stuck, waiting_prs,
+    free_dev, free_prs, trusted (JSON of trusted_issues.py), blocked and start (the issues to start now)."""
+    dev = json.loads(gh("issue", "list", "--state", "open", "--label", "agent:dev", "--limit", "200",
+                        "--json", "number,labels"))
+    w_issues, w_prs = waiting_for_owner(os.environ.get("OWNER", "Bankaifan"), os.environ.get("APPROVER_BOT", ""))
+    stuck = stuck_slots(dev)
+    free_dev, free_prs = free_slots({i["number"] for i in dev}, w_issues, stuck,
+                                    count("pr", "list", "--state", "open"), w_prs)
+    trusted = json.loads(os.environ.get("TRUSTED") or subprocess.run(
+        [sys.executable, "tools/trusted_issues.py"], check=True, capture_output=True, text=True).stdout)
+    issues = json.loads(gh("issue", "list", "--state", "open", "--limit", "200", "--json", "number,body"))
+    open_numbers = {i["number"] for i in issues}
+    blocked = {i["number"] for i in issues if deps.blocked(i["number"], i.get("body"), open_numbers)}
+    return {"dev": dev, "stuck": stuck, "waiting_prs": w_prs, "free_dev": free_dev, "free_prs": free_prs,
+            "trusted": trusted, "blocked": blocked,
+            "start": start_candidates(trusted, free_dev, free_prs, w_prs, blocked)}
+
+
 def main(mode) -> int:
     if mode == "orchestrator":
-        dev = json.loads(gh("issue", "list", "--state", "open", "--label", "agent:dev", "--limit", "200",
-                            "--json", "number,labels"))
-        w_issues, w_prs = waiting_for_owner(os.environ.get("OWNER", "Bankaifan"), os.environ.get("APPROVER_BOT", ""))
-        stuck = stuck_slots(dev)
-        free_dev, free_prs = free_slots({i["number"] for i in dev}, w_issues, stuck,
-                                        count("pr", "list", "--state", "open"), w_prs)
-        trusted = json.loads(os.environ.get("TRUSTED") or subprocess.run(
-            [sys.executable, "tools/trusted_issues.py"], check=True, capture_output=True, text=True).stdout)
-        issues = json.loads(gh("issue", "list", "--state", "open", "--limit", "200", "--json", "number,body"))
-        open_numbers = {i["number"] for i in issues}
-        blocked = {i["number"] for i in issues if deps.blocked(i["number"], i.get("body"), open_numbers)}
-        cands = start_candidates(trusted, free_dev, free_prs, w_prs, blocked)
+        st = start_state()
+        dev, stuck, w_prs, free_dev, free_prs = st["dev"], st["stuck"], st["waiting_prs"], st["free_dev"], st["free_prs"]
+        trusted, blocked, cands = st["trusted"], st["blocked"], st["start"]
         human = count("pr", "list", "--state", "open", "--label", "needs-human")
         age, newer = handover_state()
         stale = handover_stale(age, newer, float(os.environ.get("STALE_DAYS", "7")))
