@@ -3,6 +3,9 @@
 ## [Unreleased]
 - README (EN and DE) and `docs/decisions/0007-template-sync.md`: six-step setup for the template sync, version gate, reuse by other projects.
 
+## [1.15] - 2026-11-12
+- `.github/workflows/watch.yml` and `tools/actions_watch.py`: a failed, timed-out, cancelled or startup-failed run of any other workflow is rerun once (attempt 1, startup failure or never-started job) or opens/updates the signed `Failing workflow:` issue; a 30 min sweep catches undelivered events; `DRY_RUN` writes nothing (design 0012 step 2, #428).
+
 ## [1.14] - 2026-11-11
 - `tools/train.py`: a DIRTY approved PR whose only conflicts are `VERSION` and `CHANGELOG.md` is re-bumped with `tools/rebump.py`, rebased onto main and force-pushed with lease, with no agent-fix run; any other conflict keeps the agent-fix path (design 0013 step 2, #450, closes #406).
 
