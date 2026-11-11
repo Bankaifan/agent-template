@@ -88,15 +88,35 @@ Re-import the ruleset after this change.
 
 ## Keeping projects in sync
 
-Projects created from this template get later template changes through a weekly report, not a blind file copy.
-`template-sync.yml` (Mondays, or `workflow_dispatch`; no model) runs `tools/template_sync.py`. It compares the template's
-`main` with `synced_sha` from `.agents/template.json` and lists the changed files that match `managed`. It creates the one
-open issue `Template sync <short sha>` (labels `agent:dev`, `model:sonnet`), or edits it if one is already open.
-Files you list under `overrides` are shown separately with your `why`. The issue ends with `Template-Sync: <40 hex>`; the
-orchestrator trusts it only when the author app (`AUTHOR_BOT`) wrote it. The developer ports `clean` files as they are,
-ports `overridden` files by hand keeping their intent (agent-dev downloads the template at that SHA into the
-untracked `.template/` first, so the developer can read it), sets `synced_sha` to that SHA and opens one PR with
-`Closes #<sync issue>`. The PR touches `.github/`, so Daniel must approve as code owner.
+Projects created from this template get later template changes as one sync issue, not a blind file copy. The template has
+a version `x.y` in `VERSION`: a change to `x` is a must-have update, a change to `y` is a small fix or documentation and
+starts no sync by itself (`docs/decisions/0007-template-sync.md`, `docs/design/0011-automatic-template-sync.md`).
+`template-sync.yml` polls daily (no model) and runs `tools/template_sync.py`. When the template's `x` is higher than
+`synced_version` in `.agents/template.json`, it compares the template's `main` with `synced_sha` and lists the changed
+files that match `managed`. It creates the one open issue `Template sync <short sha>` (labels `agent:dev`, `model:sonnet`),
+or edits it if one is already open. The issue ends with `Template-Sync: <40 hex>`; the orchestrator trusts it only when
+the author app (`AUTHOR_BOT`) wrote it. The developer ports `clean` files as they are, ports `overridden` files by hand
+keeping their intent (agent-dev downloads the template at that SHA into the untracked `.template/` first), sets
+`synced_sha` and `synced_version` in `.agents/template.json`, and opens one PR with `Closes #<sync issue>`. That PR
+touches `.github/`, so Daniel must approve it as code owner.
+
+Setup for a project (six steps):
+
+1. **Author app.** Install the author app (Setup, step 2) on the project and, if the template is private, on the template repo too.
+2. **Sync files.** Projects created with *Use this template* already have `.github/workflows/template-sync.yml` and
+   `tools/template_sync.py`. Older projects copy both from the template once; later changes arrive through the sync issue.
+3. **Create `.agents/template.json`** (example below): `template`, `synced_sha` (the 40-hex template commit you last matched;
+   empty means the run is a no-op), `synced_version` (the template `x.y` you last matched; missing counts as `x = 0`, so the
+   first run opens one issue), `managed` and `overrides`.
+4. **Optional variables.** `TEMPLATE_SYNC=off` turns the poll off. `TEMPLATE_SYNC_MODE` is `version` by default (report only
+   when `x` moved); `all` reports every managed change and skips the gate.
+5. **Check.** Run *Actions > template-sync > Run workflow* with `force` set: it skips the gate and should open one
+   `Template sync` issue. A second run edits that issue instead of opening another.
+6. **When the sync PR merges**, `synced_sha` and `synced_version` move to the template commit and version it matched; the
+   next issue waits for the next `x`.
+
+Another project reuses this template the same way: create it with *Use this template*, then follow steps 1 to 6. Its
+`template` field names this repo (`Bankaifan/agent-template`); nothing in the template points back at the project.
 
 Example `.agents/template.json` for a project (add it once by hand; it is not part of the template, so new projects do not
 point back at it):
@@ -105,6 +125,7 @@ point back at it):
 {
   "template": "Bankaifan/agent-template",
   "synced_sha": "<40 hex: the template commit you last matched>",
+  "synced_version": "1.1",
   "managed": [".github/workflows/", ".github/claude-judge-settings.json", ".github/dependabot.yml", ".github/CODEOWNERS", ".github/rulesets/",
               ".agents/roles/", "tools/", "tests/", "AGENTS.md", "CLAUDE.md", "Makefile", "docs/design/README.md"],
   "overrides": [
@@ -114,6 +135,7 @@ point back at it):
 }
 ```
 
+- `synced_version`: the template `x.y` you last matched (set by the sync PR). The poll reads only its `x`.
 - `managed`: path prefixes the template owns (a trailing `/` means a directory). Other paths are never reported.
 - `overrides`: exact `path` plus a free-text `why` for the developer.
 - A too-old `synced_sha` only makes the first issue larger. No file, or an empty `synced_sha`: the run prints
