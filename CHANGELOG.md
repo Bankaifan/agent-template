@@ -3,6 +3,9 @@
 ## [Unreleased]
 - README (EN and DE) and `docs/decisions/0007-template-sync.md`: six-step setup for the template sync, version gate, reuse by other projects.
 
+## [1.13] - 2026-11-11
+- `tools/rebump.py`: for a PR whose only conflicts with main are `VERSION` and `CHANGELOG.md`, re-bumps `VERSION` on top of main (x or y step) and moves the PR's changelog lines under the new heading; any other conflicting file is refused (design 0013 step 1, #449).
+
 ## [1.12] - 2026-11-11
 - `orchestrator.yml`: comments by the author app no longer start an orchestrator run (they displaced pending runs, which ended `cancelled`; #440).
 
