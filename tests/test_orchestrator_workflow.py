@@ -52,6 +52,15 @@ def test_events_switch_guards_the_new_events():
     assert "ORCHESTRATOR_EVENTS: ${{ vars.ORCHESTRATOR_EVENTS }}" in _step("name: Gate")
 
 
+def test_author_app_comments_and_edits_do_not_start_a_run():
+    """Issue #440: a run per author-app comment displaced the pending run in the group (cancelled, no steps)."""
+    cond = TEXT[TEXT.index("    if: >-"):TEXT.index("    # Job level on purpose")]
+    assert "github.event_name == 'issue_comment' &&" in cond
+    assert "github.event.action == 'edited' &&" in cond
+    assert cond.count("github.event.sender.login") == 2
+    assert "cancel-in-progress: false" in TEXT
+
+
 def test_order_sleep_gate_prefilter_model():
     sleep = TEXT.index("run: sleep 60")
     assert sleep < TEXT.index("- id: app")

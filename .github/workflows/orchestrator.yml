@@ -7,8 +7,8 @@ run-name: "${{ github.event_name == 'issues' && github.event.issue.title || gith
 # Candidate issues come from tools/trusted_issues.py, not from the prompt.
 # A label event (`approved` or `auto-ok`) starts it at once; tools/orchestrator_gate.py checks that Daniel set
 # the label and skips a run that follows another run within 3 minutes (one run per burst of labels).
-# Edits by the author app (status issue updates after every run) never start a run: each one waited 60 s in the group and
-# replaced a pending dispatch or label run, which then ended cancelled ("higher priority waiting request").
+# Edits and comments by the author app (status issue updates, slips, failure reports) never start a run: each one waited
+# 60 s in the group and replaced a pending dispatch or label run, which then ended cancelled ("higher priority waiting request").
 # Skipped runs are expected: GitHub lists every label event, and the job-level `if` skips the ones that are not gated.
 # Design 0007 (Refs #125): more events (issues opened/edited/closed, comments, PRs, reviews) are accepted only when repo
 # variable ORCHESTRATOR_EVENTS is "on" (default off). Then every event run waits 60 s (burst), tools/orchestrator_gate.py
@@ -41,7 +41,9 @@ jobs:
           !(github.event.action == 'edited' &&
             contains(fromJSON(format('["{0}","{0}[bot]"]', vars.AUTHOR_BOT)), github.event.sender.login))))) ||
        (contains(fromJSON('["issue_comment","pull_request_target","pull_request_review"]'), github.event_name) &&
-        vars.ORCHESTRATOR_EVENTS == 'on') ||
+        vars.ORCHESTRATOR_EVENTS == 'on' &&
+        !(github.event_name == 'issue_comment' &&
+          contains(fromJSON(format('["{0}","{0}[bot]"]', vars.AUTHOR_BOT)), github.event.sender.login))) ||
        (contains(fromJSON('["schedule","workflow_dispatch","workflow_run"]'), github.event_name) &&
         (github.event_name != 'workflow_run' ||
          (github.event.workflow_run.conclusion == 'success' &&
