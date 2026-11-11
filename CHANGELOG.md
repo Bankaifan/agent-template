@@ -3,6 +3,9 @@
 ## [Unreleased]
 - README (EN and DE) and `docs/decisions/0007-template-sync.md`: six-step setup for the template sync, version gate, reuse by other projects.
 
+## [1.14] - 2026-11-11
+- `tools/train.py`: a DIRTY approved PR whose only conflicts are `VERSION` and `CHANGELOG.md` is re-bumped with `tools/rebump.py`, rebased onto main and force-pushed with lease, with no agent-fix run; any other conflict keeps the agent-fix path (design 0013 step 2, #450, closes #406).
+
 ## [1.13] - 2026-11-11
 - `tools/rebump.py`: for a PR whose only conflicts with main are `VERSION` and `CHANGELOG.md`, re-bumps `VERSION` on top of main (x or y step) and moves the PR's changelog lines under the new heading; any other conflicting file is refused (design 0013 step 1, #449).
 
