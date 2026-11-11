@@ -6,6 +6,9 @@
 ## [1.16] - 2026-11-11
 - `orchestrator.yml` prompt and role: `gh variable` and `gh secret` are named as not allowed, and the DISPATCH value is given in the prompt. A read of a repo variable was denied and ended a run without action as silent (run 43120189065, #313).
 
+## [1.17] - 2026-11-11
+- `tools/idea_route.py`: general router. `issue --number N` moves a project issue whose `Files:` line (or guard title: `Failing workflow:`, `Denied command in`, `Overdue scheduled run:`) touches only managed paths (minus overrides) to the template with a back link and a comment; mixed slips are asked to split; `check --number N` exits 3 when `agent:dev` must not be set. Skips with a log line without `TEMPLATE_GH_TOKEN` (#418; token and workflow wiring open, #117).
+
 ## [1.15] - 2026-11-11
 - `risk.yml`: `cancel-in-progress: false`. The `pull_request_target` and `pull_request_review` runs for one PR share a concurrency group and cancelled each other within a second (#441, #459).
 
