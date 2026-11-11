@@ -33,7 +33,7 @@ Window: 2026-10-12 to 2026-11-11 (30 days), repo `Bankaifan/agent-template`.
 | Agent PRs that were DIRTY or rebased only because of `VERSION` or `CHANGELOG.md` | **open** | needs `gh pr list`, denied to the developer run (commented on #406 and on this PR) |
 | Git-only proxy (rebase or update-branch commits of merged PRs) | **not available** | merged PR branches are deleted; `main` keeps only the rebased commits, so PR-side rebases cannot be counted from git |
 | Remote agent branches still present (the PR branches of merged PRs are deleted) | 2 (`agent/406-...`, `agent/407-...`) | `git branch -r --list origin/agent/*` |
-| Live sample: open PR #411 touches `VERSION`, `CHANGELOG.md` and managed paths, and is `BLOCKED` | 1 PR | `gh pr view 411 --json mergeStateStatus,files` |
+| Live sample: PR #411 touches `VERSION`, `CHANGELOG.md` and 16 other files; it is now closed with `mergeStateStatus` DIRTY | 1 PR | `gh pr view 411 --json mergeStateStatus,files,state` |
 
 What the numbers say: `VERSION` exists only since 2026-11-11, so the exposure is 5 bumps in one day, and no bump was skipped or
 duplicated on `main`. The `main` history cannot show the cost, because the PRs that were rebased before merging leave no trace on
@@ -117,8 +117,12 @@ B: remove the `train.py` call; PRs fall back to `handle_conflict()`. C: nothing 
 
 ## 8. Split into PR-sized implementation issues
 
-Under B, in this order: 1. `tools/rebump.py` with tests (re-bump and changelog move, cases (a) to (c) of section 6); 2. call it from
-`tools/train.py` for DIRTY PRs whose conflict set is only `VERSION` and `CHANGELOG.md`. Then the check in section 6.
+Under B. Step 2 needs the function of step 1, so they cannot run in parallel. The check in section 6 follows after both.
+
+| Step | Title | Files | Depends on |
+|---|---|---|---|
+| 1 | Add `tools/rebump.py`: re-bump `VERSION` and move the changelog line, cases (a) to (c) | `tools/rebump.py`, `tests/test_rebump.py` | - |
+| 2 | Call `rebump` from `tools/train.py` for DIRTY PRs whose conflict set is only `VERSION` and `CHANGELOG.md` | `tools/train.py`, `tests/test_train.py` | 1 |
 
 ## 9. Owner decisions
 
