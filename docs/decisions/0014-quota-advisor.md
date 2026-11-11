@@ -7,7 +7,7 @@ Context: nobody measured how much model capacity the agents use or what throttle
 Decision:
 1. The weekly summary (script step, no model) gets a section "Model runs, last 7 days": per workflow with a `claude-code-action` step, the model runs, runs per day, median duration, failed runs and failed runs whose failed-step log matches a limit or rate pattern (`run_stats.LIMIT_RE`, a heuristic). The role per workflow comes from `run_stats.ROLES`.
 2. A "Queue" section: approved issues waiting for a slot, free `agent:dev` and agent PR slots (an approximation of `tools/prefilter.py`), and the median days since the last update of `needs-human` items.
-3. The caps for the queue section come from `MAX_DEV` and `MAX_PRS` in `weekly-summary.yml`, with the same defaults as `orchestrator.yml` (agent-template 4 and 5, other repositories 2 and 3). `AGENTS.md` already documents these values and is unchanged.
+3. The caps for the queue section come from `MAX_DEV` and `MAX_PRS` in `weekly-summary.yml`, with the same defaults as `orchestrator.yml` (4 and 5). `AGENTS.md` already documents these values and is unchanged.
 4. One issue "Capacity proposal" is opened, or its body updated, only when a threshold is hit: at least one failed model run with a limit or rate error in the last 7 days, or at least 3 approved issues waiting while no `agent:dev` slot is free. The proposal lists the levers (`IDEAS_PER_WEEK`, `ORCHESTRATOR_EVENTS`, `MAX_DEV`/`MAX_PRS`, model per role, a separate seat or token) and leaves the choice to Daniel.
 5. The script never writes a repo variable or a secret. `tests/test_quota_advisor.py` checks that the calls it makes are limited to `run`, `api`, `issue` and `pr`.
 
