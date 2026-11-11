@@ -3,6 +3,9 @@
 ## [Unreleased]
 - README (EN and DE) and `docs/decisions/0007-template-sync.md`: six-step setup for the template sync, version gate, reuse by other projects.
 
+## [1.9] - 2026-11-11
+- `tools/agent_guard.py`: a silent run with denied tool calls is routed by script, not sent back with a retrigger that cannot help. A protected file (CODEOWNERS, `.github/claude-judge-settings.json`) gets a note and no retrigger. An allow-list miss opens or bumps ONE signed issue per workflow in the template repo (fixed title, run links only, at most 5) and the source issue waits with `Depends on:`. The same call denied twice on one issue parks it; a retrigger is offered only after a change to the allow-list workflow, its role file or the issue (#416).
+
 ## [1.8] - 2026-11-11
 - `tools/failure_watch.py`: cancelled runs and startup failures are watched too (a cancelled job that never started is class `cancelled`); expected cancels (agent-review, validate.yml with a newer run of the branch) open no issue; the caller passes its own workflow file, `tools/status.py` passes `status.yml` (design 0012 step 1, #426).
 

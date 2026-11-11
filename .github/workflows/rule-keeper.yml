@@ -94,20 +94,25 @@ jobs:
             --setting-sources user
             --settings .github/claude-judge-settings.json
             --allowedTools "Read,Glob,Grep,Edit,Write,Bash(gh pr list:*),Bash(gh pr view:*),Bash(gh issue list:*),Bash(gh issue view:*),Bash(git add:*),Bash(git commit:*),Bash(git push origin HEAD),Bash(git status:*),Bash(git diff:*),Bash(gh pr create:*),Bash(make check),Bash(date:*),Bash(wc:*),Bash(ls:*)"
+      # Two steps: the fetch runs git inside the checkout the agent edited, so it gets no secret.
+      - name: Fetch the guard of the default branch
+        if: ${{ !cancelled() && steps.claude.outcome != 'skipped' }}
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          git fetch --depth=1 origin "$DEFAULT_BRANCH"
+          mkdir -p "$RUNNER_TEMP/guard"
+          git archive FETCH_HEAD tools | tar -x -C "$RUNNER_TEMP/guard"
       - name: Run report (script, no model)
         if: ${{ !cancelled() && steps.claude.outcome != 'skipped' }}
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           GH_REPO: ${{ github.repository }}
-          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           EXEC_FILE: ${{ steps.claude.outputs.execution_file }}
           MODEL: ${{ env.MODEL }}
           WORKFLOW_FILE: .github/workflows/rule-keeper.yml
           GUARD_KEY: ${{ secrets.GUARD_KEY }}  # script step only, never a model step (tests/test_guard_mark.py)
         run: |
-          # The agent may edit the checkout: run the helper as it is on the default branch.
-          git fetch --depth=1 origin "$DEFAULT_BRANCH"
-          mkdir -p "$RUNNER_TEMP/guard"
-          git archive FETCH_HEAD tools | tar -x -C "$RUNNER_TEMP/guard"
+          # Only the guard runs here, from the default-branch copy; no checkout command runs in this step.
           python3 "$RUNNER_TEMP/guard/tools/run_report.py" rule-keeper

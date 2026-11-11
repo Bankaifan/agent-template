@@ -133,10 +133,19 @@ def test_guard_key_only_in_script_steps(path):
             assert "uses:" not in step, "pass the key to run: steps only"
 
 
+@pytest.mark.parametrize("path", WORKFLOWS, ids=lambda p: p.name)
+def test_guard_key_step_runs_no_git(path):
+    """git runs inside the checkout the agent edited (.git/config, hooks): a step with the key must not run it (#416)."""
+    _, steps = _blocks(path.read_text(encoding="utf-8"))
+    for step in steps:
+        if "GUARD_KEY" in step:
+            assert not re.search(r"\bgit\b", step), "fetch the guard in its own step without GUARD_KEY"
+
+
 def test_guard_key_used_where_expected():
     users = {p.name for p in WORKFLOWS if "GUARD_KEY" in p.read_text(encoding="utf-8")}
     assert users == {"orchestrator.yml", "status.yml", "setup.yml", "rule-keeper.yml", "scout.yml",
-                     "weekly-summary.yml", "nightly.yml"}
+                     "weekly-summary.yml", "nightly.yml", "agent-dev.yml", "agent-fix.yml", "agent-review.yml"}
 
 
 def test_setup_requires_guard_key():

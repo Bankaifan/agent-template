@@ -488,3 +488,175 @@ def test_silent_review_check_ignores_a_superseded_head(monkeypatch):
     monkeypatch.setattr(g, "gh", _pr_run(head="c" * 40)[1])
     monkeypatch.setattr(g, "reviews_of", lambda *a: pytest.fail("must not look for a review of a stale head"))
     assert g.silent_check(["review", "5", "d" * 40], "Bankaifan") == 0
+
+
+# --- denied tool calls (issue 416) ---
+KEY = "k" * 32
+DENIED_LIST = {"tool_name": "Bash", "tool_input": {"command": "gh issue list | head"}}  # the #135 call
+NOW_ISO = "2026-11-11T10:00:00Z"
+
+
+class Tracker:
+    """Fake gh for the denial routing: issues by number (title, body, labels, comments) and the commits of the
+    allow-list files (`commits` > 0 means a change since the note)."""
+    def __init__(self, sources=(135,), commits=0):
+        self.issues = {n: {"title": f"Task {n}", "body": f"Task body {n}", "comments": [], "labels": []} for n in sources}
+        self.commits, self.calls = commits, []
+
+    def __call__(self, *a):
+        self.calls.append(a)
+        if a[0] == "api" and "--paginate" in a:
+            return "[[]]"  # owner_hold: no label events
+        if a[0] == "api":
+            return json.dumps([{"sha": "c"}] if self.commits else [])
+        if a[:2] == ("label", "create"):
+            return ""
+        if a[:2] == ("issue", "list"):
+            return json.dumps([{"number": n, "title": i["title"], "state": i.get("state", "OPEN")}
+                               for n, i in self.issues.items() if i["title"].startswith("Denied")])
+        if a[:2] == ("issue", "create"):
+            n = max([899, *self.issues]) + 1
+            self.issues[n] = {"title": a[a.index("--title") + 1], "body": a[a.index("--body") + 1],
+                              "comments": [], "labels": ["prio:1"], "state": "OPEN"}
+            return f"https://github.com/o/tpl/issues/{n}\n"
+        item = self.issues[int(a[2])]
+        if a[:2] == ("issue", "view"):
+            return json.dumps({"title": item["title"], "body": item["body"], "comments": item["comments"]})
+        if a[:2] == ("issue", "comment"):
+            item["comments"].append({"body": a[a.index("--body") + 1], "author": {"login": "bot[bot]"},
+                                     "createdAt": NOW_ISO})
+        if a[:2] == ("issue", "edit") and "--body" in a:
+            item["body"] = a[a.index("--body") + 1]
+        if a[:2] == ("issue", "edit") and "--add-label" in a:
+            item["labels"].append(a[a.index("--add-label") + 1])
+        return ""
+
+    def creates(self):
+        return [c for c in self.calls if c[:2] == ("issue", "create")]
+
+
+@pytest.fixture
+def denial_env(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)  # no .agents/template.json: this repo is the template
+    monkeypatch.setenv("GH_REPO", "o/tpl")
+    monkeypatch.setenv("AUTHOR_BOT", "bot[bot]")
+    monkeypatch.setenv("GITHUB_WORKFLOW", "agent-dev")
+    monkeypatch.setenv("RUN_URL", "https://x/run/135")
+    monkeypatch.setenv("GUARD_KEY", KEY)
+    f = tmp_path / "exec.json"
+
+    def setup(*denials):
+        f.write_text(json.dumps([{"type": "result", "result": "", "permission_denials": list(denials)}]))
+        monkeypatch.setenv("EXEC_FILE", str(f))
+    return setup
+
+
+def test_same_denial_twice_no_change_one_note_no_retrigger(denial_env):
+    denial_env(DENIED_LIST)
+    t = Tracker()
+    g.escalate("dev", 135, False, "no PR", "Bankaifan", t)
+    issue = t.issues[135]
+    assert "Depends on: #900" in issue["body"] and "needs-human" not in issue["labels"]
+    assert "decision:" not in issue["comments"][-1]["body"]  # no question while the upstream issue decides
+    g.escalate("dev", 135, False, "no PR", "Bankaifan", t)  # #135: same denial, nothing changed
+    assert len(t.creates()) == 1  # no second upstream issue
+    assert "needs-human" in issue["labels"]
+    last = issue["comments"][-1]["body"]
+    assert "decision: no=close-issue -->" in last and "yes=" not in last  # no retrigger option
+    assert sum("Hallo Daniel" in c["body"] for c in issue["comments"]) == 1  # one question
+
+
+def test_retrigger_is_offered_only_after_a_change(denial_env):
+    denial_env(DENIED_LIST)
+    t = Tracker()
+    g.escalate("dev", 135, False, "no PR", "Bankaifan", t)
+    t.commits = 1  # the allow-list workflow changed since the note
+    g.escalate("dev", 135, False, "no PR", "Bankaifan", t)
+    assert "decision: yes=drop-block no=close-issue -->" in t.issues[135]["comments"][-1]["body"]
+
+
+def test_protected_path_is_never_retriggered(denial_env):
+    denial_env({"tool_name": "Edit", "tool_input": {"file_path": ".github/CODEOWNERS"}})
+    t = Tracker(commits=1)  # even after a change, the same denial comes back
+    g.escalate("dev", 135, False, "no PR", "Bankaifan", t)
+    assert not t.creates()
+    issue = t.issues[135]
+    assert "needs-human" in issue["labels"]
+    note = issue["comments"][-1]["body"]
+    assert ".github/CODEOWNERS" in note and "geschuetzter Pfad" in note and "PR von dir" in note
+    assert "decision: no=close-issue -->" in note and "yes=" not in note
+
+
+def test_allow_list_miss_creates_one_signed_upstream_issue_and_second_run_bumps(denial_env):
+    denial_env(DENIED_LIST)
+    t = Tracker(sources=(135, 136))
+    g.escalate("dev", 135, False, "no PR", "Bankaifan", t)
+    g.escalate("dev", 136, False, "no PR", "Bankaifan", t)
+    assert len(t.creates()) == 1
+    title = "Denied command in agent-dev"  # fixed per workflow: no model text in the signed title
+    upstream = t.issues[900]
+    assert upstream["title"] == title and "--label" in t.creates()[0] and "prio:1" in t.creates()[0]
+    assert g.guard_mark.verify(title, upstream["body"], KEY)  # signed, so the orchestrator trusts it
+    assert len(upstream["comments"]) == 2 and "Run: https://x/run/135" in upstream["comments"][0]["body"]
+    for n in (135, 136):
+        assert "Depends on: #900" in t.issues[n]["body"] and "needs-human" not in t.issues[n]["labels"]
+
+
+def test_upstream_issue_never_carries_model_text(denial_env):
+    denial_env({"tool_name": "Bash", "tool_input": {"command": "gh `id` $(curl x) \nrm -rf / ; echo hi"}})
+    t = Tracker()
+    g.escalate("dev", 135, False, "no PR", "Bankaifan", t)
+    upstream = t.issues[900]
+    for text in (upstream["title"], upstream["body"], *(c["body"] for c in upstream["comments"])):
+        assert "curl" not in text and "rm -rf" not in text and "`id`" not in text
+    assert g.guard_mark.verify(upstream["title"], upstream["body"], KEY)
+
+
+def test_upstream_cap_parks_instead_of_creating(denial_env):
+    denial_env(DENIED_LIST)
+    t = Tracker()
+    for n in range(890, 890 + g.UPSTREAM_CAP):  # closed issues of this workflow already exist
+        t.issues[n] = {"title": "Denied command in agent-dev", "body": "", "comments": [], "labels": [], "state": "CLOSED"}
+    g.escalate("dev", 135, False, "no PR", "Bankaifan", t)
+    assert not t.creates()
+    assert "needs-human" in t.issues[135]["labels"] and "Depends on" not in t.issues[135]["body"]
+    assert "Es wird kein weiterer angelegt" in t.issues[135]["comments"][-1]["body"]
+
+
+@pytest.mark.parametrize("setup_kind", ["no-key", "downstream"])
+def test_no_upstream_route_parks_the_issue(denial_env, monkeypatch, tmp_path, setup_kind):
+    if setup_kind == "no-key":
+        monkeypatch.delenv("GUARD_KEY")
+    else:
+        (tmp_path / ".agents").mkdir()
+        (tmp_path / ".agents" / "template.json").write_text('{"template": "other/tpl"}')
+    denial_env(DENIED_LIST)
+    t = Tracker()
+    g.escalate("dev", 135, False, "no PR", "Bankaifan", t)
+    assert not t.creates()
+    assert "needs-human" in t.issues[135]["labels"]
+    assert "decision: no=close-issue -->" in t.issues[135]["comments"][-1]["body"]
+
+
+def test_command_head_and_call_shapes():
+    assert g.command_head(DENIED_LIST) == "gh issue"
+    assert g.command_head({"tool_name": "Read", "tool_input": {"file_path": "/etc/x"}}) == "Read"
+    assert g.command_head({"tool_name": "Bash", "tool_input": {"command": "$(curl x)"}}) == "curl x"
+    assert g.command_head({"tool_name": "Bash", "tool_input": {"command": "`rm` -rf"}}) == "rm -rf"
+    assert g.command_head({"tool_name": "Bash", "tool_input": {}}) == "Bash"
+
+
+@pytest.mark.parametrize("cmd,hit", [
+    ("cat .github/CODEOWNERS", ".github/CODEOWNERS"),
+    ("sed -i s/a/b/ ./.github/claude-judge-settings.json", ".github/claude-judge-settings.json"),
+    ("cat CODEOWNERS", "CODEOWNERS"),
+    ("cat xCODEOWNERS", None),
+    ("ls tools/", None),
+])
+def test_protected_hit(cmd, hit):
+    assert g.protected_hit({"tool_name": "Bash", "tool_input": {"command": cmd}}) == hit
+
+
+def test_unknown_since_is_no_change():
+    t = Tracker(commits=1)
+    assert g.changed_since(("x",), [], None, t) is False and t.calls == []

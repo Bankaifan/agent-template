@@ -17,7 +17,12 @@ CLI (needs the gh CLI with GH_TOKEN and GH_REPO):
 `silent` ignores extra trailing arguments (the guard runs from main, the workflow from the PR branch: no version drift).
 A usage error or exception in `silent` escalates with reason "guard error" and exits 1; it never fails quietly.
 Escalate = comment (run URL, denied tool calls from the execution file, else its last lines), label needs-human, request OWNER's review.
-Environment for escalation: RUN_URL, EXEC_FILE (path of the action's execution file), OWNER (default Bankaifan).
+A silent run with denied tool calls is routed first (issue 416): a protected file (CODEOWNERS, judge settings) gets a
+note and never a retrigger; an allow-list miss on an issue creates or bumps ONE signed issue in the template repo and the
+issue waits with `Depends on:`; a second denial of the same call on one issue parks it; a retrigger option is offered only
+if the allow-list workflow, its role file or the issue changed since the last note.
+Environment for escalation: RUN_URL, EXEC_FILE (path of the action's execution file), OWNER (default Bankaifan),
+GITHUB_WORKFLOW (the workflow name), GUARD_KEY (signs the upstream issue; without it nothing is routed).
 """
 import datetime as dt
 import hashlib
@@ -28,6 +33,8 @@ import subprocess
 import sys
 
 import decision
+import deps
+import guard_mark
 import liveness
 import owner_hold
 
@@ -251,12 +258,8 @@ def read_body_before(path):
         return None
 
 
-def escalate(kind, number, is_pr, what, owner, run=gh):
-    body = report(kind, what, os.environ.get("RUN_URL", ""), read_exec(os.environ.get("EXEC_FILE", "")))
-    thing = "pr" if is_pr else "issue"
-    body += (f"\n\nHallo Daniel, ein Agenten-Lauf ist ohne Ergebnis geendet. Frage: Soll der Block aufgehoben werden (ja) "
-             f"oder {'der PR' if is_pr else 'das Issue'} geschlossen werden (nein)?\n"
-             + decision.build(yes="drop-block", no=f"close-{thing}"))
+def _park(thing, number, is_pr, body, owner, run):
+    """Park an item with Daniel: needs-human, the note as the LAST comment, a review request (PR) or an assignment (issue)."""
     blocked = bool(owner_hold.held(thing, number, ["needs-human"], run, owner))
     add_labels(thing, number, ["needs-human"], run)
     liveness.post_comment(thing, number, body, run)
@@ -274,6 +277,211 @@ def escalate(kind, number, is_pr, what, owner, run=gh):
             run("issue", "edit", str(number), "--add-assignee", owner)
         except subprocess.CalledProcessError:
             print("assignment failed")
+
+
+def _escalate_plain(kind, number, is_pr, what, owner, run):
+    body = report(kind, what, os.environ.get("RUN_URL", ""), read_exec(os.environ.get("EXEC_FILE", "")))
+    thing = "pr" if is_pr else "issue"
+    body += (f"\n\nHallo Daniel, ein Agenten-Lauf ist ohne Ergebnis geendet. Frage: Soll der Block aufgehoben werden (ja) "
+             f"oder {'der PR' if is_pr else 'das Issue'} geschlossen werden (nein)?\n"
+             + decision.build(yes="drop-block", no=f"close-{thing}"))
+    _park(thing, number, is_pr, body, owner, run)
+
+
+# --- Denied tool calls (issue 416). Classified by script; the model never decides a retrigger. ---
+PROTECTED = (".github/claude-judge-settings.json", ".github/CODEOWNERS", "docs/CODEOWNERS", "CODEOWNERS")  # specific first
+TEMPLATE_CONFIG = ".agents/template.json"
+CHANGE_PATHS = {"dev": (".github/workflows/agent-dev.yml", ".agents/roles/developer.md"),
+                "fix": (".github/workflows/agent-fix.yml", ".agents/roles/developer.md"),
+                "review": (".github/workflows/agent-review.yml", ".agents/roles/reviewer.md")}
+SAFE_HEAD = re.compile(r"[^A-Za-z0-9 ._/:-]")
+UPSTREAM_CAP = 5  # upstream issues per workflow, open or closed: a closed one that comes back is Daniel's call again
+UPSTREAM_BODY = ("An agent run was denied a command that is not in the allow list of its workflow. The denied calls are in "
+                 "the runs linked in the comments of this issue (one comment per denied run). Decide: add the command to "
+                 "the allow list (a PR on the workflow file, owner review), or change the role so the command is not needed.")
+# fixed text, signed: the title and body name no model text; the calls stay in the run logs, not on this trusted issue
+
+
+def _input(d):
+    inp = d.get("tool_input")
+    return inp if isinstance(inp, dict) else {}
+
+
+def raw_denials(text):
+    """Every permission-denial record of the execution file, not only the first ten listed in the note."""
+    return [d for rec in _records(text) for d in rec.get("permission_denials") or [] if isinstance(d, dict)]
+
+
+def call_of(d):
+    """`Tool: command or path` of one denial, whitespace collapsed. Used for the denial's hash (its marker)."""
+    inp = _input(d)
+    what = inp.get("command") or inp.get("file_path") or inp.get("path") or inp.get("pattern") or ""
+    return f"{d.get('tool_name') or '?'}: {' '.join(str(what).split())}"
+
+
+def command_head(d):
+    """`gh issue list | head` -> `gh issue`; a call without a command -> the tool name. Plain characters, at most 40."""
+    cmd = _input(d).get("command")
+    head = SAFE_HEAD.sub("", " ".join(cmd.split()[:2]) if isinstance(cmd, str) else "").strip()[:40]
+    return head or SAFE_HEAD.sub("", str(d.get("tool_name") or "")).strip()[:40] or "unknown"
+
+
+def protected_hit(d):
+    """The protected file a denied call names (CODEOWNERS, judge settings), else None."""
+    text = " ".join(str(v) for v in _input(d).values()).replace("\\", "/")
+    for path in PROTECTED:
+        if re.search(r"(?:^|[\s'\"=/])" + re.escape(path) + r"(?=$|[\s'\"|;&])", text):
+            return path
+    return None
+
+
+def denial_sig(d):
+    """Key of one denied call: the same call gives the same key. Notes carry it in a hidden marker."""
+    return hashlib.sha256(call_of(d).encode("utf-8")).hexdigest()[:12]
+
+
+def _mark(sig):
+    return f"<!-- denial: {sig} -->"
+
+
+def prior_note(comments, sig):
+    """The newest comment that carries this denial's marker, or None (first denial of this call on the item)."""
+    hits = [c for c in comments if _mark(sig) in (c.get("body") or "")]
+    return hits[-1] if hits else None
+
+
+def changed_since(paths, comments, since, run=gh):
+    """Something changed after SINCE: a commit to one of PATHS (allow-list workflow, role file), or a comment by someone
+    else that is not a tool note. No SINCE means unknown, and unknown is no change: no retrigger is offered."""
+    if not since:
+        return False
+    repo, bot = os.environ.get("GH_REPO", ""), os.environ.get("AUTHOR_BOT", "")
+    for path in paths:
+        if json.loads(run("api", f"repos/{repo}/commits?path={path}&since={since}&per_page=1")):
+            return True
+    return any((c.get("createdAt") or "") > since and "<!--" not in (c.get("body") or "")
+               and not same_login((c.get("author") or {}).get("login"), bot) for c in comments)
+
+
+def routes_upstream(project, path=TEMPLATE_CONFIG):
+    """True if this repo is the template, so the denied-command issue is opened here. A repo without template.json is
+    the template itself; a downstream repo (template.json names another repo) is not routed (cross-repo: issue #418)."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            tpl = json.load(f).get("template")
+    except FileNotFoundError:
+        return bool(project)
+    except (OSError, ValueError, AttributeError):
+        return False
+    return isinstance(tpl, str) and bool(project) and tpl.lower() == project.lower()
+
+
+def workflow_name():
+    return SAFE_HEAD.sub("", os.environ.get("GITHUB_WORKFLOW") or "agent").strip()[:40] or "agent"
+
+
+def upstream_issue(workflow, key, run=gh):
+    """The ONE open issue for this workflow's allow-list misses: created (signed, fixed title and body) or, if open,
+    bumped with the run link. Returns its number, or None when UPSTREAM_CAP issues exist and none is open (Daniel decides).
+    Nothing the model wrote reaches the signed issue: the title is per workflow, the comment is the run URL."""
+    title = f"Denied command in {workflow}"
+    found = json.loads(run("issue", "list", "--state", "all", "--limit", "100", "--search", f'"{title}" in:title',
+                           "--json", "number,title,state"))
+    same = [i for i in found if i.get("title") == title]
+    opened = next((i for i in same if i.get("state") == "OPEN"), None)
+    if opened:
+        number = int(opened["number"])
+    elif len(same) >= UPSTREAM_CAP:
+        return None
+    else:
+        ensure_label("prio:1", run)
+        out = run("issue", "create", "--title", title, "--label", "prio:1", "--body",
+                  guard_mark.sign(title, UPSTREAM_BODY, key))
+        number = int(out.strip().rsplit("/", 1)[-1])
+    liveness.post_comment("issue", number, f"A run was denied a command of this workflow. Run: "
+                          f"{os.environ.get('RUN_URL') or '(unknown)'}", run)
+    return number
+
+
+def add_dependency(number, upstream, key, run=gh):
+    """Add `Depends on: #UPSTREAM` to the source issue body. A guard-signed body is re-signed (it stays trusted)."""
+    info = json.loads(run("issue", "view", str(number), "--json", "title,body"))
+    title, body = info.get("title") or "", info.get("body") or ""
+    if upstream in deps.parse(body):
+        return
+    core, sig = guard_mark.split(body)
+    new = f"{core.rstrip()}\n\nDepends on: #{upstream}"
+    if sig:
+        new = guard_mark.sign(title, new, key)
+    run("issue", "edit", str(number), "--body", new)
+    liveness.verify_body("issue", number, new, run)
+
+
+def _denial_body(detail, text, sig, thing, retrigger):
+    """A parked denial note: what happened, the question, the hidden markers. Only a changed item gets a yes option."""
+    if retrigger:
+        yes, marker = "Ja: hebt den Block auf, der Lauf startet neu", decision.build(yes="drop-block", no=f"close-{thing}")
+    else:
+        yes, marker = "Ja: aendert nichts, der Block bleibt", decision.build(no=f"close-{thing}")
+    question = f"Frage: Soll das {thing} geschlossen werden (nein)? {yes}. Nein: schliesst das {thing}."
+    return f"{detail}\n\n{text}\n{question}\n{_mark(sig)}\n{marker}"
+
+
+def _escalate_denied(kind, number, is_pr, what, owner, denials, text, run):
+    thing = "pr" if is_pr else "issue"
+    first, sig = denials[0], denial_sig(denials[0])
+    detail = report(kind, what, os.environ.get("RUN_URL", ""), text).split("\n\nLabelled needs-human")[0]
+    comments = json.loads(run(thing, "view", str(number), "--json", "comments")).get("comments") or []
+    prior = prior_note(comments, sig)
+    head = command_head(first)
+    files = []
+    for d in denials:
+        hit = protected_hit(d)
+        if hit and hit not in files:
+            files.append(hit)
+    if files:  # never a retrigger: the same denial comes back
+        note = (f"Hallo Daniel, der Agent durfte {' und '.join(files)} nicht aendern (geschuetzter Pfad). Ein Neustart "
+                "bringt nichts, dieselbe Sperre greift wieder. Die Aenderung muss ueber einen geskripteten Weg oder einen "
+                "PR von dir kommen. Schlimmster Fall: die Aufgabe bleibt liegen.")
+        _park(thing, number, is_pr, _denial_body(detail, note, sig, thing, False), owner, run)
+        return
+    retrigger = prior is not None and changed_since(CHANGE_PATHS.get(kind, ()), comments, prior.get("createdAt"), run)
+    key, wf = guard_mark.key_from_env(), workflow_name()
+    if is_pr or not (key and routes_upstream(os.environ.get("GH_REPO", ""))):
+        why = ("ein PR wird nicht umgeleitet" if is_pr else
+               "kein Upstream-Weg eingerichtet (GUARD_KEY oder Template-Repo fehlt)")
+        note = (f"Hallo Daniel, der Befehl {head} steht nicht in der Erlaubnisliste von {wf} ({why}). "
+                "Schlimmster Fall: die Aufgabe bleibt liegen.")
+        _park(thing, number, is_pr, _denial_body(detail, note, sig, thing, retrigger), owner, run)
+        return
+    upstream = upstream_issue(wf, key, run)
+    if upstream is None:  # the cap is reached and no upstream issue is open: Daniel decides, nothing is created
+        note = (f"Hallo Daniel, der Befehl {head} steht nicht in der Erlaubnisliste von {wf}, und es gibt schon "
+                f"{UPSTREAM_CAP} Upstream-Issues dazu. Es wird kein weiterer angelegt. Schlimmster Fall: die Aufgabe "
+                "bleibt liegen.")
+        _park(thing, number, is_pr, _denial_body(detail, note, sig, thing, retrigger), owner, run)
+        return
+    if prior is None:  # first denial: the source waits for the upstream issue, nothing to decide
+        add_dependency(number, upstream, key, run)
+        liveness.post_comment("issue", number, f"Hallo, der Befehl {head} steht nicht in der Erlaubnisliste von {wf}. "
+                              f"Die Aufgabe wartet auf #{upstream} (Depends on); es ist nichts zu entscheiden.\n\n{_mark(sig)}",
+                              run)
+        return
+    # the same call denied again on this issue: the cap ends automatic restarts; a retrigger only if something changed
+    note = (f"Hallo Daniel, derselbe Befehl {head} wurde auf diesem Issue schon einmal abgelehnt, "
+            f"{'und seitdem hat sich etwas geaendert' if retrigger else 'und seitdem hat sich nichts geaendert'}. "
+            f"Der Upstream-Issue #{upstream} ist aktualisiert. Es gibt keinen automatischen Neustart mehr. "
+            "Schlimmster Fall: die Aufgabe bleibt liegen.")
+    _park(thing, number, is_pr, _denial_body(detail, note, sig, thing, retrigger), owner, run)
+
+
+def escalate(kind, number, is_pr, what, owner, run=gh):
+    """A silent run is parked with Daniel. With denied tool calls it is routed by script first (issue 416)."""
+    text = read_exec(os.environ.get("EXEC_FILE", ""))
+    denials = raw_denials(text)
+    if not denials:
+        return _escalate_plain(kind, number, is_pr, what, owner, run)
+    return _escalate_denied(kind, number, is_pr, what, owner, denials, text, run)
 
 
 def reviews_of(pr, run=gh):
