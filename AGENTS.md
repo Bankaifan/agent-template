@@ -22,6 +22,7 @@ Project: <one sentence>. Current state: HANDOVER.md. Decisions: docs/decisions/.
 - Claim only what you measured (command + output). Unsure? Ask in the issue, do not guess.
   Missing facts are marked "open".
 - Keep context small: read only the files named in the task slip.
+- Size caps for this file and `.agents/roles/*.md` live in `docs/budgets.json` (checked by `make check`): shrink freely, raise a cap only by a deliberate edit there.
 - HANDOVER.md (max 60 lines) is rewritten by the orchestrator only; developer and fix runs put notes in the PR body.
 - Everything on GitHub in English (files, commits, PR titles and bodies, issues). Talking to Daniel: German.
 
