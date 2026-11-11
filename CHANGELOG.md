@@ -3,6 +3,9 @@
 ## [Unreleased]
 - README (EN and DE) and `docs/decisions/0007-template-sync.md`: six-step setup for the template sync, version gate, reuse by other projects.
 
+## [1.15] - 2026-11-11
+- `risk.yml`: `cancel-in-progress: false`. The `pull_request_target` and `pull_request_review` runs for one PR share a concurrency group and cancelled each other within a second (#441, #459).
+
 ## [1.14] - 2026-11-11
 - `tools/train.py`: a DIRTY approved PR whose only conflicts are `VERSION` and `CHANGELOG.md` is re-bumped with `tools/rebump.py`, rebased onto main and force-pushed with lease, with no agent-fix run; any other conflict keeps the agent-fix path (design 0013 step 2, #450, closes #406).
 
