@@ -3,6 +3,9 @@
 ## [Unreleased]
 - README (EN and DE) and `docs/decisions/0007-template-sync.md`: six-step setup for the template sync, version gate, reuse by other projects.
 
+## [1.17] - 2026-11-12
+- `.github/workflows/watch.yml` and `tools/actions_watch.py`: a failed, timed-out, cancelled or startup-failed run of any other workflow is rerun once (attempt 1, startup failure or never-started job) or opens/updates the signed `Failing workflow:` issue; a 30 min sweep catches undelivered events; `DRY_RUN` writes nothing (design 0012 step 2, #428).
+
 ## [1.16] - 2026-11-11
 - `orchestrator.yml` prompt and role: `gh variable` and `gh secret` are named as not allowed, and the DISPATCH value is given in the prompt. A read of a repo variable was denied and ended a run without action as silent (run 43120189065, #313).
 
