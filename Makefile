@@ -12,6 +12,7 @@ check:
 	@if [ -n "$$(git ls-files '.github/workflows/*.yml')" ]; then \
 		actionlint && zizmor --no-progress .github/workflows; else echo "no workflows"; fi
 	python3 tools/check/check_version.py
+	@if [ -n "$$PR_BASE_REF" ]; then python3 tools/check/check_version_bump.py "origin/$$PR_BASE_REF"; else echo "check_version_bump: skipped (no PR_BASE_REF)"; fi
 	python3 tools/check/check_pr_form.py
 	python3 tools/managed_guard.py check
 	python3 tools/check/check_no_bytecode.py
