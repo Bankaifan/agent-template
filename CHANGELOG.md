@@ -3,6 +3,9 @@
 ## [Unreleased]
 - README (EN and DE) and `docs/decisions/0007-template-sync.md`: six-step setup for the template sync, version gate, reuse by other projects.
 
+## [1.4] - 2026-11-11
+- Reviewer: from round 2 it reads only the delta since the last reviewed head (`tools/review_delta.py`, `.review/delta.diff`) plus its earlier findings; round 1, a rebase or a compare error keep the full diff (#404).
+
 ## [1.3] - 2026-11-11
 - `tools/orchestrator_gate.py`: skipped runs no longer debounce the `approved` label trigger (#402).
 
