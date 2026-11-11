@@ -12,3 +12,10 @@ Status: accepted (design `docs/design/0001-template-sync.md`, issue #19; impleme
 - Project values are repo variables: `PYTHON_VERSION`, `EXTRA_INSTALL` (never read from a PR branch, because it runs as shell code before review), `RUNNER`, `TEMPLATE_SYNC=off` to disable. `workflow_run.workflows` cannot use expressions, so a differing CI name stays a documented override.
 - Open: reading a private template needs the author app installed on it (permission change, owner action). A full `workflow_dispatch` rollout test on a real project is not run yet.
 - Rollback: `TEMPLATE_SYNC=off` or disable the workflow; `git revert` the rebase-merged commits.
+- Version gate and setup (design `docs/design/0011-automatic-template-sync.md`, issue #386; the schedule is now daily, not weekly as above):
+  the poll reports only when the template's `x` (from `VERSION`, `x.y`) is higher than `synced_version` in `.agents/template.json`,
+  so `y` changes stay quiet; `force` and `TEMPLATE_SYNC_MODE=all` skip the gate. A project sets it up in six steps (README,
+  "Keeping projects in sync"): install the author app, copy the workflow and `tools/template_sync.py` once (projects created from the
+  template already have them), add `.agents/template.json` with `synced_sha` and `synced_version`, optionally set `TEMPLATE_SYNC` and
+  `TEMPLATE_SYNC_MODE`, check with `force`, then let the sync PR move both fields. Another project reuses the template by creating it
+  from this repo and naming this repo in its `template` field.

@@ -36,15 +36,35 @@ bekommen keine Actions-Secrets: die fünf Secrets (und die Variablen `AUTHOR_BOT
 
 ## Projekte synchron halten
 
-Projekte aus diesem Template bekommen spätere Template-Änderungen über einen wöchentlichen Bericht, nicht über blindes
-Kopieren. `template-sync.yml` (montags oder `workflow_dispatch`; ohne Modell) startet `tools/template_sync.py`. Das Skript
-vergleicht `main` des Templates mit `synced_sha` aus `.agents/template.json` und listet geänderte Dateien, die zu `managed`
-passen. Es legt das eine offene Issue `Template sync <kurze sha>` an (Labels `agent:dev`, `model:sonnet`) oder bearbeitet
-es, falls schon eines offen ist. Dateien unter `overrides` stehen getrennt, mit ihrem `why`. Das Issue endet mit
-`Template-Sync: <40 hex>`; der Orchestrator vertraut ihm nur, wenn die Autor-App (`AUTHOR_BOT`) es geschrieben hat. Der
-Entwickler übernimmt `clean`-Dateien unverändert, `overridden`-Dateien von Hand unter Beachtung der Absicht, setzt
-`synced_sha` auf diese SHA und öffnet einen PR mit `Closes #<Sync-Issue>`. Der PR berührt `.github/`, also muss Daniel als
-Code-Owner freigeben.
+Projekte aus diesem Template bekommen spätere Template-Änderungen als ein Sync-Issue, nicht über blindes Kopieren. Das
+Template hat eine Version `x.y` in `VERSION`: eine Änderung an `x` ist ein Muss-Update, eine Änderung an `y` ist ein kleiner
+Fix oder Doku und startet allein keinen Sync (`docs/decisions/0007-template-sync.md`, `docs/design/0011-automatic-template-sync.md`).
+`template-sync.yml` prüft täglich (ohne Modell) und startet `tools/template_sync.py`. Ist das `x` des Templates höher als
+`synced_version` in `.agents/template.json`, vergleicht das Skript `main` des Templates mit `synced_sha` und listet geänderte
+Dateien, die zu `managed` passen. Es legt das eine offene Issue `Template sync <kurze sha>` an (Labels `agent:dev`,
+`model:sonnet`) oder bearbeitet es, falls schon eines offen ist. Das Issue endet mit `Template-Sync: <40 hex>`; der
+Orchestrator vertraut ihm nur, wenn die Autor-App (`AUTHOR_BOT`) es geschrieben hat. Der Entwickler übernimmt `clean`-Dateien
+unverändert, `overridden`-Dateien von Hand unter Beachtung der Absicht (agent-dev lädt das Template auf dieser SHA in das
+nicht versionierte `.template/`), setzt `synced_sha` und `synced_version` in `.agents/template.json` und öffnet einen PR mit
+`Closes #<Sync-Issue>`. Der PR berührt `.github/`, also muss Daniel ihn als Code-Owner freigeben.
+
+Einrichtung eines Projekts (sechs Schritte):
+
+1. **Autor-App.** Die Autor-App (Einrichtung, Schritt 2) auf dem Projekt installieren und, falls das Template privat ist, auch auf dem Template-Repo.
+2. **Sync-Dateien.** Projekte, die mit *Use this template* entstehen, haben `.github/workflows/template-sync.yml` und
+   `tools/template_sync.py` schon. Ältere Projekte kopieren beide einmal aus dem Template; spätere Änderungen kommen über das Sync-Issue.
+3. **`.agents/template.json` anlegen** (Beispiel unten): `template`, `synced_sha` (die 40-stellige Template-SHA, mit der du zuletzt
+   übereinstimmst; leer heißt, der Lauf tut nichts), `synced_version` (das `x.y` des Templates, mit dem du zuletzt
+   übereinstimmst; fehlt es, gilt `x = 0`, der erste Lauf öffnet also ein Issue), `managed` und `overrides`.
+4. **Optionale Variablen.** `TEMPLATE_SYNC=off` schaltet die Prüfung ab. `TEMPLATE_SYNC_MODE` ist standardmäßig `version`
+   (nur melden, wenn sich `x` geändert hat); `all` meldet jede verwaltete Änderung und überspringt das Gate.
+5. **Prüfen.** *Actions > template-sync > Run workflow* mit gesetztem `force` starten: das Gate wird übersprungen, es sollte
+   ein Issue `Template sync` entstehen. Ein zweiter Lauf bearbeitet dieses Issue, statt ein weiteres anzulegen.
+6. **Wenn der Sync-PR gemergt ist**, rücken `synced_sha` und `synced_version` auf den Template-Commit und die Version vor,
+   mit der er übereinstimmt; das nächste Issue wartet auf das nächste `x`.
+
+Ein anderes Projekt nutzt dieses Template genauso: mit *Use this template* anlegen, dann Schritte 1 bis 6. Sein Feld
+`template` nennt dieses Repo (`Bankaifan/agent-template`); das Template verweist nirgends zurück auf das Projekt.
 
 Beispiel `.agents/template.json` für ein Projekt (einmal von Hand anlegen; die Datei gehört nicht zum Template, damit neue
 Projekte nicht darauf zurückzeigen):
@@ -53,6 +73,7 @@ Projekte nicht darauf zurückzeigen):
 {
   "template": "Bankaifan/agent-template",
   "synced_sha": "<40 hex: der Template-Commit, mit dem du zuletzt übereinstimmst>",
+  "synced_version": "1.1",
   "managed": [".github/workflows/", ".github/claude-judge-settings.json", ".github/dependabot.yml", ".github/CODEOWNERS", ".github/rulesets/",
               ".agents/roles/", "tools/", "tests/", "AGENTS.md", "CLAUDE.md", "Makefile", "docs/design/README.md"],
   "overrides": [
@@ -62,6 +83,7 @@ Projekte nicht darauf zurückzeigen):
 }
 ```
 
+- `synced_version`: das `x.y` des Templates, mit dem du zuletzt übereinstimmst (setzt der Sync-PR). Die Prüfung liest nur sein `x`.
 - `managed`: Pfadpräfixe, die dem Template gehören (`/` am Ende = Verzeichnis). Andere Pfade werden nie gemeldet.
 - `overrides`: exakter `path` plus Freitext `why` für den Entwickler.
 - Eine zu alte `synced_sha` macht nur das erste Issue größer. Ohne Datei oder bei leerer `synced_sha` meldet der Lauf
