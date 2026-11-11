@@ -28,6 +28,8 @@ Project: <one sentence>. Current state: HANDOVER.md. Decisions: docs/decisions/.
 ## Commits and PRs
 - Author: `git config user.name "Daniel"` and `user.email "476059+Bankaifan@users.noreply.github.com"`.
   No `Co-authored-by` trailer.
+- No tool or AI attribution of any kind in commits, PR bodies, issues or comments: no "Generated with ...", no
+  claude.ai/code session link, no `Co-Authored-By` or `Claude-Session` trailer. Enforced by CI.
 - PR title: English, ASCII only. Body: what and why in at most 5 lines, link the issue. Enforced by CI.
 - Every user-visible change gets a CHANGELOG entry if the project has a CHANGELOG.md.
 
