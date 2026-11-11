@@ -39,7 +39,7 @@ Idea: **rules a script can check live in CI, not in prompts.** The agents get a 
 - A weekly rule keeper that opens one PR proposing rule removals, new checks, contradiction fixes and scripts for recurring agent work steps (Daniel merges).
 - A daily `branch-cleanup` that deletes `agent/*` branches with a closed PR, or no PR and no commit for 7 days (dry-run input on manual runs).
 - An autonomous `orchestrator` (after a merge to `main` via `workflow_run` of `validate`, daily, manual; off unless variable `ORCHESTRATOR_ENABLED=true`) that cuts task slips,
-  keeps at most 2 `agent:dev` issues, handles `needs-human` PRs, updates HANDOVER.md via PR and .
+  keeps at most `MAX_DEV` (default 4) active `agent:dev` issues and starts every unblocked issue that fits, handles `needs-human` PRs, updates HANDOVER.md via PR and .
 - Orchestrator events (`docs/decisions/0012-orchestrator-events.md`, design 0007): with repo variable `ORCHESTRATOR_EVENTS=on` the orchestrator also wakes on
   issues, issue comments, PRs and reviews. A gate (`tools/orchestrator_gate.py`) accepts only Daniel and the agent apps, waits 60 s per burst and ignores
   the echo of its own runs; `tools/prefilter.py` maps each event to a reason and no model runs without one. Off by default; `ORCHESTRATOR_EVENTS=off` turns it off again.
@@ -52,7 +52,7 @@ Idea: **rules a script can check live in CI, not in prompts.** The agents get a 
   Only trusted input drives agents: the orchestrator sees only issues authored by Daniel or labelled `approved`/`auto-ok` by Daniel
   (checked from the issue timeline by `tools/trusted_issues.py`, not by the prompt).
 
-Quota is scarce: `ORCHESTRATOR_ENABLED` and `IDEAS_PER_WEEK` control the autonomous load; at most 2 agent jobs run at the same time; models are chosen per role
+Quota is scarce: `ORCHESTRATOR_ENABLED` and `IDEAS_PER_WEEK` control the autonomous load; at most 4 agent jobs run at the same time (repo variable `MAX_DEV`); models are chosen per role
 (developer routine: haiku, core work: sonnet, reviewer: sonnet, orchestrator: sonnet, fix rounds: as the original task, see above).
 
 ## Setup
@@ -162,7 +162,7 @@ Rationale: [docs/decisions/0007-template-sync.md](docs/decisions/0007-template-s
 ## Limits
 
 - One agent run per issue or PR at a time (`concurrency` per number, never cancelled). GitHub cannot cap
-  jobs across workflows without dropping queued runs, so the orchestrator keeps at most 2 `agent:dev` issues open.
+  jobs across workflows without dropping queued runs, so the orchestrator keeps at most `MAX_DEV` (default 4) active `agent:dev` issues.
 - Rounds: labels `review:1`, `review:2` lead to a fix, `review:3` to `needs-human` (2 fix rounds). A red CI counts as a round.
 - Dependabot runs get no repo secrets, so `dependabot-automerge.yml` uses `workflow_run` on `validate`. Open: if the
   secrets are still missing there, add the four app secrets under *Secrets > Dependabot* too. Dependabot
