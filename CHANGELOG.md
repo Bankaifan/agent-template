@@ -3,6 +3,9 @@
 ## [Unreleased]
 - README (EN and DE) and `docs/decisions/0007-template-sync.md`: six-step setup for the template sync, version gate, reuse by other projects.
 
+## [1.11] - 2026-11-11
+- `.github/workflows/dispatch.yml` runs `tools/dispatch.py` on issue, comment, merge and hourly events when repo variable `DISPATCH` is `on` (default off). With it the orchestrator model only gets issues without a slip (`needs_slip`) and a due handover (`handover_due`), and a merged PR no longer wakes it (design 0015 step 4, #415).
+
 ## [1.10] - 2026-11-11
 - `tools/slip.py` and `tools/dispatch.py`: model-free start of trusted, unblocked issues that already carry a `Files:` slip, and `agent:dev` removal after a merge; `prefilter.start_state()` is the shared slot and start-list computation (design 0015 steps 1 to 3, #415). Not wired into a workflow yet.
 

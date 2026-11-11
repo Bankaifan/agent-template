@@ -142,6 +142,7 @@ jobs:
           EVENT_MERGED: ${{ github.event.pull_request.merged }}
           REVIEW_STATE: ${{ github.event.review.state }}
           REVIEWER: ${{ github.event.review.user.login }}
+          DISPATCH: ${{ vars.DISPATCH }}  # on: tools/dispatch.py starts issues with a slip (design 0015)
           # Parallel work caps.
           MAX_DEV: ${{ vars.MAX_DEV || '4' }}
           MAX_PRS: ${{ vars.MAX_PRS || '5' }}
@@ -189,6 +190,13 @@ jobs:
             Repository: ${{ github.repository }}. Trigger: ${{ env.EVENT }}. You write no production code.
             Read HANDOVER.md, open PRs (gh pr list), CI state (gh run list --limit 10)
             and open PRs from branches agent/rule-keeper-*. Then:
+            0. Dispatcher (repo variable DISPATCH=on, design 0015): ${{ vars.DISPATCH == 'on' && 'on' || 'off' }}. When on, a
+               script (tools/dispatch.py) starts the issues that hold a slip and removes agent:dev after a merge: you add no
+               label and remove no agent:dev, you start nothing. You only write the slip comment (goal, a `Files:` line,
+               a `Model: sonnet` or `Model: haiku` line, acceptance) for these issues without a slip: ${{ steps.pre.outputs.needs_slip }}
+               (the script starts them once the comment lands). HANDOVER.md (step 3) only when the script says
+               handover due: ${{ steps.pre.outputs.handover_due }}. Everything in steps 1 to 3 about labels and starting
+               applies only when the dispatcher is off.
             1. The script counted free slots (PRs waiting only for Daniel, parked needs-human issues and issues
                with a merged PR do not count): free agent:dev slots ${{ steps.pre.outputs.free_dev }}, free PR slots
                ${{ steps.pre.outputs.free_prs }} (do not recount). The script also names the issues to start.

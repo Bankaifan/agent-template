@@ -3,7 +3,8 @@
 Usage: python3 prefilter.py orchestrator|scout
 Needs the gh CLI (GH_TOKEN, GH_REPO) and git history. Environment: OWNER (default Bankaifan),
 IDEAS (scout, issues per run), STALE_DAYS (default 7), TRUSTED (orchestrator, JSON from trusted_issues.py),
-MAX_DEV (agent:dev issues at once, default 4) and MAX_PRS (open agent PRs, default 5). An empty or non-numeric
+MAX_DEV (agent:dev issues at once, default 4), MAX_PRS (open agent PRs, default 5) and DISPATCH (`on`: the model only
+gets issues without a slip (`needs_slip`) and a handover that is due; design 0015). An empty or non-numeric
 MAX_DEV/MAX_PRS falls back to the default (a warning goes to stderr).
 Slots: an open agent:dev issue holds one unless it is parked (needs-human), done (a merged PR names it) or waits
 only for the owner. Output `start` = the issues to start now: unblocked candidates (`deps.py`), at most `free_dev`.
@@ -19,6 +20,8 @@ import sys
 import time
 
 import deps
+import overlap
+import slip
 import train
 
 
@@ -82,7 +85,11 @@ def handover_stale(age_days, newer_commits, stale_days):
     return age_days >= stale_days and newer_commits > 0
 
 
-def orchestrator_work(candidates, needs_human, stale):
+def orchestrator_work(candidates, needs_human, stale, needs_slip=None):
+    """Does the model have a job? NEEDS_SLIP None = dispatcher off: any start candidate is a job. A list (DISPATCH=on,
+    design 0015): only candidates without a slip are, the script starts the rest."""
+    if needs_slip is not None:
+        return bool(needs_slip) or needs_human > 0 or stale
     return bool(candidates) or needs_human > 0 or stale
 
 
@@ -111,7 +118,7 @@ def event_reason(event, action, f):
         if not f["agent_pr"] and not f["closing"]:
             return True, "unlinked-pr"
     elif row == ("pull_request", "closed"):
-        if f["merged"] and (f["design_pr"] or f["closing_agent_dev"]):
+        if f["merged"] and (f["design_pr"] or (f["closing_agent_dev"] and not f.get("dispatch"))):  # dispatch.py removes the label
             return True, "merged-pr"
         if not f["merged"] and f["closing"]:
             return True, "closed-unmerged-pr"
@@ -212,6 +219,24 @@ def handover_state():
     return (time.time() - int(ts)) / 86400, newer
 
 
+def needs_slip(start, authors=overlap.DEFAULT_TRUSTED):
+    """The issues of START that carry no slip yet (`slip.py`): only the model can write it."""
+    out = []
+    for n in start:
+        issue = json.loads(gh("issue", "view", str(n), "--json", "body,author,comments"))
+        if not slip.has_slip(issue, authors):
+            out.append(n)
+    return out
+
+
+def handover_done_today():
+    """True when a handover PR (open or merged) for today's UTC date exists: at most one per day."""
+    day = time.strftime("%F", time.gmtime())
+    prs = json.loads(gh("pr", "list", "--state", "all", "--search", f"head:agent/orchestrator-handover-{day}",
+                        "--json", "number"))
+    return bool(prs)
+
+
 def start_state():
     """Slots and start list, read live (one definition for prefilter and dispatch): a dict with dev, stuck, waiting_prs,
     free_dev, free_prs, trusted (JSON of trusted_issues.py), blocked and start (the issues to start now)."""
@@ -239,19 +264,24 @@ def main(mode) -> int:
         human = count("pr", "list", "--state", "open", "--label", "needs-human")
         age, newer = handover_state()
         stale = handover_stale(age, newer, float(os.environ.get("STALE_DAYS", "7")))
-        work, reason = orchestrator_work(cands, human, stale), "counts"
+        dispatch = os.environ.get("DISPATCH") == "on"  # design 0015: dispatch.py starts issues that hold a slip
+        slipless = needs_slip(cands) if dispatch else None
+        handover_due = stale and not (dispatch and handover_done_today())
+        work, reason = orchestrator_work(cands, human, handover_due, slipless), "counts"
         event, action = os.environ.get("EVENT", ""), os.environ.get("EVENT_ACTION", "")
         verdict = None
         if event:
             facts = event_facts(event, env_cap("EVENT_NUMBER", 0), free_prs, {t["number"] for t in trusted},
-                                os.environ.get("OWNER", "Bankaifan"), os.environ.get("APPROVER_BOT", ""), cands)
+                                os.environ.get("OWNER", "Bankaifan"), os.environ.get("APPROVER_BOT", ""),
+                                cands if slipless is None else slipless)
+            facts["dispatch"] = dispatch
             verdict = event_reason(event, action, facts)
         if verdict:
             work, reason = verdict
         print(f"dev_open={len(dev)} stuck={sorted(stuck)} waiting_prs={w_prs} free_dev={free_dev} free_prs={free_prs} "
               f"blocked={sorted(blocked)} start={cands} needs_human_prs={human} "
               f"handover_age_days={age:.1f} commits_since={newer} stale={stale} event={event or '-'}/{action or '-'} "
-              f"reason={reason} work={work}")
+              f"needs_slip={slipless} handover_due={handover_due} reason={reason} work={work}")
     elif mode == "scout":
         ideas = count("issue", "list", "--state", "open", "--label", "idea")
         work = scout_work(ideas, int(os.environ.get("IDEAS", "3")))
@@ -265,6 +295,7 @@ def main(mode) -> int:
             f.write(f"work={str(work).lower()}\n")
             if mode == "orchestrator":
                 f.write(f"startable={str(bool(cands)).lower()}\nstart={','.join(map(str, cands))}\nreason={reason}\n")
+                f.write(f"needs_slip={','.join(map(str, slipless or []))}\nhandover_due={str(handover_due).lower()}\n")
                 f.write(f"free_dev={free_dev}\nfree_prs={free_prs}\nwaiting_prs={w_prs}\n")
     return 0
 
