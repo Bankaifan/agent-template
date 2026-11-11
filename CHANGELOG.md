@@ -3,6 +3,9 @@
 ## [Unreleased]
 - README (EN and DE) and `docs/decisions/0007-template-sync.md`: six-step setup for the template sync, version gate, reuse by other projects.
 
+## [1.9] - 2026-11-11
+- `tools/trusted_issues.py`: the signed `Unstarted run: ` issue family is trusted like the other guard issues (design 0012 step 4, #427).
+
 ## [1.8] - 2026-11-11
 - `tools/failure_watch.py`: cancelled runs and startup failures are watched too (a cancelled job that never started is class `cancelled`); expected cancels (agent-review, validate.yml with a newer run of the branch) open no issue; the caller passes its own workflow file, `tools/status.py` passes `status.yml` (design 0012 step 1, #426).
 
