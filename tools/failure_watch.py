@@ -24,7 +24,9 @@ KEPT = ("failure", "timed_out", "startup_failure", "cancelled")
 FAILED_JOB = ("failure", "timed_out")
 CANCELLED_STEP = "cancelled"  # step name of a job that never started (displaced by concurrency, design 0012 4.2)
 # Cancellations that are normal (design 0012 4.2): value True = only when a newer run of the same branch exists.
-EXPECTED_CANCEL = {"agent-review.yml": False, "validate.yml": True}
+EXPECTED_CANCEL = {"agent-review.yml": False, "validate.yml": True, "orchestrator.yml": True}
+# Workflows whose pending run is displaced by a newer one in the concurrency group (cancelled, no step ever started).
+DISPLACED_OK = ("orchestrator.yml",)
 MERGE_GATES = ("validate.yml", "risk.yml", "agent-security-review.yml")
 PR_ONLY = ("risk.yml", "agent-security-review.yml", "agent-review.yml")  # green on any non-agent ref counts
 AGENT_OWNED = ("validate.yml", "agent-review.yml")  # failures on agent/* branches belong to agent-fix rounds
@@ -110,7 +112,9 @@ def expected_cancel(run_obj, started, run=liveness.gh):
     """Design 0012 4.2: a cancelled run with started steps is normal for EXPECTED_CANCEL workflows
     (agent-review always, validate.yml only when a newer run of the same branch replaced it)."""
     wf = workflow_file(run_obj)
-    if run_obj.get("conclusion") != "cancelled" or not started or wf not in EXPECTED_CANCEL:
+    if run_obj.get("conclusion") != "cancelled" or wf not in EXPECTED_CANCEL:
+        return False
+    if not started and wf not in DISPLACED_OK:
         return False
     return not EXPECTED_CANCEL[wf] or newer_run(run_obj, run)
 

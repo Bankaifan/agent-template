@@ -139,10 +139,22 @@ def cancelled(f, rid, wf="orchestrator.yml", job="gate", steps=(), branch="main"
 
 def test_cancelled_job_without_steps_opens_a_cancelled_class_issue():
     f = Fake()
-    cancelled(f, 1)  # the #136 shape: displaced by concurrency, never started
+    cancelled(f, 1, wf="ci.yml", job="gate")  # the #136 shape: displaced by concurrency, never started
     actions, _ = tick(f)
     assert actions == ["opened failure issue #1"]
-    assert f.issues[1]["title"] == title("orchestrator.yml / gate / cancelled")
+    assert f.issues[1]["title"] == title("ci.yml / gate / cancelled")
+
+
+def test_orchestrator_run_displaced_by_a_newer_run_is_expected():
+    """Issue #440: a pending run replaced in the concurrency group ends cancelled, with or without steps."""
+    f = Fake()
+    cancelled(f, 1, job="orchestrate")
+    cancelled(f, 2, job="orchestrate", steps=("sleep",))
+    f.runs.append(mkrun(3, "orchestrator.yml", "success"))
+    cancelled(f, 4, wf="orchestrator.yml", job="orchestrate", branch="other")  # no newer run on that branch
+    actions, _ = tick(f)
+    assert [i["title"] for i in f.issues.values()] == [title("orchestrator.yml / orchestrate / cancelled")]
+    assert len(actions) == 1
 
 
 def test_startup_failure_has_step_dash():
