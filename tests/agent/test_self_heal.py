@@ -64,3 +64,32 @@ def test_without_key_or_for_review_the_old_path_stays(monkeypatch):
     assert not ag.self_heal("review", "3", True, "x", Gh())
     monkeypatch.delenv("GUARD_KEY")
     assert not ag.self_heal("dev", "3", False, "x", Gh())
+
+
+def merged_gh(prs):
+    g = Gh()
+    base = g.__call__
+
+    def call(*a):
+        if a[:3] == ("pr", "list", "--state"):
+            g.calls.append(a)
+            return json.dumps(prs)
+        return base(*a)
+
+    g.__call__ = call
+    return call, g
+
+
+def test_dev_run_on_an_issue_with_a_merged_pr_is_settled_not_retried():
+    call, g = merged_gh([{"headRefName": "agent/9-thing", "mergedAt": "2026-11-12T10:00:00Z"}])
+    assert ag.settle_if_done("9", "", call)
+    assert g.did("issue", "edit", "9", "--remove-label", "agent:dev")
+    assert "<!-- settled -->" in g.comments[-1] and not g.did("issue", "create")
+
+
+def test_settle_needs_a_merged_pr_and_no_denied_call():
+    call, g = merged_gh([{"headRefName": "agent/19-other", "mergedAt": "2026-11-12T10:00:00Z"}])
+    assert not ag.settle_if_done("9", "", call) and not g.did("issue", "edit")
+    call, g = merged_gh([{"headRefName": "agent/9-thing", "mergedAt": "2026-11-12T10:00:00Z"}])
+    denied = json.dumps({"type": "result", "permission_denials": [{"tool_name": "Bash"}]})
+    assert not ag.settle_if_done("9", denied, call) and not g.did("issue", "edit")
