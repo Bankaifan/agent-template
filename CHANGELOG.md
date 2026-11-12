@@ -3,6 +3,136 @@
 ## [Unreleased]
 - README (EN and DE) and `docs/decisions/0007-template-sync.md`: six-step setup for the template sync, version gate, reuse by other projects.
 
+## [1.63] - 2026-11-12
+- The version bump check test no longer fails on the release PR, where CI sets PR_HEAD_REF to release/next.
+
+## [1.62] - 2026-11-12
+- The merge train releases through a `release/next` pull request instead of pushing the release commit to main.
+
+## [1.61] - 2026-11-12
+- `tools/failure_watch.py`, `tools/actions_watch.py`: a failed `agent-dev` or `agent-fix` run that stopped at its `--max-turns` cap after a successful result (log: `reported a successful result after N turns, exceeding the configured maximum of M`) opens no failure issue and is not restarted; the run report prints the turn count (#562, Refs #439).
+
+## [1.60] - 2026-11-12
+- The dispatcher starts the first issues with a slip from the whole startable list, so slip-less issues ahead no longer take the free slots (#552).
+
+## [1.59] - 2026-11-12
+- Read-only gh calls in the liveness, unblocker, orchestrator gate and status tools retry transient failures twice and report stderr on the final error (#548).
+
+## [1.58] - 2026-11-12
+- The design split writes `Depends on:` with the final steps into the source issue, so a merged design no longer restarts its source issue (#544).
+
+## [1.57] - 2026-11-12
+- Judging model steps (review, security review, scout, unblocker, answer-receiver) are pinned read-only by `tests/test_judge_boundary.py` (design 0017, step 4).
+
+## [1.56] - 2026-11-12
+- `.github/workflows/agent-dev.yml`, `.github/workflows/agent-fix.yml`: the model step's token no longer has `workflows` or `actions` write, so a dev or fix push that changes `.github/workflows/` is refused and the run reports it on the issue or PR for Daniel; the CI trigger and the failed-log fetch use their own short-lived `actions` token (#539, Refs #421).
+
+## [1.55] - 2026-11-12
+- `.github/rulesets/agent-refs.json` confines branch creation, update and deletion to `agent/**` (plus the default branch), and `agent-tags.json` blocks tag creation for the app token (design 0017 step 2, #538).
+
+## [1.54] - 2026-11-12
+- `tools/run_stats.py denied [DAYS] [DIR]`: permission denials per workflow summed from saved execution files (design 0017 step 1, #537).
+
+## [1.53] - 2026-11-12
+- Projects add a make hook, rules, required checks and tool pins in four unmanaged files (`project.mk`, `AGENTS.project.md`, `.agents/checks.json`, `.agents/tool-pins.env`) instead of overriding managed files (design 0016).
+
+## [1.52] - 2026-11-12
+- Template tests moved to `tests/agent/` with their conftest; the managed prefix is `tests/agent/`, so `tests/` is free for project tests.
+
+## [1.51] - 2026-11-12
+- Required checks: `tools/ruleset.py build` writes the template ruleset plus the project's checks from `.agents/checks.json`; `status` reads the same set. `.agents/checks.json` is owned by Daniel (CODEOWNERS).
+
+## [1.50] - 2026-11-12
+- Tests pin the job names (`validate`, `changes`, `agent-smoke`) and triggers of `validate.yml`, which the required checks report under.
+
+## [1.49] - 2026-11-12
+- Test scoping accepts `tests/agent/` (template tests) and a project `tests/` tree side by side.
+
+## [1.48] - 2026-11-12
+- Projects can pin RUFF, ZIZMOR and ACTIONLINT in an optional `.agents/tool-pins.env` (`NAME=version` lines); any other line or name fails `install_tools.sh`.
+
+## [1.47] - 2026-11-12
+- CLAUDE.md imports `AGENTS.project.md` after `AGENTS.md`; projects put their rules there (new, unmanaged, empty by default) instead of overriding AGENTS.md (design 0016 step 2).
+
+## [1.46] - 2026-11-12
+- Makefile: `make check` runs `project-check` last; projects add its recipes in an optional `project.mk` instead of overriding the Makefile (design 0016).
+
+## [1.45] - 2026-11-12
+- The overlap guard no longer defers slips because of a `risk:security` PR that waits only for the owner (`needs-human` or approved head), nor because of that PR's own slip (#521).
+
+## [1.44] - 2026-11-12
+- `tools/actions_watch.py`: the sweep parks a restarted agent issue (`stalled:1`, then `needs-human`) only when the newest failed agent run was created after the `stalled:1` label (issue timeline). An older failed run, or a missing label event, waits for the restart's own run (design 0012 step 3, #508).
+
+## [1.43] - 2026-11-12
+- Task issues and their PR titles carry a short upper-case task ID (`NAMES: summary`); a PR whose linked issue has an ID must start its title with it (`check_pr_form`).
+
+## [1.42] - 2026-11-12
+- A denied tool call that the allow list does not cover opens one signed issue in the template repo (fixed text, capped per workflow, bumped by the next run); the source issue waits with `Depends on:` instead of needs-human, and a denied protected path still gets the note (#416, #489).
+
+## [1.41] - 2026-11-12
+- A denial note offers a retrigger ("ja") only after the allow list, the role file or the slip changed; a denied protected file (CODEOWNERS, judge settings) never gets one; the same call denied twice sets restart:1 and unblock:1; an owner answer to a question without a decision marker goes to the orchestrator (label owner-answer) instead of being guessed (#416, #488).
+
+## [1.40] - 2026-11-12
+- GUARD_KEY is no longer in any step that runs git in the agent checkout: the guard tools are fetched in a key-free step, and only the script step that runs `agent_guard.py` or `run_report.py` gets the key (#487).
+
+## [1.39] - 2026-11-12
+- The failure watch also closes open `<workflow> / - / -` issues when the last run was a cancelled run without any job and a newer run exists (#484).
+
+## [1.38] - 2026-11-12
+- Template sync docs: the developer role merges only the conflicted files of a sync; README, README.de and decision 0007 describe the scripted sync (design 0014, #414).
+
+## [1.37] - 2026-11-12
+- Template sync: an end-to-end test on a real template and downstream git repo: apply and materialize with conflicts, a sync without conflicts, a judge-settings sync with no model, and a fresh downstream `make check`.
+
+## [1.36] - 2026-11-12
+- Developer run for a template sync issue also writes the three versions of each conflicted file (`tools/template_sync.py materialize`) into `.template/`: `<path>.ours`, `<path>.base`, `<path>.theirs`.
+
+## [1.35] - 2026-11-12
+- Template sync: the daily poll applies managed template changes by script in one PR (`TEMPLATE_SYNC_APPLY`, default on). The build job holds read access only, the publish job pushes; conflicts still go to the developer as a part 1 PR and issue.
+
+## [1.34] - 2026-11-12
+- Template sync: `tools/template_sync.py apply` ports clean template files and three-way merges overridden ones on a checkout, in one commit; `materialize` writes the three versions of a conflicted file for the developer. Conflicts make a `part 1` PR that leaves `synced_sha` unchanged.
+
+## [1.33] - 2026-11-12
+- Template-only tests (`template_only` marker, `tests/conftest.py`) and `tools/check/check_version_bump.py` are skipped in downstream projects (`.agents/template.json` present); `managed_guard.py check` stays active (#476).
+
+## [1.32] - 2026-11-12
+- `TEMPLATE_SYNC_MODE` now defaults to `all`: every template version produces a sync PR; set `version` to keep the version gate.
+
+## [1.31] - 2026-11-12
+- A design study is required only when a change touches who or what is trusted, token or app permissions, CODEOWNERS paths, or what leaves the repo; other big or multi-PR work starts directly with a split in the issue.
+
+## [1.30] - 2026-11-12
+- Review rounds count only findings (owner decision 2026-11-12, #469): an approved head gives its round back (`agent_guard.py refund`), a red CI from PR form or `VERSION`/`CHANGELOG.md` counts no round and gets one fix run per PR (`form-failure`, label `formfix`; a second one counts a round), a conflict with main gets one uncounted fix run per head (`conflict:<sha7>`), a silent fix run on a green, approved PR is only logged, and `status.py` removes `needs-human` from a green, approved PR without CODEOWNERS paths. AGENTS.md (Review rounds) says so. Security follow-up: `release_settled` reads the paginated `pulls/N/files` with renamed-from paths and keeps `needs-human` when the list may be cut off; a `risk:security` PR gives its round back only after the security approve of the head.
+
+## [1.29] - 2026-11-12
+- `tools/release_fragments.py`, `tools/train.py`, `tools/check/check_version_bump.py`, `changelog.d/`: a PR no longer edits `VERSION` or a version heading; it adds `changelog.d/<issue>.md` (optional `step: x|y`). After the merge the train, as the one writer, assigns the next version per fragment, writes the `CHANGELOG.md` section and pushes one commit to main. `tools/rebump.py` and its train call are removed (#468).
+
+## [1.28] - 2026-11-12
+- The version check fails a PR whose new version already has a tag or is not above the highest tag (pre-releases sort before the final version).
+- `tools/check/check_version.py --next minor|patch|major` prints the next version after the highest tag; roles take versions from it, not from memory.
+
+## [1.27] - 2026-11-12
+- The unblocker workflow also accepts runs started by the approver app, so a `needs-human` label set by that app gets a verdict again (#457).
+
+## [1.26] - 2026-11-12
+- `tools/liveness.py`: `watch.yml` is a scheduled workflow (60 min), so the status run raises the signed `Overdue scheduled run: actions watcher` issue when the watcher is dead; the watcher already watches `status` (mutual watch, design 0012 step 5, #430).
+
+## [1.25] - 2026-11-12
+- `tools/actions_watch.py`, `watch.yml`: the sweep self-heals. Fallback `agent:dev` on signed watch issues only while the orchestrator is unhealthy and `MAX_DEV` has room; one restart of failed agent work (`stalled:1`, then `needs-human` with the German note); `Kicked: n` counter in the signed `Unstarted run: orchestrator` issue, `needs-human` at 2. Unsigned or foreign-author issues are never touched (design 0012 step 3, #429).
+
+## [1.24] - 2026-11-12
+- The status issue shows a "Flow, last 24 h" block (lead time, slowest stage, model runs per merged PR, share needing the owner) from `tools/flow.py`; one CSV row per merged PR is uploaded as the `flow-metrics` artifact (#420).
+
+## [1.23] - 2026-11-12
+- Design split issues are created by `tools/design_split.py` (workflow `design-split`) when a design merges; section 8 of a design has a fixed format that `make check` parses; orchestrator prompt step 1b is removed (#417).
+
+## [1.22] - 2026-11-12
+- The release PR title is shortened to a version range when the version list would exceed the 100 character title limit.
+
+## [1.21] - 2026-11-12
+- agent-fix no longer fails when the PR is merged and its branch deleted between the prepare and fix jobs: the fix job re-checks that the PR is open and skips checkout and agent otherwise (#311).
+
 ## [1.20] - 2026-11-12
 - `tools/failure_watch.py`, `tools/actions_watch.py`: a cancelled run whose job never started (no job, or no step ran) is expected when a newer run of the same workflow exists: no issue, no rerun. Open `<workflow> / <job> / cancelled` issues whose last run is expected are closed (#482, Refs #440).
 
