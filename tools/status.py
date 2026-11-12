@@ -44,6 +44,7 @@ import ghcall
 import liveness
 import owner_hold
 import risk
+import ruleset
 import stalled_dev
 from agent_guard import add_labels, same_login, tail_text
 from approval import effective_approval, security_verdict
@@ -137,9 +138,6 @@ def is_agent_pr(pr):
 
 FAILED_STATES = ("FAILURE", "ERROR", "TIMED_OUT", "CANCELLED", "STARTUP_FAILURE")
 PENDING_STATES = ("", "PENDING", "QUEUED", "IN_PROGRESS", "WAITING", "EXPECTED", "REQUESTED")
-RULESET_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, ".github", "rulesets", "main.json")
-
-
 def check_name(check):
     """Name of a check run (CheckRun) or a commit status (StatusContext): the context the ruleset lists."""
     return check.get("name") or check.get("context") or ""
@@ -149,14 +147,12 @@ def check_state(check):
     return (check.get("conclusion") or check.get("state") or check.get("status") or "").upper()
 
 
-def required_contexts(path=RULESET_PATH):
-    """Context names that main's ruleset requires. None if the file is unreadable or requires none: then every check
-    counts, as it did before the ruleset was read."""
+def required_contexts(path=ruleset.RULESET_PATH, checks_path=ruleset.CHECKS_PATH):
+    """Context names that main requires: the template ruleset plus `.agents/checks.json` (tools/ruleset.py, the same set
+    the build writes). None if a file is unreadable or malformed, or nothing is required: then every check counts, as
+    it did before the ruleset was read."""
     try:
-        with open(path, encoding="utf-8") as f:
-            ruleset = json.load(f)
-        names = {c["context"] for rule in ruleset["rules"] if rule["type"] == "required_status_checks"
-                 for c in rule["parameters"]["required_status_checks"]}
+        names = ruleset.contexts(path, checks_path)
     except (OSError, ValueError, KeyError, TypeError):
         return None
     return names or None

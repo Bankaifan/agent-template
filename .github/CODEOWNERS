@@ -8,3 +8,4 @@
 /tools/ci/risk.py @Bankaifan
 /.github/workflows/risk.yml @Bankaifan
 /tools/exec_log.py @Bankaifan
+/.agents/checks.json @Bankaifan
