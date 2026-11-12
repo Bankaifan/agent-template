@@ -286,6 +286,10 @@ def failed_run(title, conclusion="failure", at="2026-11-10T11:30:00Z"):
     return {"displayTitle": title, "conclusion": conclusion, "createdAt": at}
 
 
+def stalled_mark(at):
+    return [{"event": "labeled", "label": {"name": "stalled:1"}, "created_at": at}]
+
+
 def test_failed_agent_work_restarts_once_then_needs_human_with_marker():
     f = Heal()
     n = f.issue(FAIL_TITLE, ["agent:dev"])
@@ -294,10 +298,38 @@ def test_failed_agent_work_restarts_once_then_needs_human_with_marker():
     assert "stalled:1" in f.labels(n) and "agent:dev" in f.labels(n)
     assert "needs-human" not in f.labels(n)
     assert "Restarting once" in f.comment_of(n)
+    f.timeline = stalled_mark("2026-11-10T11:45:00Z")  # the mark is set after the failed run that caused the restart
+    assert heal(f) == []  # that run predates the mark: wait for the restart's own run
+    f.listed["agent-dev.yml"] = [failed_run(FAIL_TITLE, at="2026-11-10T11:50:00Z")]
     assert "park #1" in heal(f)[0]
     assert "needs-human" in f.labels(n)
     assert "<!-- decision: yes=restart-issue no=close-issue -->" in f.comment_of(n)
     assert heal(f) == []  # parked: nothing more happens
+
+
+def test_older_failed_run_does_not_park_a_restarted_issue():
+    f = Heal()
+    n = f.issue(FAIL_TITLE, ["agent:dev", "stalled:1"])
+    f.timeline = stalled_mark("2026-11-10T11:45:00Z")
+    f.listed["agent-dev.yml"] = [failed_run(FAIL_TITLE, at="2026-11-10T11:30:00Z")]
+    assert heal(f) == []  # the restart's run is not listed yet: nothing parks
+    assert "needs-human" not in f.labels(n) and n not in f.comments
+
+
+def test_failed_run_after_the_mark_parks():
+    f = Heal()
+    n = f.issue(FAIL_TITLE, ["agent:dev", "stalled:1"])
+    f.timeline = stalled_mark("2026-11-10T11:45:00Z")
+    f.listed["agent-dev.yml"] = [failed_run(FAIL_TITLE, at="2026-11-10T11:50:00Z")]
+    assert "park #1" in heal(f)[0]
+    assert "needs-human" in f.labels(n)
+
+
+def test_stalled_mark_without_timeline_event_waits():
+    f = Heal()
+    n = f.issue(FAIL_TITLE, ["agent:dev", "stalled:1"])
+    f.listed["agent-dev.yml"] = [failed_run(FAIL_TITLE)]
+    assert heal(f) == [] and "needs-human" not in f.labels(n)  # no known mark time: never park on a guess
 
 
 def test_restart_needs_a_failed_recent_run_and_no_open_pr():

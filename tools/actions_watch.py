@@ -174,9 +174,18 @@ def _covers(r, issue):
     return title == issue["title"] or bool(re.search(rf"#{issue['number']}\b", title))
 
 
+def after_mark(issue, run_obj, run):
+    """True if RUN_OBJ was created after stalled:1 was last set (issue timeline). No labeled event: False."""
+    events = fw._api(f"repos/{{owner}}/{{repo}}/issues/{issue['number']}/timeline?per_page=100", run)
+    marks = [_at(e["created_at"]) for e in events if e.get("event") == "labeled"
+             and (e.get("label") or {}).get("name") == stalled_dev.STALLED]
+    return bool(marks) and _at(run_obj["createdAt"]) > max(marks)
+
+
 def restart_failed(now, trusted, closed, runs, owner, dry, run):
     """Section 4.4.3: the newest agent run of an agent:dev issue without a closing PR failed -> agent:dev again
-    once (stalled:1, the restart of stalled_dev); failed again -> needs-human with the German note."""
+    once (stalled:1, the restart of stalled_dev); failed again -> needs-human with the German note. A failed run
+    older than the stalled:1 mark is the one that caused the restart: the issue waits for the restart's run."""
     out = []
     for i in trusted:
         n, labels = i["number"], stalled_dev.names(i)
@@ -186,6 +195,8 @@ def restart_failed(now, trusted, closed, runs, owner, dry, run):
         if not mine or mine[0].get("conclusion") not in FAILED_AGENT or _age_h(mine[0]["createdAt"], now) > RESTART_HOURS:
             continue
         parked = stalled_dev.STALLED in labels
+        if parked and not after_mark(i, mine[0], run):
+            continue
         if parked and not dry:
             _park(n, NOTE_FAILED, owner, run)
         elif not dry:
