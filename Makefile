@@ -18,6 +18,7 @@ check:
 	python3 tools/check/check_no_bytecode.py
 	python3 tools/check/check_var_defaults.py
 	python3 tools/check/check_budget.py
+	python3 tools/design_split.py check
 	bash tools/check/check_drift.sh
 	@$(MAKE) --no-print-directory test-evidence
 

@@ -60,13 +60,15 @@ def test_prompt_starts_every_issue_the_script_names():
     assert "A prio:1 issue may start even with 2 open agent:dev issues" not in prompt
 
 
-def test_design_split_issues_run_in_parallel_with_depends_on_lines():
+def test_design_split_issues_run_in_parallel_and_are_not_created_by_the_prompt():
     prompt = _prompt()
     assert "in the order of the design's split" not in prompt
     assert "split issues run in parallel" in prompt
     assert "carries a `Depends on: #N` line and the script holds it back until #N is closed" in prompt
-    assert "add a line `Depends on: #<n>[, #<m>]` (alone on its line, after the `Design:` line)" in prompt
-    assert "steps without that need get no such line" in prompt
+    # Issue #417: tools/design_split.py creates them; step 1b is gone.
+    assert "1b." not in prompt
+    assert "Merged design PR" not in prompt
+    assert "add a line `Depends on: #<n>[, #<m>]`" not in prompt
 
 
 def test_caps_default_to_4_and_5_in_every_repo():

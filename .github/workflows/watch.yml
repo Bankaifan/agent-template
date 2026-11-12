@@ -23,6 +23,7 @@ on:
       - automerge
       - branch-cleanup
       - dependabot-automerge
+      - design-split
       - dispatch
       - nightly
       - orchestrator
