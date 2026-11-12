@@ -1,3 +1,4 @@
+import os
 import pathlib
 import sys
 
@@ -32,6 +33,14 @@ def pytest_collection_modifyitems(config, items):
     for item in items:
         if item.get_closest_marker("template_only"):
             item.add_marker(skip)
+
+
+@pytest.fixture
+def clean_env():
+    """The outer environment minus everything a CI run sets per event (PR_*, GH_*, GITHUB_*, ...): the inner make check
+    of a fresh downstream must behave the same in a push run, an owner run and an app run."""
+    drop = ("PR_", "GH_", "GITHUB_", "NIGHTLY_", "VERSION_", "RUNNER_", "RUN_")
+    return {k: v for k, v in os.environ.items() if not k.startswith(drop)}
 
 
 @pytest.fixture(autouse=True)
