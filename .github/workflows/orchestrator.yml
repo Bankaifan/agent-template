@@ -270,6 +270,16 @@ jobs:
             --setting-sources user
             --settings .github/claude-judge-settings.json
             --allowedTools "Read,Glob,Grep,Edit,Write,Bash(gh issue list:*),Bash(gh issue view:*),Bash(gh issue comment:*),Bash(gh issue create:*),Bash(gh issue edit:*),Bash(gh label create:*),Bash(gh pr list:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr edit:*),Bash(gh pr comment:*),Bash(gh run list:*),Bash(git add:*),Bash(git commit:*),Bash(git push origin HEAD),Bash(git restore:*),Bash(gh pr create:*),Bash(make check),Bash(date:*),Bash(python3 tools/overlap.py:*)"
+      # git runs here, without the guard key: the agent may have planted hooks or config in the checkout.
+      - name: Fetch guard tools (no key)
+        if: ${{ !cancelled() && steps.claude.outcome != 'skipped' }}
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          # The agent may edit the checkout: run the helpers as they are on the default branch.
+          git fetch --depth=1 origin "$DEFAULT_BRANCH"
+          mkdir -p "$RUNNER_TEMP/guard"
+          git archive FETCH_HEAD tools | tar -x -C "$RUNNER_TEMP/guard"
       - name: Run report (script, no model)
         if: ${{ !cancelled() && steps.claude.outcome != 'skipped' }}
         env:
@@ -281,12 +291,7 @@ jobs:
           MODEL: sonnet
           WORKFLOW_FILE: .github/workflows/orchestrator.yml
           GUARD_KEY: ${{ secrets.GUARD_KEY }}  # script step only, never a model step (tests/test_guard_mark.py)
-        run: |
-          # The agent may edit the checkout: run the helper as it is on the default branch.
-          git fetch --depth=1 origin "$DEFAULT_BRANCH"
-          mkdir -p "$RUNNER_TEMP/guard"
-          git archive FETCH_HEAD tools | tar -x -C "$RUNNER_TEMP/guard"
-          python3 "$RUNNER_TEMP/guard/tools/run_report.py" orchestrator
+        run: python3 "$RUNNER_TEMP/guard/tools/run_report.py" orchestrator
       # A run with denied tool calls, or with a startable issue and no visible action, must not end green.
       - name: Fail a silent run
         if: ${{ !cancelled() && steps.claude.outcome != 'skipped' }}
@@ -300,9 +305,5 @@ jobs:
           STARTABLE: ${{ steps.pre.outputs.startable }}
           AUTHOR_BOT: ${{ vars.AUTHOR_BOT }}
           STATUS_ISSUE: "57"
-        run: |
-          # The agent may edit the checkout: run the helper as it is on the default branch.
-          git fetch --depth=1 origin "$DEFAULT_BRANCH"
-          mkdir -p "$RUNNER_TEMP/guard"
-          git archive FETCH_HEAD tools | tar -x -C "$RUNNER_TEMP/guard"
-          python3 "$RUNNER_TEMP/guard/tools/agent_guard.py" silent orchestrator - "$STARTED"
+          GUARD_KEY: ${{ secrets.GUARD_KEY }}  # script step only, never a model step (tests/test_guard_mark.py)
+        run: python3 "$RUNNER_TEMP/guard/tools/agent_guard.py" silent orchestrator - "$STARTED"
