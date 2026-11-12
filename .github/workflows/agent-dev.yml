@@ -152,7 +152,9 @@ jobs:
       # A template sync issue (trusted as in tools/trusted_issues.py, line `Template-Sync: <40 hex>`) needs the template
       # files: the developer has no tool to fetch them. Download the template (repo from .agents/template.json, public)
       # at that SHA into .template/, kept out of git via .git/info/exclude. tools/ci/template_fetch.py decides; it prints
-      # nothing when this is no trusted sync issue.
+      # nothing when this is no trusted sync issue. Then `materialize` writes ours/base/theirs of each conflicted file
+      # into .template/<path>.{ours,base,theirs} (design 0014, 3 H); it reads through the contents API with the default
+      # token (the template is public).
       - name: Template files for a sync issue
         id: template
         env:
@@ -160,6 +162,7 @@ jobs:
           ISSUE_TITLE: ${{ github.event.issue.title }}
           ISSUE_BODY: ${{ github.event.issue.body }}
           AUTHOR_BOT: ${{ vars.AUTHOR_BOT }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           out=$(python3 tools/ci/template_fetch.py)
           if [ -z "$out" ]; then echo "No template sync"; exit 0; fi
@@ -167,6 +170,7 @@ jobs:
           mkdir -p .template
           curl -fsSL "https://codeload.github.com/$tpl/tar.gz/$sha" | tar -xz --strip-components=1 -C .template
           echo ".template/" >> .git/info/exclude
+          python3 tools/template_sync.py materialize "$sha"
           echo "dir=.template" >> "$GITHUB_OUTPUT"
           echo "Template $tpl at $sha in .template/"
       - id: started
@@ -195,6 +199,9 @@ jobs:
             comment on the issue/PR saying which one instead of stopping silently.
             Template sync issue: the template files at the issue's `Template-Sync` SHA are in .template/
             (${{ steps.template.outputs.dir || 'not present: this is no sync issue' }}). Read them from there, never commit .template/.
+            For each conflicted file the issue lists, its three versions are .template/<path>.ours (downstream),
+            .template/<path>.base (template at synced_sha) and .template/<path>.theirs (template at the Template-Sync SHA):
+            merge it by hand, keeping the recorded intent.
             Porting files: no helper scripts (no `bash /tmp/port.sh`), no loops. Use Read then Write/Edit per file,
             or one plain `cp <src> <dst>` per file; list and compare with `ls`, `diff`, `cmp`.
           claude_args: >-
