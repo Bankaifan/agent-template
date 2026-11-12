@@ -3,6 +3,9 @@
 ## [Unreleased]
 - README (EN and DE) and `docs/decisions/0007-template-sync.md`: six-step setup for the template sync, version gate, reuse by other projects.
 
+## [1.88] - 2026-11-12
+- A settled dev run (merged PR, nothing left) now closes the issue as well as dropping agent:dev, so the dispatcher cannot restart it in a loop.
+
 ## [1.87] - 2026-11-12
 - A dev run without a PR on an issue that already has a merged PR now drops agent:dev instead of retrying and opening a stuck-run issue.
 
