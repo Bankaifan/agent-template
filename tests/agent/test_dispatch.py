@@ -6,6 +6,7 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent.parent / "tools"))
 
 import dispatch
+import prefilter
 
 BOT = {"login": "bankaifan-agent-author"}
 
@@ -110,3 +111,63 @@ def test_after_merge_ignores_cross_repo_foreign_branch_and_unmerged():
         gh = FakeGh(prs={1: {**base, **change}})
         assert dispatch.after_merge(1, gh) == []
         assert gh.edits() == []
+
+
+def waiting(body="Waiting for #9, the template issue for a denied tool call.", login=BOT["login"]):
+    return {"author": {"login": login}, "body": body}
+
+
+def test_waiting_blocker_reads_last_trusted_comment_only():
+    assert prefilter.waiting_blocker([waiting()]) == 9
+    assert prefilter.waiting_blocker([waiting(), waiting("thanks", "bob")]) == 9  # stranger comment ignored
+    assert prefilter.waiting_blocker([waiting(), waiting("Restarted")]) is None
+    assert prefilter.waiting_blocker([waiting(login="mallory")]) is None
+
+
+def test_parked_waiting_splits_open_and_closed_blocker():
+    states = {9: "OPEN", 8: "CLOSED"}
+
+    def gh(*a):
+        return json.dumps({"state": states[int(a[2])]})
+
+    dev = [{"number": 1, "comments": [waiting()]}, {"number": 2, "comments": [waiting("Waiting for #8")]},
+           {"number": 3, "comments": []}]
+    assert prefilter.parked_waiting(dev, gh) == ({1}, {2: 8})
+
+
+class RunGh(FakeGh):
+    def __init__(self, runs=(), **kw):
+        super().__init__(**kw)
+        self.runs = list(runs)
+
+    def __call__(self, *args):
+        if args[:2] == ("run", "list"):
+            self.calls.append(args)
+            return json.dumps([{"displayTitle": t} for t in self.runs])
+        return super().__call__(*args)
+
+
+def test_closed_blocker_restarts_by_removing_and_re_adding_agent_dev():
+    gh = RunGh(issues={5: {"title": "Fix x"}})
+    assert dispatch.restart_waiting({"restart": {5: 9}}, gh) == [5]
+    assert [c[3:] for c in gh.edits()] == [("--remove-label", "agent:dev"), ("--add-label", "agent:dev")]
+
+
+def test_restart_posts_a_marker_so_a_second_dispatch_does_not_restart_again():
+    gh = RunGh(issues={5: {"title": "Fix x"}})
+    comments = [waiting("Waiting for #9, the template issue for a denied tool call.")]
+    assert prefilter.waiting_blocker(comments) == 9
+    assert dispatch.restart_waiting({"restart": {5: 9}}, gh) == [5]
+    posted = [c for c in gh.calls if c[:2] == ("issue", "comment")]
+    assert posted == [("issue", "comment", "5", "--body", "Restarted: #9 is closed.")]
+    comments.append(waiting(posted[0][4]))  # the marker is now the last trusted comment
+    assert prefilter.waiting_blocker(comments) is None  # the next start_state() does not list #5 for restart
+
+
+def test_no_restart_while_a_run_is_in_progress_or_without_closed_blocker():
+    gh = RunGh(runs=["Fix x"], issues={5: {"title": "Fix x"}})
+    assert dispatch.restart_waiting({"restart": {5: 9}}, gh) == []
+    assert gh.edits() == []
+    gh = RunGh()
+    assert dispatch.restart_waiting({"restart": {}}, gh) == [] and dispatch.restart_waiting({}, gh) == []
+    assert gh.calls == []  # an open blocker puts nothing into "restart"

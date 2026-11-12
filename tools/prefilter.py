@@ -191,6 +191,29 @@ def stuck_slots(dev):
     return out
 
 
+def waiting_blocker(comments, authors=overlap.DEFAULT_TRUSTED):
+    """N when the last comment by a trusted author is `Waiting for #N` (a run parked on a denied tool call), else None."""
+    mine = [c for c in comments or [] if (c.get("author") or {}).get("login") in authors]
+    m = re.match(r"Waiting for #(\d+)\b", (mine[-1].get("body") or "") if mine else "")
+    return int(m.group(1)) if m else None
+
+
+def parked_waiting(dev, gh=gh):
+    """(parked, ready) for the open agent:dev issues in DEV (number, labels, comments) that wait for a blocker.
+    PARKED: numbers whose blocker is still open, they hold no slot. READY: {number: blocker} with the blocker closed,
+    the dispatcher restarts them (`dispatch.restart_waiting`)."""
+    parked, ready = set(), {}
+    for i in dev:
+        blocker = waiting_blocker(i.get("comments"))
+        if blocker is None:
+            continue
+        if json.loads(gh("issue", "view", str(blocker), "--json", "state"))["state"] == "OPEN":
+            parked.add(i["number"])
+        else:
+            ready[i["number"]] = blocker
+    return parked, ready
+
+
 def waiting_for_owner(owner, approver):
     """(issue numbers, PR count) of PRs waiting only for the owner; see train.waiting_for_owner."""
     prs = json.loads(gh("pr", "list", "--state", "open", "--limit", "20", "--json", train.LIST_FIELDS + ",body"))
@@ -239,11 +262,13 @@ def handover_done_today():
 
 def start_state():
     """Slots and start list, read live (one definition for prefilter and dispatch): a dict with dev, stuck, waiting_prs,
-    free_dev, free_prs, trusted (JSON of trusted_issues.py), blocked and start (the issues to start now)."""
+    free_dev, free_prs, trusted (JSON of trusted_issues.py), blocked, restart ({issue: closed blocker} of parked
+    agent:dev issues) and start (the issues to start now)."""
     dev = json.loads(gh("issue", "list", "--state", "open", "--label", "agent:dev", "--limit", "200",
-                        "--json", "number,labels"))
+                        "--json", "number,labels,comments"))
     w_issues, w_prs = waiting_for_owner(os.environ.get("OWNER", "Bankaifan"), os.environ.get("APPROVER_BOT", ""))
-    stuck = stuck_slots(dev)
+    parked, restart = parked_waiting(dev)
+    stuck = stuck_slots(dev) | parked  # an issue waiting for an open blocker holds no slot
     free_dev, free_prs = free_slots({i["number"] for i in dev}, w_issues, stuck,
                                     count("pr", "list", "--state", "open"), w_prs)
     trusted = json.loads(os.environ.get("TRUSTED") or subprocess.run(
@@ -251,7 +276,7 @@ def start_state():
     issues = json.loads(gh("issue", "list", "--state", "open", "--limit", "200", "--json", "number,body"))
     open_numbers = {i["number"] for i in issues}
     blocked = {i["number"] for i in issues if deps.blocked(i["number"], i.get("body"), open_numbers)}
-    return {"dev": dev, "stuck": stuck, "waiting_prs": w_prs, "free_dev": free_dev, "free_prs": free_prs,
+    return {"dev": dev, "stuck": stuck, "restart": restart, "waiting_prs": w_prs, "free_dev": free_dev, "free_prs": free_prs,
             "trusted": trusted, "blocked": blocked,
             "start": start_candidates(trusted, free_dev, free_prs, w_prs, blocked),
             # the dispatcher walks the whole startable list (slip check first) and stops at LIMIT starts
