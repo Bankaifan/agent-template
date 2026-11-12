@@ -529,10 +529,69 @@ def route_upstream(kind, source, exec_text, run=gh):
     return True
 
 
+RETRY_MARK = "<!-- silent-retry -->"
+STUCK_TITLE = "Agent {kind} runs end silently on #{number}"
+
+
+def _retried(number, author, run):
+    pages = json.loads(run("api", "--paginate", "--slurp", f"repos/{os.environ.get('GH_REPO', '')}/issues/{number}/comments"))
+    return any(RETRY_MARK in (c.get("body") or "") and same_login((c.get("user") or {}).get("login"), author)
+               for page in pages for c in page)
+
+
+def _stuck_issue(kind, number, what, key, run):
+    """One open signed prio:1 issue per item for the agents (found by title); returns its number."""
+    title = STUCK_TITLE.format(kind=kind, number=number)
+    found = json.loads(run("issue", "list", "--state", "open", "--search", f'"{title}" in:title', "--json", "number,title"))
+    same = [i["number"] for i in found if i["title"] == title]
+    if same:
+        return same[0]
+    body = (f"Two agent-{kind} runs on #{number} ended without a result ({what}); the automatic retry did not help. "
+            f"Last run: {os.environ.get('RUN_URL', '(unknown)')}. Goal: find why the run cannot finish (allow list, "
+            f"prompt, a step the model cannot do) and fix that, so #{number} moves again.")
+    ensure_label("prio:1", run)
+    out = run("issue", "create", "--title", title, "--label", "prio:1", "--body", guard_mark.sign(title, body, key))
+    return out.strip().rsplit("/", 1)[-1]
+
+
+def self_heal(kind, number, is_pr, what, run=gh):
+    """#624: a silent run is the agents' job, not Daniel's. First time on an item: retry once (dev: agent:dev re-added;
+    fix: the task restarts from main unless it already has restart:1). Again: one signed prio:1 issue for the agents.
+    True if handled; False (no key, no author app, a review run, any error): the old needs-human path."""
+    key, author = guard_mark.key_from_env(), os.environ.get("AUTHOR_BOT", "")
+    if not key or not author or kind not in ("dev", "fix"):
+        return False
+    import restart  # restart imports this module: import late
+    url = os.environ.get("RUN_URL", "(unknown)")
+    thing = "pr" if is_pr else "issue"
+    try:
+        if not _retried(number, author, run):
+            if kind == "dev":
+                liveness.post_comment(thing, number, f"{RETRY_MARK}\nRetry 1/1 after a silent run ({what}): {url}", run)
+                run("issue", "edit", str(number), "--remove-label", "agent:dev")
+                add_labels("issue", number, ["agent:dev"], run)
+                return True
+            info = json.loads(run("pr", "view", str(number), "--json", "body"))
+            for issue in restart.own_issues(info.get("body")):
+                labels = {x["name"] for x in json.loads(run("issue", "view", str(issue), "--json", "labels"))["labels"]}
+                if restart.RESTART not in labels:
+                    liveness.post_comment(thing, number, f"{RETRY_MARK}\nSilent fix run ({what}): {url}", run)
+                    restart.restart_issue(number, issue, [], run, why=f"a fix run on #{number} ended silently ({what})")
+                    return True
+        n = _stuck_issue(kind, number, what, key, run)
+        liveness.post_comment(thing, number, f"{RETRY_MARK}\nSilent again ({what}): {url}. Handed to #{n}, "
+                              "not needs-human.", run)
+        return True
+    except (subprocess.CalledProcessError, OSError, ValueError, KeyError, liveness.ReadbackError):
+        return False
+
+
 def escalate(kind, number, is_pr, what, owner, run=gh):
     exec_text = read_exec(os.environ.get("EXEC_FILE", ""))
     if not is_pr and route_upstream(kind, number, exec_text, run):
         return  # the issue waits for the template issue: no needs-human, no question to Daniel
+    if not protected_hit(exec_text) and self_heal(kind, number, is_pr, what, run):
+        return  # retried once, or handed to a signed issue for the agents: no needs-human
     body = report(kind, what, os.environ.get("RUN_URL", ""), exec_text)
     thing = "pr" if is_pr else "issue"
     sig = denial_sig(exec_text)
