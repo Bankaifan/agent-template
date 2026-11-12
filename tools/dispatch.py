@@ -50,7 +50,7 @@ def start(state, gh=prefilter.gh, overlap_main=overlap.main, authors=overlap.DEF
             print(f"#{n}: label call failed ({type(e).__name__}), skipped", file=sys.stderr)
             continue
         started.append(n)
-        print(f"#{n}: started ({model})")
+        print("issue started")
     return started
 
 
