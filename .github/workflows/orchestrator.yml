@@ -252,8 +252,8 @@ jobs:
             `git fetch`, `git -c ...`, `git commit` (a script commits), `make -n check`,
             `pip install ...` (the tools are installed).
             For `gh issue create` keep --title and --body on one line without backticks or
-            `$(...)`; for longer text Write it to .agent-out/<name>.md (the only path you may write; never /tmp)
-            and pass --body-file .agent-out/<name>.md.
+            `$(...)`; for longer text Write it to .agent-out/<name>.md (the only path you may write; never /tmp;
+            change it with Edit, never sed) and pass --body-file .agent-out/<name>.md.
             Never push to main, never merge, no secrets in comments. Finish with a short status report.
             Finish with the required last line `Conclusion: <one sentence: what you found or why you did nothing>`.
           claude_args: >-
