@@ -60,8 +60,8 @@ Einrichtung eines Projekts (sechs Schritte):
 3. **`.agents/template.json` anlegen** (Beispiel unten): `template`, `synced_sha` (die 40-stellige Template-SHA, mit der du zuletzt
    übereinstimmst; leer heißt, der Lauf tut nichts), `synced_version` (das `x.y` des Templates, mit dem du zuletzt
    übereinstimmst; fehlt es, gilt `x = 0`, der erste Lauf öffnet also ein Issue), `managed` und `overrides`.
-4. **Optionale Variablen.** `TEMPLATE_SYNC=off` schaltet die Prüfung ab. `TEMPLATE_SYNC_MODE` ist standardmäßig `version`
-   (nur synchronisieren, wenn sich `x` geändert hat); `all` synchronisiert jede verwaltete Änderung und überspringt das Gate.
+4. **Optionale Variablen.** `TEMPLATE_SYNC=off` schaltet die Prüfung ab. `TEMPLATE_SYNC_MODE` ist standardmäßig `all`
+   (jede Template-Version erzeugt einen Sync-PR, kein Gate); `version` synchronisiert nur, wenn sich `x` geändert hat.
    `TEMPLATE_SYNC_APPLY=off` schaltet zurück auf das reine Issue (das Skript öffnet dann keinen PR).
 5. **Prüfen.** *Actions > template-sync > Run workflow* mit gesetztem `force` starten: das Gate wird übersprungen. Ein sauberes
    Template ergibt einen PR `Template sync`; ein Konflikt ergibt den PR Teil 1 und das Issue. Ein zweiter Lauf aktualisiert den
