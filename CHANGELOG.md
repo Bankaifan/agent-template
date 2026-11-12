@@ -3,6 +3,9 @@
 ## [Unreleased]
 - README (EN and DE) and `docs/decisions/0007-template-sync.md`: six-step setup for the template sync, version gate, reuse by other projects.
 
+## [1.19] - 2026-11-12
+- `tools/template_apply.py`: step 1 of the template sync by script (design 0014): plan, path guard (relative managed paths only), three-way merge through `git merge-file` (a conflict leaves the file untouched), write and delete for clean files. Not wired into a workflow yet (#475, #414).
+
 ## [1.18] - 2026-11-12
 - `strip-attribution.yml`, `tools/strip_attribution.py`, `tools/attribution.py`: tool attribution footers are removed from PR and issue bodies by a script (saved only when changed); `check_pr_form.py` shares the pattern list, keeps the rule for commit messages and judges the live body; the reviewer no longer reports a body footer (#471).
 
