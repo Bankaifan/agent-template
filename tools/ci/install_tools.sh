@@ -5,6 +5,16 @@ set -euo pipefail
 RUFF=0.17.4
 ZIZMOR=1.32.0
 ACTIONLINT=1.7.7
+# Optional project pins (design 0016): `.agents/tool-pins.env` may override RUFF, ZIZMOR and ACTIONLINT, one `NAME=version`
+# line each. The file is read as data, never sourced; any other name or line fails the step.
+pins=".agents/tool-pins.env"
+if [ -f "$pins" ]; then
+  pin_line='^(RUFF|ZIZMOR|ACTIONLINT)=[0-9][0-9A-Za-z.]*$'
+  while IFS= read -r line || [ -n "$line" ]; do
+    [[ $line =~ $pin_line ]] || { echo "tool-pins: refused line in $pins: $line" >&2; exit 1; }
+    printf -v "${line%%=*}" '%s' "${line#*=}"
+  done < "$pins"
+fi
 pip install "ruff==$RUFF" "zizmor==$ZIZMOR" pytest pytest-timeout pyyaml==6.0.2
 for f in requirements.txt requirements_test.txt; do
   if [ -f "$f" ]; then pip install -r "$f"; fi
