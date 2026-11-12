@@ -83,7 +83,7 @@ def merged_gh(prs):
 def test_dev_run_on_an_issue_with_a_merged_pr_is_settled_not_retried():
     call, g = merged_gh([{"headRefName": "agent/9-thing", "mergedAt": "2026-11-12T10:00:00Z"}])
     assert ag.settle_if_done("9", "", call)
-    assert g.did("issue", "edit", "9", "--remove-label", "agent:dev")
+    assert g.did("issue", "edit", "9", "--remove-label", "agent:dev") and g.did("issue", "close", "9")
     assert "<!-- settled -->" in g.comments[-1] and not g.did("issue", "create")
 
 

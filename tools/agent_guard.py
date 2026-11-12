@@ -591,7 +591,8 @@ SETTLED_MARK = "<!-- settled -->"
 
 def settle_if_done(number, exec_text, run=gh):
     """A dev run without a PR on an issue that already has a merged agent/NUMBER-* PR, and no denied call, found nothing
-    left to build: drop agent:dev (no retry, no stuck issue, no needs-human). True if settled; any error: False."""
+    left to build: drop agent:dev and close the issue, or the dispatcher would start it again (no retry, no stuck issue,
+    no needs-human). True if settled; any error: False."""
     if count_denials(exec_text):
         return False
     try:
@@ -600,8 +601,9 @@ def settle_if_done(number, exec_text, run=gh):
             return False
         liveness.post_comment("issue", number, f"{SETTLED_MARK}\nNothing left to implement: a PR for agent/{number}-* is "
                               f"already merged and this run produced no new one: {os.environ.get('RUN_URL', '(unknown)')}. "
-                              "agent:dev removed, no retry. Add agent:dev again if more is needed.", run)
+                              "Closing, no retry. Open a new issue for anything that is left.", run)
         run("issue", "edit", str(number), "--remove-label", "agent:dev")
+        run("issue", "close", str(number), "--reason", "completed")
     except (subprocess.CalledProcessError, OSError, ValueError, liveness.ReadbackError):
         return False
     return True
