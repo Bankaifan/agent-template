@@ -1,4 +1,5 @@
-"""Orchestrator model step is comment-only (design 0017, step 5): no Edit, Write, git or make; no contents scope;
+"""Orchestrator model step is comment-only (design 0017, step 5): no Edit or Write outside .agent-out/ (body files), no git
+or make; no contents scope;
 HANDOVER.md is committed and pushed by a script step with its own contents token."""
 
 import pathlib
@@ -36,6 +37,7 @@ def test_model_tools_have_no_edit_write_git_or_make():
     assert "Edit" not in tools and "Write" not in tools
     assert not [t for t in tools if t.startswith(("Bash(git", "Bash(make", "Bash(gh pr create"))]
     assert {"Read", "Glob", "Grep"} <= set(tools)
+    assert [t for t in tools if t.startswith(("Edit", "Write"))] == ["Edit(.agent-out/**)"]  # body files only (#620)
 
 
 def test_model_token_has_no_contents_scope():
