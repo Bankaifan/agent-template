@@ -20,6 +20,8 @@ CLI (needs the gh CLI with GH_TOKEN and GH_REPO):
 A usage error or exception in `silent` escalates with reason "guard error" and exits 1; it never fails quietly.
 Escalate = comment (run URL, denied tool calls from the execution file, else its last lines), label needs-human, request OWNER's review.
 Environment for escalation: RUN_URL, EXEC_FILE (path of the action's execution file), OWNER (default Bankaifan).
+An allow-list miss on an issue (a denied call that is not a protected path) becomes ONE signed issue in the template repo
+(route_upstream) and the issue waits with `Depends on:` instead of needs-human. Needs GUARD_KEY (script step only).
 """
 import datetime as dt
 import hashlib
@@ -30,6 +32,7 @@ import subprocess
 import sys
 
 import decision
+import guard_mark
 import liveness
 import owner_hold
 
@@ -54,6 +57,10 @@ ALLOW_FILES = {"dev": (".github/workflows/agent-dev.yml", ".agents/roles/develop
                "fix": (".github/workflows/agent-fix.yml", ".agents/roles/developer.md"),
                "review": (".github/workflows/agent-review.yml", ".agents/roles/reviewer.md")}
 CAP_LABELS = ("restart:1", "unblock:1")  # the same call denied twice: no automatic restart any more
+TOOL_RE = re.compile(r"[A-Za-z]{1,20}")  # only harness tool names reach an upstream issue, never model text
+WORKFLOW_NAME = {"dev": "agent-dev", "fix": "agent-fix", "review": "agent-review"}  # fixed names of the workflow files
+UPSTREAM_CAP = 5  # open denied-command issues per workflow in the template repo
+REPO_RE = re.compile(r"[\w.-]+/[\w.-]+")
 
 
 def norm_login(login):
@@ -416,8 +423,108 @@ def post_owner_note(kind, number, body, run=gh):
     liveness.post_comment(kind, number, body, run)
 
 
+def denied_tools(exec_text):
+    """Sorted harness tool names of the denied calls; anything else (model text) is dropped."""
+    names = {d.get("tool_name") for rec in _records(exec_text) for d in rec.get("permission_denials") or []
+             if isinstance(d, dict)}
+    return sorted(n for n in names if isinstance(n, str) and TOOL_RE.fullmatch(n))
+
+
+def routes_upstream(run=gh):
+    """Where this repo's upstream issues go: "" = this repo is the template (no .agents/template.json on the default
+    branch, or its `template` names this repo); another owner/repo = a downstream project; None = unknown (fail closed).
+    Read from the default branch (contents API without ref), never from the checkout the agent may have edited."""
+    repo = os.environ.get("GH_REPO", "")
+    try:
+        raw = run("api", "-H", "Accept: application/vnd.github.raw", f"repos/{repo}/contents/.agents/template.json")
+    except subprocess.CalledProcessError as exc:
+        return "" if "HTTP 404" in (exc.stderr or "") else None
+    except OSError:
+        return None
+    try:
+        name = json.loads(raw).get("template")
+    except (ValueError, AttributeError):
+        return None
+    if not isinstance(name, str) or not REPO_RE.fullmatch(name):
+        return None
+    return "" if name.lower() == repo.lower() else name
+
+
+def upstream_issues(workflow, run=gh):
+    """Open issues of the denied-command family of WORKFLOW in this repo, as (number, title)."""
+    prefix = f"Denied command in {workflow}: "
+    found = json.loads(run("issue", "list", "--state", "open", "--search", f'"{prefix}" in:title', "--limit", "100",
+                           "--json", "number,title") or "[]")
+    return [(i["number"], i["title"]) for i in found if i.get("title", "").startswith(prefix)]
+
+
+def _source_issue(source, key, run=gh):
+    """(title, body) of the source issue. A guard signature that does not verify raises ValueError: never re-signed."""
+    view = json.loads(run("issue", "view", str(source), "--json", "title,body"))
+    title, body = view.get("title") or "", view.get("body") or ""
+    if guard_mark.split(body)[1] is not None and not guard_mark.verify(title, body, key):
+        raise ValueError(f"issue #{source} carries a guard signature that does not verify: not re-signed")
+    return title, body
+
+
+def add_dependency(source, dep, key, run=gh):
+    """Append `Depends on: DEP` on its own line (deps.py syntax). A verified signature is renewed; an unsigned body stays
+    unsigned; a body that already names DEP is left alone."""
+    title, body = _source_issue(source, key, run)
+    core, sig = guard_mark.split(body)
+    if dep in re.findall(r"#\d+", "\n".join(x for x in core.splitlines() if x.startswith("Depends on:"))):
+        return
+    new = core.rstrip() + f"\n\nDepends on: {dep}\n"
+    if sig is not None:
+        new = guard_mark.sign(title, new, key)
+    run("issue", "edit", str(source), "--body", new)
+
+
+def create_upstream(workflow, title, key, run=gh):
+    """The signed issue for a new miss: fixed text only (workflow name and run URL from the environment)."""
+    run_url = os.environ.get("RUN_URL", "") or "(unknown)"
+    body = (f"The workflow {workflow} was denied a tool call that its allow list does not cover. Run: {run_url}. "
+            f"Decide: add the call to the allow list of {workflow}, or keep it denied.")
+    ensure_label("prio:2", run)
+    out = run("issue", "create", "--title", title, "--label", "prio:2", "--body", guard_mark.sign(title, body, key))
+    return int(out.strip().rsplit("/", 1)[-1])
+
+
+def route_upstream(kind, source, exec_text, run=gh):
+    """An allow-list miss (a denied call, not a protected path) gets ONE signed issue in the template repo; the next run
+    with the same miss comments on it. The source issue then waits with `Depends on:` instead of needs-human.
+    True if it waits. False: escalate as before (no key, protected path, cross-repo or unknown template, cap reached,
+    any error)."""
+    workflow, key = WORKFLOW_NAME.get(kind), guard_mark.key_from_env()
+    sig = denial_sig(exec_text)
+    if not workflow or not key or sig == "none" or protected_hit(exec_text):
+        return False
+    if routes_upstream(run) != "":  # cross-repo: deps.py holds back only same-repo #N (cross-repo routing is a later issue)
+        return False
+    title = f"Denied command in {workflow}: {' '.join(denied_tools(exec_text)) or 'tool'} ({sig})"
+    try:
+        _source_issue(source, key, run)  # an unverified marker stops here, before anything is created
+        family = upstream_issues(workflow, run)
+        same = [n for n, t in family if t == title]
+        if same:
+            number = same[0]
+            liveness.post_comment("issue", number, f"Seen again in run {os.environ.get('RUN_URL', '(unknown)')}.", run)
+        elif len(family) < UPSTREAM_CAP:
+            number = create_upstream(workflow, title, key, run)
+        else:
+            return False
+        add_dependency(source, f"#{number}", key, run)
+        liveness.post_comment("issue", source, f"Waiting for #{number}, the template issue for a denied tool call. "
+                              "Not needs-human: a retrigger would be denied again.", run)
+    except (subprocess.CalledProcessError, OSError, ValueError, liveness.ReadbackError):
+        return False
+    return True
+
+
 def escalate(kind, number, is_pr, what, owner, run=gh):
     exec_text = read_exec(os.environ.get("EXEC_FILE", ""))
+    if not is_pr and route_upstream(kind, number, exec_text, run):
+        return  # the issue waits for the template issue: no needs-human, no question to Daniel
     body = report(kind, what, os.environ.get("RUN_URL", ""), exec_text)
     thing = "pr" if is_pr else "issue"
     sig = denial_sig(exec_text)
