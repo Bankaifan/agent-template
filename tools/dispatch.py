@@ -7,9 +7,12 @@ start: candidates are the whole startable list of `prefilter.start_state()` (tru
 `tools/trusted_issues.py`, unblocked, in list order), not the cut list the orchestrator sees. Slip-less issues are skipped
 (the orchestrator writes their slip). Each one with a slip (`slip.py`) is checked with `overlap.py` (exit 1 or 2:
 skipped, retried next run), then gets its model label and `agent:dev` last. The walk stops after min(free dev, free PR
-slots) starts. after-merge: removes `agent:dev` from the issues a merged same-repo `agent/`
-PR names with `Refs #N` / `Closes #N`, then runs start. Writes labels only; issue text is read for numbers and
-`Files:` / `Model:` / `Depends on:` lines and never copied into a comment. Needs the gh CLI (GH_TOKEN, GH_REPO).
+slots) starts. Before that, an agent:dev issue parked by a run (last bot comment `Waiting for #N`, #N closed, no agent-dev
+run queued or in progress for it) is restarted: agent:dev removed and added again, then one fixed comment `Restarted: #N is closed.` is posted so the
+same `Waiting for #N` is not acted on twice. While #N is open it holds no slot. after-merge: removes `agent:dev` from the
+issues a merged same-repo `agent/` PR names with `Refs #N` / `Closes #N`, then runs start. Writes labels and that one
+fixed restart comment; issue text is read for numbers and `Files:` / `Model:` / `Depends on:` lines and never copied
+into a comment. Needs the gh CLI (GH_TOKEN, GH_REPO).
 """
 import json
 import subprocess
@@ -20,6 +23,7 @@ import prefilter
 import slip
 
 LABEL_COLOR = "ededed"
+RESTARTED_NOTE = "Restarted: #{blocker} is closed."  # fixed text, never issue content
 
 
 def start(state, gh=prefilter.gh, overlap_main=overlap.main, authors=overlap.DEFAULT_TRUSTED):
@@ -49,6 +53,38 @@ def start(state, gh=prefilter.gh, overlap_main=overlap.main, authors=overlap.DEF
     return started
 
 
+def run_active(n, title, gh=prefilter.gh):
+    """True while an agent-dev run for issue N is queued or in progress. A run is matched by its display title
+    (the issue title or `#N`); a run that matches neither is not seen."""
+    for status in ("queued", "in_progress"):
+        runs = json.loads(gh("run", "list", "--workflow", "agent-dev.yml", "--status", status, "--json", "displayTitle"))
+        if any(title in r["displayTitle"] or f"#{n}" in r["displayTitle"] for r in runs):
+            return True
+    return False
+
+
+def restart_waiting(state, gh=prefilter.gh):
+    """Restart the parked agent:dev issues of STATE["restart"] (last comment `Waiting for #N`, #N closed) that have no
+    run in progress: remove and re-add agent:dev. Returns the numbers restarted."""
+    restarted = []
+    for n, blocker in sorted(state.get("restart", {}).items()):
+        try:
+            title = json.loads(gh("issue", "view", str(n), "--json", "title"))["title"]
+            if run_active(n, title, gh):
+                print(f"#{n}: run in progress, not restarted")
+                continue
+            gh("issue", "edit", str(n), "--remove-label", "agent:dev")
+            gh("issue", "edit", str(n), "--add-label", "agent:dev")
+            # the marker: the last trusted comment is no longer `Waiting for #N`, so this wait is acted on once
+            gh("issue", "comment", str(n), "--body", RESTARTED_NOTE.format(blocker=blocker))
+        except (subprocess.CalledProcessError, OSError) as e:
+            print(f"#{n}: restart failed ({type(e).__name__}), skipped", file=sys.stderr)
+            continue
+        restarted.append(n)
+        print(f"#{n}: restarted (#{blocker} closed)")
+    return restarted
+
+
 def after_merge(pr, gh=prefilter.gh):
     """Remove `agent:dev` from the issues a merged same-repo `agent/` PR names; returns their numbers."""
     p = json.loads(gh("pr", "view", str(pr), "--json", "state,body,headRefName,isCrossRepository"))
@@ -69,7 +105,9 @@ def main(argv) -> int:
         return 2
     if argv[0] == "after-merge":
         print(f"agent:dev removed from {after_merge(int(argv[1]))}")
-    start(prefilter.start_state())
+    state = prefilter.start_state()
+    restart_waiting(state)
+    start(state)
     return 0
 
 
