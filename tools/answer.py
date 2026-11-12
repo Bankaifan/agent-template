@@ -136,7 +136,8 @@ def validate(verdict, marker, owner_text):
         if "@" in val or "<!--" in val or "-->" in val:
             raise ValueError(f"{key} must not hold @ or marker syntax")
     out = {k: verdict[k].strip() for k in ("intent", "evidence", *INTENTS[intent])}
-    if len(out["evidence"]) > MAX_EVIDENCE or out["evidence"] not in owner_text:
+    # GitHub bodies use CRLF and the model quotes with LF: compare with whitespace runs collapsed (case stays exact)
+    if len(out["evidence"]) > MAX_EVIDENCE or " ".join(out["evidence"].split()) not in " ".join(owner_text.split()):
         raise ValueError("evidence must be a quote of the owner text, max 200 chars")
     available = effective_marker(marker)
     if intent in ("yes", "no") and intent not in available:
