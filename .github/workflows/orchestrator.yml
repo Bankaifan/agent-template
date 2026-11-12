@@ -227,12 +227,6 @@ jobs:
                features) start directly. Issues in the list with a non-null `design` come from a merged design:
                split issues run in parallel; an issue that needs an earlier step merged carries a
                `Depends on: #N` line and the script holds it back until #N is closed.
-            1b. Merged design PR (docs/design/ only): create the implementation issues from its split with
-               `gh issue create`, each body starting with the line `Design: docs/design/NNNN-<slug>.md` (alone on that line, nothing after
-               `.md`, or the issue is not trusted and never starts) and the
-               slip; do this once (check `gh issue list --search "Design: docs/design/NNNN"` first). Create them in
-               split order and add a line `Depends on: #<n>[, #<m>]` (alone on its line, after the `Design:` line)
-               to every step that needs an earlier step merged; steps without that need get no such line.
             1c. Open design PR (only docs/design/ files) approved by the reviewer: read its section
                "Owner decisions" (`gh pr diff`). If empty, leave it to auto-merge. If not, add the label
                needs-human, run `gh pr edit <n> --add-reviewer Bankaifan`, and add one German comment of at
