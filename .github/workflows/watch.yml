@@ -38,6 +38,7 @@ on:
       - unblocker
       - validate
       - weekly-summary
+      - workflow-apply
     types: [completed]
 permissions:
   contents: read

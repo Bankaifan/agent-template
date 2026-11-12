@@ -219,22 +219,23 @@ jobs:
           git fetch --depth=1 origin "$DEFAULT_BRANCH"
           mkdir -p "$RUNNER_TEMP/guard"
           git archive FETCH_HEAD tools | tar -x -C "$RUNNER_TEMP/guard"
-      # A push that changes .github/workflows/ is refused (no `workflows` scope on the model token): say so on the issue for
-      # Daniel, who applies that change himself (design 0017 section 4 item 3). Only a local branch that is ahead of its remote counts.
-      - name: Report a refused workflow push
+      # A push that changes .github/workflows/ is refused (no `workflows` scope on the model token). Instead the workflow
+      # changes travel as .agents/workflow-patches/<issue>.patch; workflow-apply.yml applies them after a green security
+      # review (design 0017 step 3, follow-up). The helper runs as it is on the default branch, git hooks off.
+      - name: Carry workflow changes as a patch
         if: ${{ always() }}
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           GH_REPO: ${{ github.repository }}
+          BASE_SHA: ${{ github.sha }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          for ref in $(git for-each-ref --format='%(refname:short)' "refs/heads/agent/${ISSUE}-*"); do
-            base="origin/$ref"
-            git rev-parse --verify --quiet "$base" > /dev/null || base="origin/$DEFAULT_BRANCH"
-            files=$(git diff --name-only "$base" "$ref" -- .github/workflows)
-            [ -n "$files" ] || continue
-            gh issue comment "$ISSUE" --body "The push of $ref was refused: it changes ${files//$'\n'/, } under .github/workflows/, and this run's token has no workflows scope. Daniel applies that change by hand. Run: $RUN_URL"
+          for ref in $(python3 "$RUNNER_TEMP/guard/tools/workflow_patch.py" stash "agent/${ISSUE}-*"); do
+            if [ -z "$(gh pr list --head "$ref" --state open --json number --jq '.[].number')" ]; then
+              gh pr create --head "$ref" --title "$(git log -1 --format=%s "$ref")" \
+                --body "Closes #$ISSUE. Workflow changes are in .agents/workflow-patches/ and are applied after the security review."
+            fi
+            gh issue comment "$ISSUE" --body "Workflow changes of $ref travel as a patch file; workflow-apply applies them after the security review."
           done
       # Deterministic, inline on purpose: the agent may edit files in the checkout, never this step.
       - name: Find the open PR of this issue
