@@ -586,10 +586,33 @@ def self_heal(kind, number, is_pr, what, run=gh):
         return False
 
 
+SETTLED_MARK = "<!-- settled -->"
+
+
+def settle_if_done(number, exec_text, run=gh):
+    """A dev run without a PR on an issue that already has a merged agent/NUMBER-* PR, and no denied call, found nothing
+    left to build: drop agent:dev (no retry, no stuck issue, no needs-human). True if settled; any error: False."""
+    if count_denials(exec_text):
+        return False
+    try:
+        prs = json.loads(run("pr", "list", "--state", "merged", "--limit", "100", "--json", "headRefName,mergedAt"))
+        if not any(p.get("mergedAt") and p.get("headRefName", "").startswith(f"agent/{number}-") for p in prs):
+            return False
+        liveness.post_comment("issue", number, f"{SETTLED_MARK}\nNothing left to implement: a PR for agent/{number}-* is "
+                              f"already merged and this run produced no new one: {os.environ.get('RUN_URL', '(unknown)')}. "
+                              "agent:dev removed, no retry. Add agent:dev again if more is needed.", run)
+        run("issue", "edit", str(number), "--remove-label", "agent:dev")
+    except (subprocess.CalledProcessError, OSError, ValueError, liveness.ReadbackError):
+        return False
+    return True
+
+
 def escalate(kind, number, is_pr, what, owner, run=gh):
     exec_text = read_exec(os.environ.get("EXEC_FILE", ""))
     if not is_pr and route_upstream(kind, number, exec_text, run):
         return  # the issue waits for the template issue: no needs-human, no question to Daniel
+    if kind == "dev" and not is_pr and not protected_hit(exec_text) and settle_if_done(number, exec_text, run):
+        return  # work already merged: nothing to retry
     if not protected_hit(exec_text) and self_heal(kind, number, is_pr, what, run):
         return  # retried once, or handed to a signed issue for the agents: no needs-human
     body = report(kind, what, os.environ.get("RUN_URL", ""), exec_text)
