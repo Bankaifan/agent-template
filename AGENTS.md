@@ -1,5 +1,6 @@
 # Working rules
 Project: <one sentence>. Current state: HANDOVER.md. Decisions: docs/decisions/. Roles: .agents/roles/.
+Project rules: `AGENTS.project.md` (optional, not managed); the Limits below win.
 
 ## Limits (not negotiable)
 1. No secrets in code, logs, issues or PRs. Credentials only from environment variables / GitHub Secrets.
@@ -17,9 +18,9 @@ Project: <one sentence>. Current state: HANDOVER.md. Decisions: docs/decisions/.
 ## How to work (a proposal, not a cage)
 - Small PRs, branched from current `main`, rebase-merged, no stacked PRs, no `git merge main` into a branch.
   If a branch falls behind, rebase it (own branch) or cherry-pick onto a fresh one.
-- Before asking for review, squash the branch into ONE commit authored by Daniel (rebase merge keeps the author,
-  so Daniel is the sole author on `main`). Force-push to your own branch is allowed.
-- Before the PR: `make check` and the tests are green. CI is the truth, not your estimate.
+- Before review, squash the branch into ONE commit authored by Daniel (rebase merge keeps him the sole author on
+  `main`). Force-push to your own branch is allowed.
+- Before the PR: `make check` is green. CI is the truth, not your estimate.
 - Claim only what you measured (command + output). Unsure? Ask in the issue, do not guess.
   Missing facts are marked "open".
 - Keep context small: read only the files named in the task slip.
@@ -53,4 +54,4 @@ marker line, `<!-- decision: yes=<action> no=<action> -->` (grammar and action i
 
 ## Models (subscription quota is scarce)
 Routine work haiku; core, security and architecture sonnet; opus only with Daniel's OK.
-Agent jobs at once: repo variable MAX_DEV (default 4); open PRs: MAX_PRS (default 5). PRs waiting only for Daniel's approval do not count (max 5 of them, see orchestrator.md). Script first, then haiku, then sonnet. Short reports, never repeat the diff.
+Caps: MAX_DEV agent jobs (default 4), MAX_PRS open PRs (default 5); PRs waiting only for Daniel do not count (max 5, see orchestrator.md). Script first, then haiku, then sonnet. Short reports, never repeat the diff.

@@ -29,7 +29,8 @@ import liveness
 SECURITY_FILES = (".github/rulesets/", ".github/CODEOWNERS", "tools/trusted_issues.py", "tools/agent_guard.py",
                   "tools/exec_log.py", "tools/guard_mark.py",
                   "tools/ci/risk.py", ".github/workflows/risk.yml")
-INFRA_PATHS = (".github/", ".agents/", "tools/", "AGENTS.md", "CLAUDE.md", "Makefile", ".claude/", ".mcp.json")
+INFRA_PATHS = (".github/", ".agents/", "tools/", "AGENTS.md", "AGENTS.project.md", "CLAUDE.md", "Makefile", ".claude/",
+              ".mcp.json")
 SECURITY_LINES = re.compile(
     r"permissions:|allowedTools|allowed_bots|secrets\.|_TOKEN|\btoken\b|app-token|APP_KEY", re.IGNORECASE)
 LINE_SCANNED = (".github/", "tools/", ".claude/", ".mcp.json", "Makefile")  # prose in docs and roles is no token handling

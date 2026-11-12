@@ -28,7 +28,8 @@ def test_plain_code_and_docs_are_none():
 
 
 def test_infra_paths():
-    for p in (".github/workflows/scout.yml", ".agents/roles/developer.md", "tools/status.py", "Makefile"):
+    for p in (".github/workflows/scout.yml", ".agents/roles/developer.md", "tools/status.py", "Makefile",
+              "AGENTS.project.md", "CLAUDE.md"):
         assert risk.classify(diff(p, "+echo hi")) == "infra", p
 
 
