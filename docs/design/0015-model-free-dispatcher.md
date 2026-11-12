@@ -113,10 +113,13 @@ Measurement after rollout (numbers go into the PR of step 5; numbers before are 
 ### Result (step 5, measured 2026-11-12)
 
 Command: `python3 tools/run_stats.py 14 orchestrator.yml` (the 14-day window, DISPATCH on since 2026-11-12).
-- Model runs of `orchestrator.yml`: 27, gate-skipped runs: 610. All 27 model runs fall on 2026-11-12 (the only day listed).
-- Merged PRs in the window: **open**. `gh pr list --state merged` is denied to the developer run (issue #583, #590).
-- Model runs per merged PR, before and after `DISPATCH=on`: **open** (no merged-PR count, and the window holds no day
-  before the switch-on, so there is no baseline).
+- Model runs of `orchestrator.yml`: 26, gate-skipped runs: 656 (re-run later the same day). All model runs fall on
+  2026-11-12, the only day listed.
+- Merged PRs: `gh pr list --state merged --limit 200 --search "merged:>=2026-11-12" --json number --jq length` gives 70 for
+  2026-11-12 (until about 10:21 UTC), and 30 for 2026-11-11 with `merged:2026-11-11`.
+- Model runs per merged PR on 2026-11-12: 26 / 70 = 0.37. This mixes the hours before and after the switch-on, so it is
+  not a before/after result. Before and after `DISPATCH=on`: **open** (the window holds no day before the switch-on, so
+  there is no baseline).
 - Latency from label to `agent:dev` (target under 2 minutes): **open**, not read from the issue timeline.
 - Do not read the 2026-11-12 count as a result: it is one day, and it mixes runs from before and after the switch.
 
