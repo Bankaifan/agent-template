@@ -15,8 +15,8 @@ def test_tools_are_installed_before_the_claude_run():
 
 
 def test_prompt_forbids_git_dash_c_and_cd_prefix():
-    assert "plain `git commit -m" in TEXT
-    assert "never `git -c ...` and never a `cd` prefix" in TEXT
+    assert "`git -c ...`" in TEXT
+    assert "never a `cd` prefix" in TEXT
 
 
 def _step(name_part: str) -> str:
@@ -97,6 +97,6 @@ def test_no_untrusted_text_in_run_blocks():
 
 def test_allowed_tools_not_widened():
     line = next(x for x in TEXT.splitlines() if "--allowedTools" in x)
-    assert "Bash(git commit:*)" in line
+    assert "Bash(git" not in line  # the script commits and pushes; the model has no git form (test_orchestrator_tools)
     assert "Bash(bash" not in line
     assert "Bash(git -c" not in line
