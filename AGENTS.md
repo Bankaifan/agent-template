@@ -6,7 +6,8 @@ Project: <one sentence>. Current state: HANDOVER.md. Decisions: docs/decisions/.
 2. Nothing irreversible without Daniel's explicit OK: deleting repos or branches holding other people's work,
    database or production changes, releases, payments, permission changes.
 3. Never push to `main`, no tags by hand. Always branch + PR. Rebase and force-push are allowed on your own
-   agent branches, never on `main`.
+   agent branches, never on `main`. Sole exception: the release commit of `tools/train.py` (only VERSION, CHANGELOG.md,
+   changelog.d/), and only once Daniel has granted a ruleset bypass for it (open); until then it fails and retries.
 4. Read-only checks against real systems are allowed. Anything that writes to production systems or real
    devices needs Daniel's OK.
 5. Changes to CI protection, permissions, workflows or this file go through the security reviewer. Changes to the
@@ -32,7 +33,7 @@ Project: <one sentence>. Current state: HANDOVER.md. Decisions: docs/decisions/.
 - No tool or AI attribution of any kind in commits, PR bodies, issues or comments: no "Generated with ...", no
   claude.ai/code session link, no `Co-Authored-By` or `Claude-Session` trailer. Enforced by CI.
 - PR title: English, ASCII only. Body: what and why in at most 5 lines, link the issue. Enforced by CI.
-- Every user-visible change gets a CHANGELOG entry if the project has a CHANGELOG.md.
+- Every user-visible change gets a `changelog.d/<issue>.md` fragment if the project has a CHANGELOG.md (never edit CHANGELOG.md or VERSION).
 
 ## Review rounds
 Developer -> CI -> reviewer (only on green CI) -> at most 2 fix rounds (started automatically on `CHANGES_REQUESTED`

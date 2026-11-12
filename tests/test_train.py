@@ -6,14 +6,14 @@ import train
 
 ENV = {"GH_REPO": "o/r", "APPROVER_BOT": "app/approver", "OWNER": "Bankaifan"}
 REQUIRED = {"validate", "risk"}
-rebump_branch = train.rebump_branch  # the autouse fixture stubs train.rebump_branch for the run_train tests
+release_main = train.release_main  # the autouse fixture stubs train.release_main for the run_train tests
 
 
 @pytest.fixture(autouse=True)
 def ruleset(monkeypatch):
     """Pins the ruleset's required checks; run_train reads them from main.json."""
     monkeypatch.setattr(train.status, "required_contexts", lambda: set(REQUIRED))
-    monkeypatch.setattr(train, "rebump_branch", lambda *a, **k: False)  # run_train never touches the network
+    monkeypatch.setattr(train, "release_main", lambda *a, **k: [])  # run_train never touches the network
 
 
 def pr(n, *, branch=None, merge="CLEAN", labels=(), files=("tools/x.py",), auto=True, checks=(), cross=False):
@@ -254,29 +254,25 @@ def test_empty_queue_does_nothing(capsys):
     assert "nothing to do; approved candidates: 0" in capsys.readouterr().out
 
 
-def test_version_only_conflict_is_rebumped_without_agent_fix():
-    prs = [pr(5, merge="DIRTY", files=("VERSION", "CHANGELOG.md", "tools/x.py"))]
-    seen = []
-    run = Gh(prs, approved(*prs))
-    assert train.run_train(ENV, run, rebumper=lambda p: seen.append(p["number"]) or True) == 0
-    assert seen == [5]
-    assert not any(c[:2] == ("workflow", "run") for c in run.calls)  # no model run
-    assert not any("--add-label" in c for c in run.calls)  # no fix round consumed
+def test_train_runs_the_release_first_and_reports_it(capsys):
+    calls = []
+    assert train.run_train(ENV, Gh([]), releaser=lambda: calls.append(1) or ["1.20", "1.21"]) == 0
+    assert calls == [1]
+    assert "released 1.20, 1.21" in capsys.readouterr().out
 
 
-def test_failed_rebump_keeps_the_agent_fix_path():
-    prs = [pr(5, merge="DIRTY", files=("VERSION", "tools/x.py"))]
+def test_failed_release_does_not_stop_the_train(capsys):
+    prs = [pr(5, merge="DIRTY")]
     run = Gh(prs, approved(*prs))
-    assert train.run_train(ENV, run, rebumper=lambda p: False) == 0
+    assert train.run_train(ENV, run, releaser=lambda: None) == 0
+    out = capsys.readouterr().out
+    assert "release: failed" in out
     assert ("workflow", "run", "agent-fix.yml", "-f", "pr=5") in run.calls
 
 
-def test_running_fix_job_still_blocks_rebump():
-    prs = [pr(5, merge="DIRTY", files=("VERSION",))]
-    seen = []
-    run = Gh(prs, approved(*prs), fix_runs=[{"status": "queued"}])
-    assert train.run_train(ENV, run, rebumper=lambda p: seen.append(p) or True) == 0
-    assert seen == []
+def test_train_has_no_rebump_path():
+    assert not hasattr(train, "rebump_branch")
+    assert not (train.Path(train.__file__).parent / "rebump.py").exists()
 
 
 def g(cwd, *args):
@@ -284,68 +280,70 @@ def g(cwd, *args):
                           text=True).stdout.strip()
 
 
-CL = "# Changelog\n\n## [Unreleased]\n\n{}## [1.4] - 2026-01-01\n- old\n"
+CL = "# Changelog\n\n## [Unreleased]\n\n## [1.4] - 2026-01-01\n- old\n"
 
 
-def commit(repo, version, line, other=None):
-    (repo / "VERSION").write_text(f"{version}\n")
-    (repo / "CHANGELOG.md").write_text(CL.format(f"## [{version}] - 2026-01-02\n- {line}\n\n"))
-    if other:
-        (repo / "x.txt").write_text(other)
-    g(repo, "add", "-A")
-    g(repo, "commit", "-q", "-m", line)
-
-
-def conflict_repo(tmp_path, main_version, pr_version, pr_other="pr\n", main_other=None):
-    """A bare origin whose main and agent/1-x both bumped VERSION and the same CHANGELOG place on top of base 1.4."""
+def origin_repo(tmp_path):
+    """A bare origin whose main is at 1.4 with no fragments; returns (origin, work clone on main)."""
     origin, work = tmp_path / "origin.git", tmp_path / "work"
     g(tmp_path, "init", "-q", "--bare", "-b", "main", str(origin))
     g(tmp_path, "clone", "-q", str(origin), str(work))
     g(work, "checkout", "-q", "-b", "main")
     (work / "VERSION").write_text("1.4\n")
-    (work / "CHANGELOG.md").write_text(CL.format(""))
-    (work / "x.txt").write_text("base\n")
+    (work / "CHANGELOG.md").write_text(CL)
     g(work, "add", "-A")
     g(work, "commit", "-q", "-m", "base")
     g(work, "push", "-q", "origin", "main")
-    g(work, "checkout", "-q", "-b", "agent/1-x")
-    commit(work, pr_version, "pr line", pr_other)
-    g(work, "push", "-q", "origin", "agent/1-x")
-    g(work, "checkout", "-q", "main")
-    commit(work, main_version, "main line", main_other)
+    return origin, work
+
+
+def merge_fragment(work, name, text):
+    """What a merged PR does to main: it adds one fragment and nothing else touches VERSION or CHANGELOG.md."""
+    (work / "changelog.d").mkdir(exist_ok=True)
+    (work / "changelog.d" / name).write_text(text)
+    g(work, "add", "-A")
+    g(work, "commit", "-q", "-m", f"merge {name}")
     g(work, "push", "-q", "origin", "main")
-    head = g(origin, "rev-parse", "agent/1-x")
-    return origin, pr(1, merge="DIRTY", files=("VERSION", "CHANGELOG.md", "x.txt"), branch="agent/1-x") | {
-        "headRefOid": head}
 
 
-@pytest.mark.parametrize("main_v, pr_v, want", [("1.5", "1.5", "1.6"), ("2.0", "1.5", "2.1"), ("1.5", "2.0", "2.0")])
-def test_rebump_branch_cases_a_b_c(tmp_path, main_v, pr_v, want):
-    origin, p = conflict_repo(tmp_path, main_v, pr_v)
-    assert rebump_branch(p, str(origin)) is True
-    ref = "agent/1-x"
-    assert g(origin, "show", f"{ref}:VERSION") == want
-    assert g(origin, "rev-list", "--count", f"main..{ref}") == "1"
-    assert g(origin, "merge-base", "main", ref) == g(origin, "rev-parse", "main")
-    assert g(origin, "show", f"{ref}:x.txt") == "pr"
-    log = g(origin, "show", f"{ref}:CHANGELOG.md")
-    assert f"## [{want}]" in log and "- pr line" in log and "- main line" in log
-    assert g(origin, "log", "-1", "--format=%an <%ae>|%B", ref).startswith("Daniel <476059+")
-    assert "Co-authored-by" not in g(origin, "log", "-1", "--format=%B", ref)
+def test_release_main_two_merges_in_a_row_give_two_versions_and_sections(tmp_path):
+    origin, work = origin_repo(tmp_path)
+    merge_fragment(work, "10.md", "first change\n")
+    assert release_main(str(origin)) == ["1.5"]
+    g(work, "pull", "-q", "--rebase", "origin", "main")  # the second PR was never rebased for VERSION or CHANGELOG
+    merge_fragment(work, "11.md", "second change\nstep: x\n")
+    assert release_main(str(origin)) == ["2.0"]
+    assert g(origin, "show", "main:VERSION") == "2.0"
+    log = g(origin, "show", "main:CHANGELOG.md")
+    assert log.index("## [2.0]") < log.index("## [1.5]") < log.index("## [1.4]")
+    assert "- first change" in log and "- second change" in log
+    assert "changelog.d" not in g(origin, "ls-tree", "-r", "--name-only", "main")
+    assert g(origin, "log", "-1", "--format=%an <%ae>|%B", "main").startswith("Daniel <476059+")
+    assert "Co-authored-by" not in g(origin, "log", "-1", "--format=%B", "main")
 
 
-def test_rebump_branch_refuses_a_conflict_in_another_file(tmp_path):
-    origin, p = conflict_repo(tmp_path, "1.5", "1.5", pr_other="pr\n", main_other="main\n")
-    before = g(origin, "rev-parse", "agent/1-x")
-    assert rebump_branch(p, str(origin)) is False
-    assert g(origin, "rev-parse", "agent/1-x") == before  # nothing pushed
+def test_release_main_without_fragments_pushes_nothing(tmp_path):
+    origin, _ = origin_repo(tmp_path)
+    before = g(origin, "rev-parse", "main")
+    assert release_main(str(origin)) == []
+    assert g(origin, "rev-parse", "main") == before
 
 
-def test_rebump_branch_refuses_a_moved_head_and_a_pr_without_version(tmp_path):
-    origin, p = conflict_repo(tmp_path, "1.5", "1.5")
-    assert rebump_branch(dict(p, headRefOid="0" * 40), str(origin)) is False
-    assert rebump_branch(dict(p, files=[{"path": "x.txt"}]), str(origin)) is False
-    assert g(origin, "rev-parse", "agent/1-x") == p["headRefOid"]
+def test_release_main_refuses_a_bad_fragment_and_pushes_nothing(tmp_path):
+    origin, work = origin_repo(tmp_path)
+    merge_fragment(work, "10.md", "step: y\n")
+    before = g(origin, "rev-parse", "main")
+    assert release_main(str(origin)) is None
+    assert g(origin, "rev-parse", "main") == before
+
+
+def test_release_main_refuses_a_commit_touching_other_paths(tmp_path, monkeypatch):
+    origin, work = origin_repo(tmp_path)
+    merge_fragment(work, "10.md", "first change\n")
+    monkeypatch.setattr(train, "RELEASE_PATHS", {"VERSION"})  # CHANGELOG.md is now a foreign path
+    before = g(origin, "rev-parse", "main")
+    assert release_main(str(origin)) is None
+    assert g(origin, "rev-parse", "main") == before
 
 
 def test_git_token_goes_through_the_environment_only():
