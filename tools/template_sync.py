@@ -29,7 +29,7 @@ TITLE_PREFIX = "Template sync "
 COMPARE_CAP = 300
 SYNC_CAP = 2000
 SPLIT_MIN_FILES = 40
-# Part 1 of a large sync (design 0010, 4.3); their tests/test_<name>.py belong to it too.
+# Part 1 of a large sync (design 0010, 4.3); their tests/agent/test_<name>.py belong to it too.
 REVIEWER_FIRST = [
     ".github/workflows/agent-security-review.yml",
     ".github/workflows/agent-review.yml",
@@ -136,7 +136,7 @@ def is_reviewer_file(path):
         if path == item:
             return True
         name = pathlib.PurePosixPath(item).stem
-        if item.endswith(".py") and path == f"tests/test_{name}.py":
+        if item.endswith(".py") and path == f"tests/agent/test_{name}.py":
             return True
     return False
 
