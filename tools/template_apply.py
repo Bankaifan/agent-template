@@ -1,6 +1,7 @@
-"""Apply a template sync to the working tree (design 0014, section 4.1: plan, path guard, three-way merge, write, delete).
+"""Apply a template sync to the working tree (design 0014, section 4.1: plan, path guard, three-way merge, write, delete,
+commit) and materialize the conflicted files for the developer (4.3).
 
-Pure functions plus one `git merge-file` call. Nothing here talks to GitHub: the caller passes the template texts in
+Pure functions plus `git merge-file` and `git` calls. Nothing here talks to GitHub: the caller passes the template texts in
 (read through the contents API). Every write or delete goes through check_path, so only relative, managed paths
 inside the repo are touched. This module does not import template_sync (template_sync imports it, step 3).
 """
@@ -115,6 +116,19 @@ def apply_clean(root, clean, read_template, managed):
     return {"written": written, "deleted": deleted}
 
 
+def _texts(root, o, base_of, theirs_of, managed):
+    """(ours, base, theirs): the downstream text (None when absent) and the template texts at synced_sha and at the target."""
+    path = o["path"]
+    return _read_text(_inside(root, path, managed)), base_of(path), theirs_of(path)
+
+
+def _verdict(o, ours, base, theirs):
+    """("clean", merged) or ("conflict", None). Only a modified file with all three texts can merge."""
+    if o["status"] != "modified" or ours is None:
+        return "conflict", None
+    return three_way(ours, base, theirs)
+
+
 def merge_overridden(root, overridden, base_of, theirs_of, managed):
     """Three-way merge of overridden files: ours = the downstream file, base = template at synced_sha, theirs = template
     at the target SHA. A clean result is written; anything else leaves the downstream file untouched and is listed as
@@ -129,14 +143,51 @@ def merge_overridden(root, overridden, base_of, theirs_of, managed):
     merged, conflicted = [], []
     for o in overridden:
         path = o["path"]
-        ours = _read_text(_inside(root, path, managed))
-        if o["status"] != "modified" or ours is None:
-            conflicted.append(path)
-            continue
-        status, text = three_way(ours, base_of(path), theirs_of(path))
+        status, text = _verdict(o, *_texts(root, o, base_of, theirs_of, managed))
         if status == "clean":
             write_file(root, path, text, managed)
             merged.append(path)
         else:
             conflicted.append(path)
     return {"merged": merged, "conflicted": conflicted}
+
+
+def materialize(root, overridden, base_of, theirs_of, managed, out_dir):
+    """Write ours, base and theirs of every conflicted overridden file under out_dir (never into the tree), so the
+    developer can merge by hand (design 0014, 3 H). A side that is absent at its ref is not written. Returns the
+    conflicted paths."""
+    for o in overridden:
+        check_path(o["path"], managed)
+    conflicted = []
+    for o in overridden:
+        path = o["path"]
+        ours, base, theirs = _texts(root, o, base_of, theirs_of, managed)
+        if _verdict(o, ours, base, theirs)[0] == "clean":
+            continue
+        conflicted.append(path)
+        for suffix, text in (("ours", ours), ("base", base), ("theirs", theirs)):
+            if text is not None:
+                target = pathlib.Path(out_dir, f"{path}.{suffix}")
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(text.encode("utf-8"))
+    return conflicted
+
+
+def git(root, *args):
+    return subprocess.run(["git", *args], cwd=root, check=True, capture_output=True, text=True).stdout
+
+
+def commit_paths(root, paths, branch, message, name, email):
+    """Put exactly `paths` (added, changed or deleted) into one commit on `branch`, which `switch -C` resets to HEAD.
+
+    The identity is given per command: no git config is written and no trailer is added. Returns the new SHA, or None
+    when the paths hold no change (nothing to commit).
+    """
+    if not paths:
+        raise ValueError("no paths to commit")
+    git(root, "switch", "-q", "-C", branch)
+    git(root, "add", "-A", "--", *paths)
+    if not git(root, "diff", "--cached", "--name-only").strip():
+        return None
+    git(root, "-c", f"user.name={name}", "-c", f"user.email={email}", "commit", "-q", "-m", message)
+    return git(root, "rev-parse", "HEAD").strip()
