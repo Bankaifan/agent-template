@@ -23,6 +23,7 @@ import deps
 import overlap
 import slip
 import train
+from ghcall import log_text
 
 
 def env_cap(name, default):
@@ -313,7 +314,7 @@ def main(mode) -> int:
     elif mode == "scout":
         ideas = count("issue", "list", "--state", "open", "--label", "idea")
         work = scout_work(ideas, int(os.environ.get("IDEAS", "3")))
-        print(f"open_ideas={ideas} work={work}")
+        print(f"open_ideas={log_text(ideas)} work={log_text(work)}")
     else:
         print(__doc__, file=sys.stderr)
         return 2

@@ -66,3 +66,12 @@ def test_rate_limit_is_not_retried_and_is_named(monkeypatch):
         ghcall.gh("api", "repos/o/r/actions/runs", sleep=waits.append)
     assert len(calls) == 1 and not waits and "GitHub API rate limit exceeded." in str(e.value)
 
+
+
+def test_log_text_prints_ints_and_masks_token_shapes():
+    token = "ghp_" + "a1B2c3D4e5F6g7H8i9J0" * 2
+    assert ghcall.log_text(644) == "644"
+    out = ghcall.log_text(f"exit 1: bad credentials {token} and {'f0' * 20}")
+    assert token not in out and "f0f0f0f0f0" not in out and "***" in out
+    assert ghcall.log_text("a\nb`$(x)") == "abx"
+    assert len(ghcall.log_text("x " * 500)) == 200

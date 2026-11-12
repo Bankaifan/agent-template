@@ -25,6 +25,7 @@ import liveness
 import stalled_dev
 import trusted_issues
 from agent_guard import add_labels
+from ghcall import log_text
 
 SELF_WF = "watch.yml"  # the watcher never watches its own runs (no loop)
 SWEEP_HOURS = 2
@@ -149,7 +150,7 @@ def _park(number, note, owner, run):
     try:
         run("issue", "edit", str(number), "--add-assignee", owner)
     except subprocess.CalledProcessError:
-        print(f"assignee {owner} on issue #{number} failed")
+        print(f"assignee {log_text(owner)} on issue #{log_text(number)} failed")
     liveness.post_comment("issue", number, note, run)
 
 
@@ -308,5 +309,5 @@ def main(env=None, run=liveness.gh, now=None):
 
 if __name__ == "__main__":
     for line in main():
-        print(line)
+        print(log_text(line, 1000))
     sys.exit(0)
