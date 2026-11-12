@@ -70,7 +70,8 @@ def gh(*args):
         return ghcall.gh(*args)
     except subprocess.CalledProcessError as e:
         shown = " ".join(str(a) for a in args[:2])
-        print(f"gh {shown} exited {e.returncode}: {tail_text(e.stderr or '(no stderr)')}", file=sys.stderr)
+        print(f"gh {ghcall.mask(shown)} exited {ghcall.num(e.returncode)}: "
+              f"{ghcall.mask(tail_text(e.stderr or '(no stderr)'))}", file=sys.stderr)
         raise
 
 
@@ -80,9 +81,9 @@ def safe(run, *args):
         return run(*args)
     except subprocess.CalledProcessError as e:
         first = tail_text(e.stderr or "", lines=1, chars=200)
-        print(f"gh {' '.join(str(a) for a in args[:2])} failed: {first}")
+        print(f"gh {ghcall.mask(' '.join(str(a) for a in args[:2]))} failed: {ghcall.mask(first)}")
     except OSError as e:
-        print(f"gh {' '.join(str(a) for a in args[:2])} failed: {type(e).__name__}")
+        print(f"gh {ghcall.mask(' '.join(str(a) for a in args[:2]))} failed: {type(e).__name__}")
     return None
 
 
@@ -90,7 +91,7 @@ def safe_labels(kind, number, labels, run):
     try:
         add_labels(kind, number, labels, run)
     except subprocess.CalledProcessError:
-        print(f"label {','.join(labels)} on {kind} #{number} failed")
+        print(f"label {ghcall.mask(','.join(labels))} on {ghcall.mask(kind)} #{ghcall.num(number)} failed")
 
 
 def parse_ts(s):

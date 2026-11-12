@@ -1,5 +1,6 @@
 """Run gh. A read call is retried on a transient failure (not on the rate limit), a write never; the error carries stderr."""
 
+import re
 import subprocess
 import time
 
@@ -12,6 +13,29 @@ RATE_LIMIT = ("rate limit exceeded", "secondary rate limit")  # waiting seconds 
 def rate_limited(text):
     """GitHub refused the call for the API rate limit (the budget comes back within the hour)."""
     return any(m in (text or "").lower() for m in RATE_LIMIT)
+
+
+_DIGITS = "0123456789"
+_TOKEN = re.compile(r"(gh[pousr]_|github_pat_)[A-Za-z0-9_]+|\b[0-9a-f]{40}\b|\b[A-Za-z0-9_-]{36,}\b")
+
+
+def num(value):
+    """Digits of an int, rebuilt from a constant table: the result carries no data flow from the input string."""
+    n = int(value)
+    return ("-" if n < 0 else "") + "".join(_DIGITS[int(d)] for d in str(abs(n)))
+
+
+def fixed(value, allowed, default="?"):
+    """The constant from ALLOWED that equals VALUE, else DEFAULT: only fixed strings come out."""
+    for a in allowed:
+        if a == value:
+            return a
+    return default
+
+
+def mask(text):
+    """TEXT with every token-shaped run (gh*_ token, github_pat_, 40 hex, long opaque id) replaced by ***."""
+    return _TOKEN.sub("***", str(text))
 
 
 class GhError(subprocess.CalledProcessError):

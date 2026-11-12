@@ -20,6 +20,7 @@ import sys
 import time
 
 import deps
+import ghcall
 import overlap
 import slip
 import train
@@ -306,14 +307,15 @@ def main(mode) -> int:
             verdict = event_reason(event, action, facts)
         if verdict:
             work, reason = verdict
-        print(f"dev_open={len(dev)} stuck={sorted(stuck)} waiting_prs={w_prs} free_dev={free_dev} free_prs={free_prs} "
-              f"blocked={sorted(blocked)} start={cands} needs_human_prs={human} "
-              f"handover_age_days={age:.1f} commits_since={newer} stale={stale} event={event or '-'}/{action or '-'} "
-              f"needs_slip={slipless} handover_due={handover_due} reason={reason} work={work}")
+        print(ghcall.mask(
+            f"dev_open={len(dev)} stuck={sorted(stuck)} waiting_prs={w_prs} free_dev={free_dev} free_prs={free_prs} "
+            f"blocked={sorted(blocked)} start={cands} needs_human_prs={human} "
+            f"handover_age_days={age:.1f} commits_since={newer} stale={stale} event={event or '-'}/{action or '-'} "
+            f"needs_slip={slipless} handover_due={handover_due} reason={reason} work={work}"))
     elif mode == "scout":
         ideas = count("issue", "list", "--state", "open", "--label", "idea")
         work = scout_work(ideas, int(os.environ.get("IDEAS", "3")))
-        print(f"open_ideas={ideas} work={work}")
+        print(f"open_ideas={ghcall.num(ideas)} work={ghcall.fixed(work, (True, False), '?')}")
     else:
         print(__doc__, file=sys.stderr)
         return 2

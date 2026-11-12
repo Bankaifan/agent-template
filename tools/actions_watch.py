@@ -20,6 +20,7 @@ import sys
 import budget
 import decision
 import failure_watch as fw
+import ghcall
 import guard_mark
 import liveness
 import stalled_dev
@@ -149,7 +150,7 @@ def _park(number, note, owner, run):
     try:
         run("issue", "edit", str(number), "--add-assignee", owner)
     except subprocess.CalledProcessError:
-        print(f"assignee {owner} on issue #{number} failed")
+        print(f"assignee {ghcall.mask(owner)} on issue #{ghcall.num(number)} failed")
     liveness.post_comment("issue", number, note, run)
 
 
@@ -308,5 +309,5 @@ def main(env=None, run=liveness.gh, now=None):
 
 if __name__ == "__main__":
     for line in main():
-        print(line)
+        print(ghcall.mask(line))
     sys.exit(0)

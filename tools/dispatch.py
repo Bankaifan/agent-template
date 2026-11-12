@@ -19,11 +19,13 @@ import subprocess
 import sys
 
 import budget
+import ghcall
 import overlap
 import prefilter
 import slip
 
 LABEL_COLOR = "ededed"
+MODEL_LABELS = ("model:sonnet", "model:haiku")
 RESTARTED_NOTE = "Restarted: #{blocker} is closed."  # fixed text, never issue content
 
 
@@ -39,7 +41,7 @@ def start(state, gh=prefilter.gh, overlap_main=overlap.main, authors=overlap.DEF
         if not files:
             continue  # no slip: the model writes it
         if overlap_main(["--files", ",".join(files), "--issue", str(n)]) != 0:
-            print(f"#{n}: overlap or unreadable, deferred")
+            print(f"#{ghcall.num(n)}: overlap or unreadable, deferred")
             continue
         model = f"model:{slip.model_of(issue, authors)}"
         try:
@@ -47,10 +49,10 @@ def start(state, gh=prefilter.gh, overlap_main=overlap.main, authors=overlap.DEF
             gh("issue", "edit", str(n), "--add-label", model)
             gh("issue", "edit", str(n), "--add-label", "agent:dev")  # last: this label starts the developer run
         except (subprocess.CalledProcessError, OSError) as e:  # a failed label call must not stop the other issues
-            print(f"#{n}: label call failed ({type(e).__name__}), skipped", file=sys.stderr)
+            print(f"#{ghcall.num(n)}: label call failed ({type(e).__name__}), skipped", file=sys.stderr)
             continue
         started.append(n)
-        print(f"#{n}: started ({model})")
+        print(f"#{ghcall.num(n)}: started ({ghcall.fixed(model, MODEL_LABELS)})")
     return started
 
 
@@ -72,17 +74,17 @@ def restart_waiting(state, gh=prefilter.gh):
         try:
             title = json.loads(gh("issue", "view", str(n), "--json", "title"))["title"]
             if run_active(n, title, gh):
-                print(f"#{n}: run in progress, not restarted")
+                print(f"#{ghcall.num(n)}: run in progress, not restarted")
                 continue
             gh("issue", "edit", str(n), "--remove-label", "agent:dev")
             gh("issue", "edit", str(n), "--add-label", "agent:dev")
             # the marker: the last trusted comment is no longer `Waiting for #N`, so this wait is acted on once
             gh("issue", "comment", str(n), "--body", RESTARTED_NOTE.format(blocker=blocker))
         except (subprocess.CalledProcessError, OSError) as e:
-            print(f"#{n}: restart failed ({type(e).__name__}), skipped", file=sys.stderr)
+            print(f"#{ghcall.num(n)}: restart failed ({type(e).__name__}), skipped", file=sys.stderr)
             continue
         restarted.append(n)
-        print(f"#{n}: restarted (#{blocker} closed)")
+        print(f"#{ghcall.num(n)}: restarted (#{ghcall.num(blocker)} closed)")
     return restarted
 
 
@@ -96,7 +98,7 @@ def after_merge(pr, gh=prefilter.gh):
         try:
             gh("issue", "edit", str(n), "--remove-label", "agent:dev")
         except (subprocess.CalledProcessError, OSError) as e:
-            print(f"#{n}: cannot remove agent:dev ({type(e).__name__})", file=sys.stderr)
+            print(f"#{ghcall.num(n)}: cannot remove agent:dev ({type(e).__name__})", file=sys.stderr)
     return done
 
 
@@ -105,7 +107,7 @@ def main(argv) -> int:
         print(__doc__, file=sys.stderr)
         return 2
     if argv[0] == "after-merge":
-        print(f"agent:dev removed from {after_merge(int(argv[1]))}")
+        print(f"agent:dev removed from {[int(ghcall.num(n)) for n in after_merge(int(argv[1]))]}")
     if reason := budget.low(budget.START):
         print(reason)
         return 0
