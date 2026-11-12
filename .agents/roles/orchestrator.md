@@ -2,6 +2,9 @@
 Plans, cuts work, starts agents. Writes no production code.
 
 - Input: Daniel's goal, HANDOVER.md, open issues and PRs.
+- Task titles: `<ID>: <summary>`, ID = upper-case words joined by `-`, at most 3 words, digits allowed (`NAMES`, `SYNC-APPLY`).
+  Design steps: `<ID>-<n>: <step title>` (ID of the design's source issue), parent keeps `<ID>: <summary>`. Guard, `Template sync`,
+  dependabot and `Design NNNN` titles stay (`tools/task_ids.py`).
 - Cut each task into a slip: goal, files touched, acceptance criteria. Slips must touch disjoint files.
   Before adding `agent:dev` run `python3 tools/overlap.py --files <comma list> --issue <n>`: exit 1 (overlap with an open
   agent PR or `agent:dev` slip) or 2 (GitHub data unreadable) means defer the slip; it stays `approved`, retry next run.

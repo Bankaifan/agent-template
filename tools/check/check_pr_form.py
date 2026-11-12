@@ -7,6 +7,8 @@ Also fails an `agent/<N>-*` PR whose body does not mention `#<N>`. Also fails (w
 Also fails a commit message or body with a tool footer (patterns: tools/attribution.py). Bodies are stripped by
 strip-attribution.yml first (tools/strip_attribution.py), so the body rule only sees what the strip left or missed.
 An optional `## Friction` section (see tools/friction.py) is accepted, never required.
+Also fails a PR whose linked issue (agent branch, `Closes #N`, `Refs #N`) has a task ID in its title (tools/task_ids.py)
+unless the PR title starts with the same `<ID>: `. Unreadable issues are not checked.
 Skipped for local runs and pushes to main. Whether the title is really English cannot be verified.
 """
 import json
@@ -17,6 +19,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 import attribution  # tools/, the one pattern list shared with strip_attribution.py
+import task_ids  # tools/, the task ID rule of issue #501
 
 # One pattern for every GitHub closing form: `Closes #N`, `Closes owner/repo#N`, `Closes https://github.com/owner/repo/issues/N`.
 # agent-fix.yml runs `check_pr_form.py closing FILE` (from main) instead of keeping its own copy.
@@ -27,6 +30,8 @@ CLOSING = re.compile(
 )
 AGENT_BRANCH = re.compile(r"^agent/(\d+)-")
 ORCHESTRATOR_BRANCH = "agent/orchestrator-handover"
+REFS = re.compile(r"\bRefs\s+#(\d+)\b", re.IGNORECASE)
+BARE_NUMBER = re.compile(r"(?<![\w./-])#(\d+)\b")  # `#N` of this repo only, not `owner/repo#N`
 
 
 def gh_pr(ref):
@@ -54,6 +59,34 @@ def form_errors(body, head_ref, files, commits=""):
     m = AGENT_BRANCH.match(head_ref)
     if m and not re.search(rf"#{m.group(1)}(?!\d)", body):
         errors.append(f"branch {head_ref} works on issue #{m.group(1)}: the body must reference it (`Closes #{m.group(1)}` or `Refs #{m.group(1)}`)")
+    return errors
+
+
+def linked_issues(body, head_ref):
+    """Numbers (strings) of the issues a PR works on: its agent branch, its closing keywords and its `Refs #N`."""
+    m = AGENT_BRANCH.match(head_ref)
+    nums = [m.group(1)] if m else []
+    nums += [n for c in CLOSING.finditer(body) for n in BARE_NUMBER.findall(c.group(0))]
+    return sorted(set(nums + REFS.findall(body)), key=int)
+
+
+def gh_issue_title(number):
+    """Title of an issue of this repo via gh, or None when it cannot be read."""
+    try:
+        out = subprocess.run(["gh", "issue", "view", number, "--json", "title"],
+                             check=True, capture_output=True, text=True).stdout
+        return json.loads(out)["title"]
+    except (OSError, subprocess.CalledProcessError, ValueError, KeyError, TypeError):
+        return None
+
+
+def id_errors(title, issue_titles):
+    """A PR on a task issue (title `<ID>: ...`) starts its own title with the same ID; other issues are not checked."""
+    errors = []
+    for it in issue_titles:
+        tid = task_ids.task_id_of(it)
+        if tid and not title.startswith(f"{tid}: "):
+            errors.append(f"title must start with the task ID of its issue, `{tid}: ` (issue title: {it})")
     return errors
 
 
@@ -94,6 +127,8 @@ def main() -> int:
     if not body.strip():
         errors.append("body is empty (what and why, link the issue)")
     errors += form_errors(body, head_ref, files, commits)
+    issue_titles = [t for t in map(gh_issue_title, linked_issues(body, head_ref)) if t is not None]
+    errors += id_errors(title, issue_titles)
     for e in errors:
         print(f"check_pr_form: {e}")
     if not errors:

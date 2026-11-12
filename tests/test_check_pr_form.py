@@ -17,8 +17,12 @@ def run(monkeypatch, env):
     return mod.main()
 
 
-def fake_gh(monkeypatch, payload=None, fail=False):
+def fake_gh(monkeypatch, payload=None, fail=False, issue_title=None):
     def _run(cmd, **kw):
+        if cmd[:3] == ["gh", "issue", "view"]:  # unknown issue (no issue_title) cannot be read
+            if issue_title is None:
+                raise subprocess.CalledProcessError(1, cmd)
+            return subprocess.CompletedProcess(cmd, 0, stdout=json.dumps({"title": issue_title}), stderr="")
         assert cmd[:3] == ["gh", "pr", "view"]
         if fail:
             raise subprocess.CalledProcessError(1, cmd)
@@ -48,9 +52,9 @@ def test_dispatch_reads_pr(monkeypatch):
     assert run(monkeypatch, env) == 0
 
 
-def check(monkeypatch, body, files, head="feature/x"):
-    fake_gh(monkeypatch, {"title": "Fix x", "body": body, "headRefName": head,
-                          "files": [{"path": f} for f in files]})
+def check(monkeypatch, body, files, head="feature/x", title="Fix x", issue_title=None):
+    fake_gh(monkeypatch, {"title": title, "body": body, "headRefName": head,
+                          "files": [{"path": f} for f in files]}, issue_title=issue_title)
     return run(monkeypatch, {"GITHUB_EVENT_NAME": "workflow_dispatch", "GITHUB_REF_NAME": head})
 
 
@@ -137,3 +141,27 @@ def test_closing_subcommand_errors_exit_2(tmp_path, monkeypatch):
 def test_dispatch_without_pr_skipped(monkeypatch):
     fake_gh(monkeypatch, fail=True)
     assert run(monkeypatch, {"GITHUB_EVENT_NAME": "workflow_dispatch", "GITHUB_REF_NAME": "agent/1-x"}) == 0
+
+
+def test_pr_title_must_start_with_the_task_id_of_its_issue(monkeypatch):
+    issue = "NAMES: short task IDs in issue, PR and branch names"
+    assert check(monkeypatch, "Closes #501", ["tools/a.py"], head="agent/501-names", title="Fix x",
+                 issue_title=issue) == 1
+    assert check(monkeypatch, "Refs #501", ["tools/a.py"], head="agent/501-names", title="Fix x",
+                 issue_title=issue) == 1
+    assert check(monkeypatch, "Closes #501", ["tools/a.py"], head="agent/501-names", title="NAMES: fix x",
+                 issue_title=issue) == 0
+    assert check(monkeypatch, "Closes #501", ["tools/a.py"], head="feature/x", title="NAMES: fix x",
+                 issue_title=issue) == 0
+
+
+def test_issue_without_task_id_keeps_the_old_title_rule(monkeypatch):
+    assert check(monkeypatch, "Closes #5", ["tools/a.py"], title="Fix x", issue_title="Plain title") == 0
+    assert check(monkeypatch, "Closes #5", ["tools/a.py"], title="Fix x",
+                 issue_title="Overdue scheduled run: x") == 0
+    assert check(monkeypatch, "Closes #5", ["tools/a.py"], title="Fix x", issue_title=None) == 0
+
+
+def test_cross_repo_reference_is_not_a_linked_issue(monkeypatch):
+    assert check(monkeypatch, "Closes other/repo#501", ["tools/a.py"], title="Fix x",
+                 issue_title="NAMES: x") == 0

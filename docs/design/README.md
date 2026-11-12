@@ -36,4 +36,6 @@ Depends on: 1
 ```
 
 `Files:` and `Acceptance:` are required, each on one line. `Depends on:` is optional: earlier step numbers, comma
-separated; leave it out for an independent step. Step titles are unique, the issue title is the step title.
+separated; leave it out for an independent step. Step titles are unique. The issue title of a step is
+`<ID>-<n>: <step title>` (the ID of the design's source issue, the one the design PR names with `Refs #N`; `n` is the step
+number), see `.agents/roles/orchestrator.md`.
