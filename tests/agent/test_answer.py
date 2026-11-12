@@ -105,6 +105,13 @@ def test_validate_refusals(verdict, marker, why):
         check(verdict, marker, "ja, mach das @x")
 
 
+def test_multiline_evidence_matches_crlf_owner_text():
+    text = "ja, mach das\r\nund dann\r\n  weiter"
+    assert check(v(evidence="mach das\nund dann weiter"), text=text)["evidence"]
+    with pytest.raises(ValueError, match="quote"):
+        check(v(evidence="Mach das"), text=text)
+
+
 SECRET = "ghp_" + "a" * 36
 
 
