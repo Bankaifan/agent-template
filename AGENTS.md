@@ -7,8 +7,7 @@ Project rules: `AGENTS.project.md` (optional, not managed); the Limits below win
 2. Nothing irreversible without Daniel's explicit OK: deleting repos or branches holding other people's work,
    database or production changes, releases, payments, permission changes.
 3. Never push to `main`, no tags by hand. Always branch + PR. Rebase and force-push are allowed on your own
-   agent branches, never on `main`. Sole exception: the release commit of `tools/train.py` (only VERSION, CHANGELOG.md,
-   changelog.d/), and only once Daniel has granted a ruleset bypass for it (open); until then it fails and retries.
+   agent branches (and the train's `release/next`), never on `main`.
 4. Read-only checks against real systems are allowed. Anything that writes to production systems or real
    devices needs Daniel's OK.
 5. Changes to CI protection, permissions, workflows or this file go through the security reviewer. Changes to the
