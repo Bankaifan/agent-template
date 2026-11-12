@@ -129,11 +129,10 @@ jobs:
         with:
           client-id: ${{ vars.AUTHOR_CLIENT_ID }}
           private-key: ${{ secrets.AUTHOR_APP_KEY }}
+          # No `workflows` and no `actions` scope: GitHub refuses a push that changes .github/workflows/ (design 0017, step 3).
           permission-contents: write
-          permission-workflows: write
           permission-pull-requests: write
           permission-issues: write
-          permission-actions: write
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1  # zizmor: ignore[artipacked] this job pushes with the app token persisted by checkout
         with:
           token: ${{ steps.app.outputs.token }}
@@ -220,25 +219,70 @@ jobs:
           git fetch --depth=1 origin "$DEFAULT_BRANCH"
           mkdir -p "$RUNNER_TEMP/guard"
           git archive FETCH_HEAD tools | tar -x -C "$RUNNER_TEMP/guard"
-      # Deterministic, inline on purpose: the agent may edit files in the checkout, never this step.
-      - name: Make sure CI runs on the PR head
-        if: ${{ !cancelled() }}
+      # A push that changes .github/workflows/ is refused (no `workflows` scope on the model token): say so on the issue for
+      # Daniel, who applies that change himself (design 0017 section 4 item 3). Only a local branch that is ahead of its remote counts.
+      - name: Report a refused workflow push
+        if: ${{ always() }}
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           GH_REPO: ${{ github.repository }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          for ref in $(git for-each-ref --format='%(refname:short)' "refs/heads/agent/${ISSUE}-*"); do
+            base="origin/$ref"
+            git rev-parse --verify --quiet "$base" > /dev/null || base="origin/$DEFAULT_BRANCH"
+            files=$(git diff --name-only "$base" "$ref" -- .github/workflows)
+            [ -n "$files" ] || continue
+            gh issue comment "$ISSUE" --body "The push of $ref was refused: it changes ${files//$'\n'/, } under .github/workflows/, and this run's token has no workflows scope. Daniel applies that change by hand. Run: $RUN_URL"
+          done
+      # Deterministic, inline on purpose: the agent may edit files in the checkout, never this step.
+      - name: Find the open PR of this issue
+        id: pr
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           pr=$(gh pr list --state open --json number,headRefName,headRefOid \
             | jq -c --arg p "agent/${ISSUE}-" '[.[] | select(.headRefName | startswith($p))] | first // empty')
           if [ -z "$pr" ]; then echo "No open PR for issue $ISSUE"; exit 0; fi
-          num=$(jq -r .number <<<"$pr"); branch=$(jq -r .headRefName <<<"$pr"); sha=$(jq -r .headRefOid <<<"$pr")
+          {
+            echo "num=$(jq -r .number <<<"$pr")"
+            echo "branch=$(jq -r .headRefName <<<"$pr")"
+            echo "sha=$(jq -r .headRefOid <<<"$pr")"
+          } >> "$GITHUB_OUTPUT"
+      # The CI trigger needs `actions: write`, which the model token no longer has: this short-lived token goes to that step only.
+      - id: ci-app
+        if: ${{ !cancelled() && steps.pr.outputs.num != '' }}
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.AUTHOR_CLIENT_ID }}
+          private-key: ${{ secrets.AUTHOR_APP_KEY }}
+          permission-actions: write
+      - name: Make sure CI runs on the PR head
+        id: ci
+        if: ${{ !cancelled() && steps.pr.outputs.num != '' }}
+        env:
+          GH_TOKEN: ${{ steps.ci-app.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+          BRANCH: ${{ steps.pr.outputs.branch }}
+          SHA: ${{ steps.pr.outputs.sha }}
+        run: |
           for _ in 1 2 3 4 5 6; do
-            n=$(gh run list --workflow validate.yml --commit "$sha" --json databaseId --jq length)
-            if [ "$n" -gt 0 ]; then echo "validate already runs for $sha"; exit 0; fi
+            n=$(gh run list --workflow validate.yml --commit "$SHA" --json databaseId --jq length)
+            if [ "$n" -gt 0 ]; then echo "validate already runs for $SHA"; exit 0; fi
             sleep 10
           done
-          gh workflow run validate.yml --ref "$branch"
-          python3 "$RUNNER_TEMP/guard/tools/agent_guard.py" label pr "$num" agent:review
+          gh workflow run validate.yml --ref "$BRANCH"
+          echo "triggered=true" >> "$GITHUB_OUTPUT"
+      - name: Label the PR for review
+        if: ${{ steps.ci.outputs.triggered == 'true' }}
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ steps.pr.outputs.num }}
+        run: python3 "$RUNNER_TEMP/guard/tools/agent_guard.py" label pr "$PR" agent:review
       # Never end silently: no PR for the branch means a comment, needs-human and Daniel assigned.
       - name: Escalate a run that produced no PR
         if: ${{ always() }}
