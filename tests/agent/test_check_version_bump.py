@@ -50,6 +50,20 @@ def test_deleted_fragment_is_not_read():
     assert mod.errors(["tools/a.py", "changelog.d/1.md"], MANAGED, lambda f: None) == []
 
 
+def test_release_pr_may_edit_version_and_remove_fragments():
+    changed = ["VERSION", "CHANGELOG.md", "changelog.d/10.md", "changelog.d/11.md"]
+    assert mod.errors(changed, MANAGED, lambda f: None, "release/next") == []
+    assert mod.errors(changed, MANAGED, None, "release/next")  # without a reader a fragment counts as added
+    assert mod.errors(changed, MANAGED, lambda f: None, "agent/1-x")  # the same diff elsewhere still fails
+
+
+def test_release_pr_refuses_other_paths_and_added_fragments():
+    errs = mod.errors(["VERSION", "tools/a.py"], MANAGED, None, "release/next")
+    assert len(errs) == 1 and "tools/a.py" in errs[0]
+    errs = mod.errors(["VERSION", "changelog.d/10.md"], MANAGED, lambda f: "x\n", "release/next")
+    assert len(errs) == 1 and "must not add" in errs[0]
+
+
 def test_main_uses_git_output(monkeypatch, capsys):
     monkeypatch.chdir(ROOT)
     monkeypatch.setattr(mod, "git", lambda *a: "tools/a.py\n")
