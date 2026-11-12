@@ -99,7 +99,7 @@ Refs: none. Model: sonnet.
 - Per-signature `Reopened: 3` -> `needs-human` (existing); `Kicked: 2` and `stalled:1` bound restarts; at most 1 rerun.
 - Flood cap: `MAX_NEW=5` per tick (existing) and at most 10 open watch issues; beyond that one signed
   `Failing workflow: many` issue and `needs-human`.
-- Fix PRs failing on `agent/*` stay with agent-fix (`AGENT_OWNED`, existing).
+- Fix PRs failing on `agent/*` stay with agent-fix (`AGENT_OWNED`, existing). `validate.yml` counts on `main` only (`MAIN_ONLY`, #410): a red PR run is the PR's own check.
 
 ### 4.6 De-duplication with what exists
 One title family and one parser: `failure_watch.py` is extended, not copied. `Overdue scheduled run`, `Nightly heavy

@@ -29,7 +29,8 @@ CANCEL_TAILS = (" / " + CANCELLED_STEP, " / - / -")  # job never started, or the
 EXPECTED_CANCEL = {"agent-review.yml": False, "validate.yml": True, "orchestrator.yml": True}
 MERGE_GATES = ("validate.yml", "risk.yml", "agent-security-review.yml")
 PR_ONLY = ("risk.yml", "agent-security-review.yml", "agent-review.yml")  # green on any non-agent ref counts
-AGENT_OWNED = ("validate.yml", "agent-review.yml")  # failures on agent/* branches belong to agent-fix rounds
+AGENT_OWNED = ("agent-review.yml",)  # failures on agent/* branches belong to agent-fix rounds
+MAIN_ONLY = ("validate.yml",)  # a red PR run belongs to its PR; only main opens an issue (#410, as priority() and _success_closes)
 SELF = "status.yml"  # default only: each caller passes its own workflow file
 ESCALATE_AT = 3
 PART_MAX = 60
@@ -56,13 +57,16 @@ def run_url(run_obj):
 
 
 def keep(run_obj, self_wf=SELF):
-    """Section 4.1 filter: only real failures, not the calling workflow's own runs, not forks, not agent-owned branches."""
+    """Section 4.1 filter: only real failures, not the calling workflow's own runs, not forks, not agent-owned branches, validate only on main."""
     wf = workflow_file(run_obj)
     if run_obj.get("conclusion") not in KEPT or wf == self_wf:
         return False
     if (run_obj.get("head_repository") or {}).get("fork"):
         return False
-    return not (wf in AGENT_OWNED and (run_obj.get("head_branch") or "").startswith("agent/"))
+    branch = run_obj.get("head_branch") or ""
+    if wf in MAIN_ONLY:
+        return branch == "main"
+    return not (wf in AGENT_OWNED and branch.startswith("agent/"))
 
 
 def collect(since, now, run=liveness.gh, self_wf=SELF):
