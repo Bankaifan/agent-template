@@ -16,6 +16,7 @@ CLI (needs the gh CLI with GH_TOKEN and GH_REPO):
                                              after agent-review: no approver review for SHA (and BODYHASH) -> escalate
   agent_guard.py silent orchestrator - SINCE after the orchestrator model step: denials, or STARTABLE=true and no visible action
                                              by AUTHOR_BOT since SINCE -> comment on STATUS_ISSUE (default 57), exit 1; 2nd in 24 h -> prio:1 issue
+  agent_guard.py park pr|issue N YES NO TEXT post the German owner note with a decision marker (YES/NO = action id or -)
 `silent` ignores extra trailing arguments (the guard runs from main, the workflow from the PR branch: no version drift).
 A usage error or exception in `silent` escalates with reason "guard error" and exits 1; it never fails quietly.
 Escalate = comment (run URL, denied tool calls from the execution file, else its last lines), label needs-human, request OWNER's review.
@@ -423,6 +424,13 @@ def post_owner_note(kind, number, body, run=gh):
     liveness.post_comment(kind, number, body, run)
 
 
+def park(kind, number, yes, no, text, run=gh):
+    """Park an item with Daniel: TEXT (the German note) plus a marker built from YES/NO action ids ("-" = no answer of
+    that kind). The only path the orchestrator uses; an invalid action id raises before anything is posted."""
+    answers = {k: v for k, v in (("yes", yes), ("no", no)) if v != "-"}
+    post_owner_note(kind, number, text.rstrip() + "\n" + decision.build(**answers), run)
+
+
 def denied_tools(exec_text):
     """Sorted harness tool names of the denied calls; anything else (model text) is dropped."""
     names = {d.get("tool_name") for rec in _records(exec_text) for d in rec.get("permission_denials") or []
@@ -629,6 +637,12 @@ def main(argv):
     elif cmd == "reviewed" and len(args) in (2, 3):
         bh = args[2] if len(args) == 3 else None
         return 0 if has_review(reviews_of(args[0]), os.environ.get("APPROVER_BOT", ""), args[1], bh) else 1
+    elif cmd == "park" and len(args) == 5 and args[0] in ("pr", "issue"):
+        try:
+            park(args[0], args[1], args[2], args[3], args[4])
+        except ValueError as exc:
+            print(f"refused: {exc}", file=sys.stderr)
+            return 1
     elif cmd == "silent":
         return silent_guarded(args, owner)
     else:
