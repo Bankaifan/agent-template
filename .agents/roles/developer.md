@@ -6,8 +6,8 @@ Implements one task slip as one PR.
 - Write the tests with the change. Run `make check` and the tests; paste the real result, not a guess.
 - Fix the cause, not the symptom; name the cause in one line in the PR body. Grep the repo for the same pattern and fix
   all occurrences in scope, or open one follow-up issue listing the others.
-- Update CHANGELOG.md if present. Commit as Daniel, no `Co-authored-by`.
-- A change to a path in `.agents/managed.json` bumps `VERSION` (`make check` enforces it): `x` if the issue has label `sync:must`, otherwise `y`.
+- Changelog: add `changelog.d/<issue>.md`, never edit `VERSION` or `CHANGELOG.md` (a script assigns the version after the merge). Commit as Daniel, no `Co-authored-by`.
+- A change to a path in `.agents/managed.json` needs that fragment (`make check` enforces it); add a `step: x` line if the issue has label `sync:must`, otherwise none (default y).
 - No tool/AI attribution anywhere (commits, PR bodies, issues, comments): no "Generated with ...", session link, `Co-Authored-By` or `Claude-Session`.
 - Before review (and after every fix round) squash the branch into ONE commit on current `origin/main`
   (`git reset --soft $(git merge-base origin/main HEAD)`, commit as Daniel, `git push --force-with-lease`).

@@ -9,10 +9,9 @@ Model-free. The workflow (a later PR) runs it on push to main, on a schedule and
    The run does nothing; the push of that merge starts the next run.
 3. The oldest BEHIND candidate with auto-merge enabled is rebased (PUT pulls/N/update-branch, update_method=rebase).
 4. The oldest DIRTY candidate gets status.handle_conflict at once, unless an agent-fix run is queued or running.
-   First, if it is a one-commit PR that bumps VERSION, `rebump_branch` tries the model-free re-bump (tools/rebump.py,
-   design 0013 step 2) in a scratch clone: only when the conflict set is exactly VERSION and CHANGELOG.md the branch is
-   rebased onto main with the re-bumped files and force-pushed (with lease on the head it read). The push dismisses the
-   approval, so the reviews run on the new head. Any refusal or error: today's handle_conflict path, unchanged.
+   PRs no longer edit VERSION or CHANGELOG.md, so those never conflict (issue #468).
+0. Before all of that, `release_main` is the one writer of VERSION and CHANGELOG.md: changelog fragments on main
+   (changelog.d/<issue>.md) get the next versions through tools/release_fragments.py, one commit pushed to main.
 5. A PR waiting only for the owner (waiting_for_owner) is skipped: it never counts as in flight, so the next ready PR
    lands. When main moves it is still rebased (BEHIND, even without auto-merge) or sent to agent-fix (DIRTY), so the
    owner approves the current head; the push re-runs the agent reviews. After his approval it is a normal candidate.
@@ -33,8 +32,8 @@ from pathlib import Path
 import agent_guard
 import status
 
-REBUMP = Path(__file__).resolve().parent / "rebump.py"  # always main's copy: the PR's code is never run
-CONFLICT_FILES = {"VERSION", "CHANGELOG.md"}
+RELEASE = Path(__file__).resolve().parent / "release_fragments.py"  # always main's copy
+RELEASE_PATHS = {"VERSION", "CHANGELOG.md"}  # plus changelog.d/: the only paths of the release commit
 COMMITTER = ("Daniel", "476059+Bankaifan@users.noreply.github.com")
 
 IN_FLIGHT = {"CLEAN", "UNSTABLE", "HAS_HOOKS"}
@@ -110,56 +109,49 @@ def git_env(token=""):
     return env
 
 
-def rebump_branch(pr, remote, token="", base="main"):
-    """Model-free fix of a DIRTY PR whose conflict set is only VERSION and CHANGELOG.md (design 0013 step 2).
-    True: the PR branch was rebased onto `base` with the re-bumped files and pushed. False: nothing was pushed
-    (not a candidate, any other conflict, rebump refused, push lost the lease or any git error); the caller falls
-    back to the agent-fix path."""
-    branch, head = pr["headRefName"], pr["headRefOid"]
-    if "VERSION" not in [f.get("path") for f in pr.get("files") or []]:
-        return False
+def release_main(remote, token="", base="main"):
+    """The one writer of VERSION and CHANGELOG.md (issue #468): folds the changelog fragments on `base` into
+    CHANGELOG.md, assigns the versions (tools/release_fragments.py, main's copy) and pushes one commit, never forced.
+    Returns the released versions ([] when there is nothing to release); None when it failed (git error, malformed
+    fragment, push refused). The next run retries, a lost race simply finds the fragments again."""
     env = git_env(token)
 
-    def git(tmp, *args, check=True):
-        return subprocess.run(["git", *args], cwd=tmp, env=env, check=check, capture_output=True, text=True)
+    def git(tmp, *args):
+        return subprocess.run(["git", *args], cwd=tmp, env=env, check=True, capture_output=True, text=True)
 
     try:
         with tempfile.TemporaryDirectory() as tmp:
             git(tmp, "init", "-q")
-            git(tmp, "fetch", "-q", remote, f"+refs/heads/{base}:refs/remotes/origin/{base}",
-                f"+refs/heads/{branch}:refs/remotes/origin/pr")
-            if git(tmp, "rev-parse", "refs/remotes/origin/pr").stdout.strip() != head:
-                return False  # the head moved since the list
-            git(tmp, "checkout", "-q", "--detach", head)
-            if git(tmp, "rev-list", "--count", f"origin/{base}..HEAD").stdout.strip() != "1":
-                return False
-            if subprocess.run([sys.executable, "-I", str(REBUMP), f"origin/{base}"], check=False, cwd=tmp,
-                              env=env, capture_output=True, text=True).returncode != 0:
-                return False
-            texts = {f: Path(tmp, f).read_text(encoding="utf-8") for f in sorted(CONFLICT_FILES)}
-            git(tmp, "checkout", "-q", "--", *sorted(CONFLICT_FILES))
-            stopped = git(tmp, "rebase", f"origin/{base}", check=False).returncode != 0
-            if stopped and not set(git(tmp, "diff", "--name-only", "--diff-filter=U").stdout.split()) <= CONFLICT_FILES:
-                git(tmp, "rebase", "--abort", check=False)
-                return False
-            for f, text in texts.items():
-                Path(tmp, f).write_text(text, encoding="utf-8")
-            git(tmp, "add", *sorted(CONFLICT_FILES))
-            if stopped:
-                git(tmp, "-c", "core.editor=true", "rebase", "--continue")
-            else:
-                git(tmp, "commit", "-q", "--amend", "--no-edit")
-            git(tmp, "push", "-q", f"--force-with-lease=refs/heads/{branch}:{head}", remote, f"HEAD:refs/heads/{branch}")
+            git(tmp, "fetch", "-q", remote, f"+refs/heads/{base}:refs/remotes/origin/{base}")
+            git(tmp, "checkout", "-q", "--detach", f"origin/{base}")
+            if not any(Path(tmp, "changelog.d").glob("[0-9]*.md")):
+                return []
+            done = subprocess.run([sys.executable, "-I", str(RELEASE), tmp], check=False, env=env,
+                                  capture_output=True, text=True)
+            if done.returncode != 0:
+                return None
+            versions = [line.split(" -> ")[-1] for line in done.stdout.splitlines() if " -> " in line]
+            git(tmp, "add", "-A")
+            staged = git(tmp, "diff", "--cached", "--name-only").stdout.split()
+            if not staged or not all(p in RELEASE_PATHS or p.startswith("changelog.d/") for p in staged):
+                return None  # the release commit may only touch these paths, whatever the script did
+            git(tmp, "commit", "-q", "-m", f"Release {', '.join(versions)} from changelog fragments")
+            git(tmp, "push", "-q", remote, f"HEAD:refs/heads/{base}")
+            return versions
     except (subprocess.CalledProcessError, OSError):
-        return False
-    return True
+        return None
 
 
-def run_train(env, run=status.gh, rebumper=None):
+def run_train(env, run=status.gh, releaser=None):
     repo = env["GH_REPO"]
-    if rebumper is None:
-        def rebumper(p):
-            return rebump_branch(p, f"https://github.com/{repo}.git", env.get("GH_TOKEN", ""))
+    if releaser is None:
+        def releaser():
+            return release_main(f"https://github.com/{repo}.git", env.get("GH_TOKEN", ""))
+    released = releaser()
+    if released:
+        print(f"released {', '.join(released)} from changelog fragments, pushed to main")
+    elif released is None:
+        print("release: failed (see the fragment and the main ruleset); the next run retries")
     owner = env.get("OWNER", status.OWNER_DEFAULT)
     approver = env.get("APPROVER_BOT", "")
     required = status.required_contexts()  # None: every check counts
@@ -183,10 +175,7 @@ def run_train(env, run=status.gh, rebumper=None):
             run("api", "-X", "PUT", f"repos/{repo}/pulls/{rebase['number']}/update-branch", "-f", "update_method=rebase")
             print(f"rebased PR #{rebase['number']} onto main")
         if conflict:
-            if rebumper(conflict):
-                print(f"conflict PR #{conflict['number']}: re-bumped VERSION and CHANGELOG.md, pushed; reviews run on the new head")
-            else:
-                print(f"conflict PR #{conflict['number']}: {status.handle_conflict(conflict, owner, run)}")
+            print(f"conflict PR #{conflict['number']}: {status.handle_conflict(conflict, owner, run)}")
         if not rebase and not conflict:
             print(f"nothing to do; approved candidates: {len(cands)}, waiting for owner: {len(waiting)}")
     except subprocess.CalledProcessError as e:
