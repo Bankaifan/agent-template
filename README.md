@@ -112,8 +112,8 @@ Setup for a project (six steps):
 3. **Create `.agents/template.json`** (example below): `template`, `synced_sha` (the 40-hex template commit you last matched;
    empty means the run is a no-op), `synced_version` (the template `x.y` you last matched; missing counts as `x = 0`, so the
    first run opens one issue), `managed` and `overrides`.
-4. **Optional variables.** `TEMPLATE_SYNC=off` turns the poll off. `TEMPLATE_SYNC_MODE` is `version` by default (sync only
-   when `x` moved); `all` syncs every managed change and skips the gate. `TEMPLATE_SYNC_APPLY=off` returns to the issue-only
+4. **Optional variables.** `TEMPLATE_SYNC=off` turns the poll off. `TEMPLATE_SYNC_MODE` is `all` by default (every template
+   version produces a sync PR, no gate); `version` syncs only when `x` moved. `TEMPLATE_SYNC_APPLY=off` returns to the issue-only
    report (no PR is opened by the script).
 5. **Check.** Run *Actions > template-sync > Run workflow* with `force` set: it skips the gate. A clean template gives one
    `Template sync` PR; a conflict gives the part 1 PR and the issue. A second run updates the open PR or issue instead of
