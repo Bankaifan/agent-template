@@ -34,6 +34,23 @@ bekommen keine Actions-Secrets: die fünf Secrets (und die Variablen `AUTHOR_BOT
 **Dependabot-Secrets** anlegen, sonst schlägt `agent-smoke` dort mit klarer Meldung fehl. `setup` meldet, ob sie existieren
 (best effort). Ruleset danach neu importieren.
 
+## Projektdateien (keine Overrides)
+
+Ein Projekt legt eigene Inhalte in vier Dateien ab, die das Template nie verwaltet. Ein Projekt mit diesen Dateien und ohne
+Overrides übernimmt jeden Template-Sync als saubere Kopie (`docs/decisions/0008-extension-points.md`,
+`docs/design/0016-extension-points.md`).
+
+- `project.mk`: Rezepte für `project-check::`, die `make check` zuletzt ausführt. Das Makefile lädt die Datei, wenn sie existiert.
+- `AGENTS.project.md`: Projektregeln, von `CLAUDE.md` nach `AGENTS.md` importiert. Die Limits in `AGENTS.md` haben Vorrang.
+- `.agents/checks.json`: `{"required": ["name", ...]}`, zusätzliche Pflicht-Checks. `tools/ruleset.py build` fügt sie dem
+  Template-Ruleset hinzu; ein Name, der einen Template-Check wiederholt, oder ein fehlerhafter Name wird abgelehnt. Nach einer
+  Änderung das gebaute Ruleset in *Settings > Rules* neu importieren; ein Name gilt erst als Pflicht, wenn GitHub ihn erzwingt.
+  Die Datei ist per CODEOWNERS geschützt.
+- `.agents/tool-pins.env`: Pins für `RUFF`, `ZIZMOR` oder `ACTIONLINT` als `NAME=version`-Zeilen. Jede andere Zeile oder
+  jeder andere Name lässt `tools/ci/install_tools.sh` scheitern.
+
+Template-Tests liegen in `tests/agent/`, daher bleibt `tests/` für die eigenen Tests des Projekts frei.
+
 ## Projekte synchron halten
 
 Projekte aus diesem Template bekommen spätere Template-Änderungen als ein Sync-Issue, nicht über blindes Kopieren. Das
@@ -91,7 +108,8 @@ Projekte nicht darauf zurückzeigen):
 
 - `synced_version`: das `x.y` des Templates, mit dem du zuletzt übereinstimmst (setzt der Sync-PR). Die Prüfung liest nur sein `x`.
 - `managed`: Pfadpräfixe, die dem Template gehören (`/` am Ende = Verzeichnis). Andere Pfade werden nie gemeldet.
-- `overrides`: exakter `path` plus Freitext `why` für den Entwickler.
+- `overrides`: exakter `path` plus Freitext `why` für den Entwickler. Projektinhalte zuerst in die vier Projektdateien
+  legen (siehe *Projektdateien*); ein Override ist eine Ganzdatei-Kopie, die ein Sync nicht aktualisieren kann.
 - Eine zu alte `synced_sha` macht nur das erste Issue größer. Ohne Datei oder bei leerer `synced_sha` meldet der Lauf
   `template-sync: no .agents/template.json, skipped` und endet erfolgreich. Im Template-Repo selbst wird ebenfalls übersprungen.
 - Listet der Vergleich 300 oder mehr Dateien, kann er abgeschnitten sein. Der Lauf schlägt dann mit Meldung fehl, legt
