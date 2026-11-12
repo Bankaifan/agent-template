@@ -28,9 +28,8 @@ def test_handover_is_stale_only_on_material_change_and_one_pr_per_day():
     assert "HANDOVER.md is stale only if the open PR set, the trusted list, the main CI state or an Open/Next item" in prompt
     assert "changed materially since the file was written" in prompt
     assert "A run number, a timestamp or a new day alone is never a reason" in prompt
-    assert "At most one handover PR per UTC day" in prompt
-    assert "head:agent/orchestrator-handover-<date>" in prompt
-    assert "leave HANDOVER.md untouched" in prompt
+    assert "at most one handover PR per UTC day" in prompt
+    assert "You write no file" in prompt  # the script commits the block (design 0017 step 5)
     assert "If HANDOVER.md is stale: run" not in prompt
 
 
