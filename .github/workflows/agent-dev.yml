@@ -192,7 +192,7 @@ jobs:
             `gh pr create` (English ASCII title, body max 5 lines, "Closes #${{ env.ISSUE }}").
             No tool or AI attribution in commits, PR bodies or comments (no "Generated with", session link, Co-Authored-By, Claude-Session).
             The tools for `make check` (and the test dependencies) are already installed: run plain `make check`,
-            never `pip install`. Use one simple command per Bash call: no pipes, `&&`, `;`, `$(...)` or redirects
+            never `pip install`. Use one simple command per Bash call (a pipe may end in head, tail, grep, sort, wc or jq); no `&&`, `;`, `$(...)` or redirects
             (they do not match the allow list and are denied).
             Changes under .github/workflows/ are allowed: commit them like any file. After your run a script carries them
             past the token as a patch file (workflow-apply applies it after the security review). Older comments saying a
@@ -214,7 +214,7 @@ jobs:
             --max-turns 60
             --setting-sources user
             --settings .github/claude-judge-settings.json
-            --allowedTools "Read,Edit,Write,Glob,Grep,${{ vars.DEV_SHELL == 'free' && 'Bash' || 'Bash(git:*),Bash(cp:*),Bash(mkdir:*),Bash(diff:*),Bash(cmp:*),Bash(wc:*),Bash(ls:*),Bash(make:*),Bash(bash tools/check/check_drift.sh),Bash(python3:*),Bash(pytest:*),Bash(ruff:*),Bash(actionlint:*),Bash(zizmor:*),Bash(gh issue view:*),Bash(gh issue comment:*),Bash(gh run list:*),Bash(gh run view:*),Bash(gh pr create:*),Bash(gh pr view:*),Bash(gh release view:*),Bash(gh release list:*)' }}"
+            --allowedTools "Read,Edit,Write,Glob,Grep,${{ vars.DEV_SHELL == 'free' && 'Bash' || 'Bash(git:*),Bash(cp:*),Bash(mkdir:*),Bash(diff:*),Bash(cmp:*),Bash(wc:*),Bash(head:*),Bash(tail:*),Bash(grep:*),Bash(sort:*),Bash(jq:*),Bash(ls:*),Bash(make:*),Bash(bash tools/check/check_drift.sh),Bash(python3:*),Bash(pytest:*),Bash(ruff:*),Bash(actionlint:*),Bash(zizmor:*),Bash(gh issue view:*),Bash(gh issue comment:*),Bash(gh run list:*),Bash(gh run view:*),Bash(gh pr create:*),Bash(gh pr view:*),Bash(gh release view:*),Bash(gh release list:*)' }}"
       # git runs here, without the guard key: the agent may have planted hooks or config in the checkout.
       - name: Fetch guard tools (no key)
         if: ${{ always() }}
