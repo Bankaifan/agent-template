@@ -301,6 +301,7 @@ jobs:
           EXEC_FILE: ${{ steps.claude.outputs.execution_file }}
           STARTED: ${{ steps.started.outputs.at }}
           GUARD_KEY: ${{ secrets.GUARD_KEY }}  # script step only, never a model step (tests/test_guard_mark.py)
+          AUTHOR_BOT: ${{ vars.AUTHOR_BOT }}  # a silent run retries once, then goes to a signed issue (#624)
         run: |
           # Rule: the guard comes from main, this call from the PR branch. `silent` ignores extra trailing args and a
           # usage error escalates ("guard error"); only ever append args, never reorder or remove them.
