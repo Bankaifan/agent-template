@@ -3,6 +3,9 @@
 ## [Unreleased]
 - README (EN and DE) and `docs/decisions/0007-template-sync.md`: six-step setup for the template sync, version gate, reuse by other projects.
 
+## [1.18] - 2026-11-12
+- `strip-attribution.yml`, `tools/strip_attribution.py`, `tools/attribution.py`: tool attribution footers are removed from PR and issue bodies by a script (saved only when changed); `check_pr_form.py` shares the pattern list, keeps the rule for commit messages and judges the live body; the reviewer no longer reports a body footer (#471).
+
 ## [1.17] - 2026-11-12
 - `.github/workflows/watch.yml` and `tools/actions_watch.py`: a failed, timed-out, cancelled or startup-failed run of any other workflow is rerun once (attempt 1, startup failure or never-started job) or opens/updates the signed `Failing workflow:` issue; a 30 min sweep catches undelivered events; `DRY_RUN` writes nothing (design 0012 step 2, #428).
 
