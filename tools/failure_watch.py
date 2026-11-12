@@ -23,6 +23,7 @@ OVERLAP = datetime.timedelta(minutes=5)
 KEPT = ("failure", "timed_out", "startup_failure", "cancelled")
 FAILED_JOB = ("failure", "timed_out")
 CANCELLED_STEP = "cancelled"  # step name of a job that never started (displaced by concurrency, design 0012 4.2)
+CANCEL_TAILS = (" / " + CANCELLED_STEP, " / - / -")  # job never started, or the run has no job at all (issue #484)
 # Cancellations that are normal (design 0012 4.2): value True = only when a newer run of the same branch exists.
 EXPECTED_CANCEL = {"agent-review.yml": False, "validate.yml": True, "orchestrator.yml": True}
 MERGE_GATES = ("validate.yml", "risk.yml", "agent-security-review.yml")
@@ -277,7 +278,7 @@ def close_expected(issues, touched, key, run=liveness.gh):
     """Close open `<workflow> / <job> / cancelled` issues whose last run is an expected replaced pending run."""
     closed = []
     for issue in issues.values():
-        if issue["state"] != "OPEN" or issue["title"] in touched or not issue["title"].endswith(" / " + CANCELLED_STEP):
+        if issue["state"] != "OPEN" or issue["title"] in touched or not issue["title"].endswith(CANCEL_TAILS):
             continue
         last_id = parse_body(issue["body"])["last_id"]
         if not last_id:
