@@ -86,6 +86,22 @@ Actions secrets: set the three secrets also as **Dependabot secrets** (Actions v
 until then `agent-smoke` fails on them with a clear message. `setup` reports whether they exist (best effort).
 Re-import the ruleset after this change.
 
+## Project files (no overrides)
+
+A project adds its own content in four files that the template never manages. A project with these files and no
+overrides takes every template sync as a clean copy (`docs/decisions/0008-extension-points.md`,
+`docs/design/0016-extension-points.md`).
+
+- `project.mk`: recipes for `project-check::`, which `make check` runs last. The Makefile includes the file when it exists.
+- `AGENTS.project.md`: project rules, imported by `CLAUDE.md` after `AGENTS.md`. The Limits in `AGENTS.md` win.
+- `.agents/checks.json`: `{"required": ["name", ...]}`, extra required checks. `tools/ruleset.py build` adds them to the
+  template ruleset; a name that repeats a template check or is malformed is refused. Re-import the built ruleset in
+  *Settings > Rules* after a change; a name counts as required only once GitHub enforces it. The file is owner-guarded (CODEOWNERS).
+- `.agents/tool-pins.env`: `RUFF`, `ZIZMOR` or `ACTIONLINT` pins as `NAME=version` lines. Any other line or name fails
+  `tools/ci/install_tools.sh`.
+
+Template tests live in `tests/agent/`, so `tests/` stays free for the project's own tests.
+
 ## Keeping projects in sync
 
 Projects created from this template get later template changes as one sync issue, not a blind file copy. The template has
@@ -143,7 +159,8 @@ point back at it):
 
 - `synced_version`: the template `x.y` you last matched (set by the sync PR). The poll reads only its `x`.
 - `managed`: path prefixes the template owns (a trailing `/` means a directory). Other paths are never reported.
-- `overrides`: exact `path` plus a free-text `why` for the developer.
+- `overrides`: exact `path` plus a free-text `why` for the developer. Put project content in the four project files
+  (see *Project files*) first; an override is a whole-file copy that a sync cannot update.
 - A too-old `synced_sha` only makes the first issue larger. No file, or an empty `synced_sha`: the run prints
   `template-sync: no .agents/template.json, skipped` and succeeds. In the template repo itself it is skipped as well.
 - If the compare lists 300 or more files it may be cut off. The run then fails with a message and creates or edits no issue.
