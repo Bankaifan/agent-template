@@ -38,6 +38,7 @@ import sys
 import design_parents
 import failure_watch
 import flow
+import ghcall
 import liveness
 import owner_hold
 import stalled_dev
@@ -61,7 +62,7 @@ PR_LIMIT = 20  # 50 made the GraphQL query exceed 500,000 nodes (statusCheckRoll
 def gh(*args):
     """Run gh; on failure print the (masked, capped) stderr first so the log explains the exit status."""
     try:
-        return subprocess.run(["gh", *args], check=True, capture_output=True, text=True).stdout
+        return ghcall.gh(*args)
     except subprocess.CalledProcessError as e:
         shown = " ".join(str(a) for a in args[:2])
         print(f"gh {shown} exited {e.returncode}: {tail_text(e.stderr or '(no stderr)')}", file=sys.stderr)

@@ -27,6 +27,7 @@ import subprocess
 import sys
 
 import exec_log
+import ghcall
 import restart
 from agent_guard import add_labels, ensure_label, is_agent_pr
 from trusted_issues import classify, label_set_by
@@ -79,7 +80,7 @@ NOTE_SECURITY = ("Hallo Daniel, dieser PR betrifft Rechte oder Vertrauen (risk:s
 
 
 def gh(*args):
-    return subprocess.run(["gh", *args], check=True, capture_output=True, text=True).stdout
+    return ghcall.gh(*args)
 
 
 def gate(item, events, comments, files, owner, author_bot, approver_bot="", codeowners=""):
