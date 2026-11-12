@@ -148,7 +148,7 @@ def test_guard_key_never_with_git_in_workspace(path):
 def test_guard_key_used_where_expected():
     users = {p.name for p in WORKFLOWS if "GUARD_KEY" in p.read_text(encoding="utf-8")}
     assert users == {"orchestrator.yml", "status.yml", "setup.yml", "rule-keeper.yml", "scout.yml",
-                     "weekly-summary.yml", "nightly.yml", "dispatch.yml", "watch.yml",
+                     "weekly-summary.yml", "nightly.yml", "dispatch.yml", "watch.yml", "canary.yml",
                      "agent-dev.yml", "agent-fix.yml", "agent-review.yml"}
 
 
