@@ -47,6 +47,13 @@ from exec_log import (  # noqa: F401
 )
 
 OWNER_DEFAULT = "Bankaifan"
+DENIAL_RE = re.compile(r"<!-- denied-run sig=([0-9a-f]{16}|none) -->")  # hidden line of every denial note
+RECEIVER_RE = re.compile(r"<!-- answer-receiver comment=(\d+)")  # receiver confirmations name the owner comment they answer
+PROTECTED = ("CODEOWNERS", "claude-judge-settings.json")  # a retrigger never changes these
+ALLOW_FILES = {"dev": (".github/workflows/agent-dev.yml", ".agents/roles/developer.md"),
+               "fix": (".github/workflows/agent-fix.yml", ".agents/roles/developer.md"),
+               "review": (".github/workflows/agent-review.yml", ".agents/roles/reviewer.md")}
+CAP_LABELS = ("restart:1", "unblock:1")  # the same call denied twice: no automatic restart any more
 
 
 def norm_login(login):
@@ -326,15 +333,99 @@ def read_body_before(path):
         return None
 
 
-def escalate(kind, number, is_pr, what, owner, run=gh):
-    body = report(kind, what, os.environ.get("RUN_URL", ""), read_exec(os.environ.get("EXEC_FILE", "")))
+def denial_sig(exec_text):
+    """Hash of the denied calls of a run (masked, as reported); "none" if the run was denied nothing."""
+    lines = denied_calls(exec_text)
+    return hashlib.sha256("\n".join(lines).encode("utf-8")).hexdigest()[:16] if lines else "none"
+
+
+def protected_hit(exec_text):
+    """True if a denied call names a protected file (CODEOWNERS or the judge settings)."""
+    for rec in _records(exec_text):
+        for d in rec.get("permission_denials") or []:
+            if isinstance(d, dict) and any(p in json.dumps(d.get("tool_input") or {}) for p in PROTECTED):
+                return True
+    return False
+
+
+def last_denial(history, author_bot):
+    """(sig, created_at) of the newest denial note by the author app, or None. HISTORY: issue comments, oldest first."""
+    for c in reversed(history):
+        m = DENIAL_RE.search(c.get("body") or "")
+        if m and same_login((c.get("user") or {}).get("login"), author_bot):
+            return m.group(1), c.get("created_at") or ""
+    return None
+
+
+def changed_since(kind, number, history, since, run=gh):
+    """Something changed after SINCE: a commit to the kind's allow list or role file, or a slip comment. Answers by
+    Daniel, receiver confirmations and denial notes do not count: they would reopen the same loop."""
+    repo = os.environ.get("GH_REPO", "")
+    for path in ALLOW_FILES.get(kind, ()):
+        try:
+            if json.loads(run("api", f"repos/{repo}/commits?path={path}&since={since}&per_page=1")):
+                return True
+        except (ValueError, OSError, subprocess.CalledProcessError):
+            return False  # unknown: fail closed
+    answered = {int(m) for c in history for m in RECEIVER_RE.findall(c.get("body") or "")}
+    return any((c.get("created_at") or "") > since and c.get("id") not in answered
+               and not RECEIVER_RE.search(c.get("body") or "") and not DENIAL_RE.search(c.get("body") or "")
+               for c in history)
+
+
+def retrigger_offer(kind, number, sig, exec_text, run=gh):
+    """(offer, reason, cap): may the note offer "ja" (a retrigger)? Only if something changed since the last denied run.
+    A protected file is never retriggered. The same call denied twice sets CAP: automatic restarts end. Unknown history
+    (or unknown author app) fails closed: no offer."""
+    if protected_hit(exec_text):
+        return False, "eine geschuetzte Datei (CODEOWNERS oder claude-judge-settings.json) wurde verweigert; die Aenderung kommt ueber einen geskripteten Weg oder einen PR des Owners", False
+    author = os.environ.get("AUTHOR_BOT", "")
+    if not author:
+        return False, "der Autor-App-Login ist nicht bekannt", False
+    try:
+        pages = json.loads(run("api", "--paginate", "--slurp", f"repos/{os.environ.get('GH_REPO', '')}/issues/{number}/comments"))
+        history = [c for page in pages for c in page]
+    except (ValueError, TypeError, OSError, subprocess.CalledProcessError):
+        return False, "der Verlauf des Items ist nicht lesbar", False
+    prev = last_denial(history, author)
+    if prev is None:
+        return True, "", False
+    if sig != "none" and prev[0] == sig:
+        return False, "dieselbe verweigerte Aktion zum zweiten Mal", True
+    if changed_since(kind, number, history, prev[1], run):
+        return True, "", False
+    return False, "seit dem letzten verweigerten Lauf hat sich nichts geaendert (Erlaubnisliste, Rollendatei, Auftrag)", False
+
+
+def denial_question(is_pr, offer, reason):
+    """The German question for Daniel: "ja" is offered only when a retrigger is allowed; the marker follows the offer."""
     thing = "pr" if is_pr else "issue"
-    body += (f"\n\nHallo Daniel, ein Agenten-Lauf ist ohne Ergebnis geendet. Frage: Soll der Block aufgehoben werden (ja) "
-             f"oder {'der PR' if is_pr else 'das Issue'} geschlossen werden (nein)?\n"
-             + decision.build(yes="drop-block", no=f"close-{thing}"))
+    what = "der PR" if is_pr else "das Issue"
+    head = "\n\nHallo Daniel, ein Agenten-Lauf ist ohne Ergebnis geendet. "
+    if offer:
+        return (head + f"Frage: Soll der Block aufgehoben werden (ja) oder {what} geschlossen werden (nein)?\n"
+                + decision.build(yes="drop-block", no=f"close-{thing}"))
+    return (head + f"Kein Neustart angeboten: {reason}. Frage: Soll {what} geschlossen werden (nein)? "
+            "Ja fuehrt in diesem Fall nichts aus.\n" + decision.build(no=f"close-{thing}"))
+
+
+def post_owner_note(kind, number, body, run=gh):
+    """The one path for a note that parks something with Daniel: refuses a body without a valid decision marker."""
+    if not decision.has_marker(body):
+        raise ValueError("an owner note needs a valid decision marker")
+    liveness.post_comment(kind, number, body, run)
+
+
+def escalate(kind, number, is_pr, what, owner, run=gh):
+    exec_text = read_exec(os.environ.get("EXEC_FILE", ""))
+    body = report(kind, what, os.environ.get("RUN_URL", ""), exec_text)
+    thing = "pr" if is_pr else "issue"
+    sig = denial_sig(exec_text)
+    offer, reason, cap = retrigger_offer(kind, number, sig, exec_text, run)
+    body += denial_question(is_pr, offer, reason) + f"\n<!-- denied-run sig={sig} -->"
     blocked = bool(owner_hold.held(thing, number, ["needs-human"], run, owner))
-    add_labels(thing, number, ["needs-human"], run)
-    liveness.post_comment(thing, number, body, run)
+    add_labels(thing, number, ["needs-human", *(CAP_LABELS if cap else [])], run)
+    post_owner_note(thing, number, body, run)
     if blocked:  # Daniel removed needs-human: comment only, no review request or assignment
         return
     if is_pr:
