@@ -52,3 +52,21 @@ def test_gh_error_and_usage(monkeypatch):
     assert mod.main(["7"], ENV) == 1
     assert mod.main([], ENV) == 2
     assert mod.main(["x"], ENV) == 2
+
+
+def test_long_pr_title_is_cut_at_a_word(monkeypatch):
+    """#624: a fix run cannot edit a title; a script cuts it so check_pr_form passes."""
+    long = "Pipeline canary: signed haiku issue after workflow/tools merges, 45 min check names the stalled stage x"
+    calls = []
+
+    def _run(cmd, **kw):
+        calls.append(cmd)
+        return subprocess.CompletedProcess(cmd, 0, stdout=json.dumps({"body": "b", "title": long, "pull_request": {}}),
+                                           stderr="")
+
+    monkeypatch.setattr(mod.subprocess, "run", _run)
+    assert mod.main(["7"], ENV) == 0
+    edit = next(c for c in calls if "-X" in c)
+    new = edit[-1].removeprefix("title=")
+    assert len(long) > 100 and len(new) <= 100 and long.startswith(new) and not new.endswith(" ")
+    assert mod.short_title("short") == "short"

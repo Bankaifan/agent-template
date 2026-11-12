@@ -408,6 +408,7 @@ jobs:
           HEAD_BEFORE: ${{ steps.before.outputs.sha }}
           GUARD_KEY: ${{ secrets.GUARD_KEY }}  # script step only, never a model step (tests/test_guard_mark.py)
           APPROVER_BOT: ${{ vars.APPROVER_BOT }}
+          AUTHOR_BOT: ${{ vars.AUTHOR_BOT }}  # without it the note can never offer a restart (#624)
         run: |
           # Rule: the guard comes from main, this call from the PR branch. `silent` ignores extra trailing args and a
           # usage error escalates ("guard error"); only ever append args, never reorder or remove them.
