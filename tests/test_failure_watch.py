@@ -194,6 +194,19 @@ def test_open_cancelled_issue_whose_last_run_is_expected_is_closed():
     assert f.issues[1]["state"] == "CLOSED" and f.issues[2]["state"] == "OPEN"
 
 
+def test_open_no_job_cancelled_issue_whose_last_run_is_expected_is_closed():
+    """Issue #484: `status.yml / - / -` (cancelled run without any job) is closed once a newer run exists."""
+    f = Fake()
+    f.runs.append(mkrun(1, "status.yml", "cancelled"))
+    f.jobs[1] = {"jobs": []}
+    f.runs[0]["created_at"] = "2026-11-09T00:00:00+00:00"
+    f.runs.append(mkrun(2, "status.yml", "success"))
+    sig = "status.yml / - / -"
+    f.add_issue(title(sig), fw.make_body(sig, 16, "https://github.com/o/r/actions/runs/1"))
+    actions, _ = fw.watch(NOW, NOW, [], KEY, f)
+    assert f.issues[1]["state"] == "CLOSED" and actions == ["closed expected-cancel issue #1"]
+
+
 def test_startup_failure_has_step_dash():
     f = Fake()
     f.runs.append(mkrun(1, "ci.yml", "startup_failure"))
