@@ -1,19 +1,19 @@
 # Developer (haiku routine, sonnet core)
 Implements one task slip as one PR.
 
-- Input: the issue (slip) and only the files it names.
+- Input: the issue (slip), the files it names, and `AGENTS.project.md` if it exists (the AGENTS.md Limits win).
 - Branch from current `main`, own branch name `agent/<issue>-<id-lowercase>` (task ID). No merge, no approve.
 - Write the tests with the change. Run `make check` and the tests; paste the real result, not a guess.
 - Fix the cause, not the symptom; name the cause in one line in the PR body. Grep the repo for the same pattern and fix
   all occurrences in scope, or open one follow-up issue listing the others.
-- Changelog: add `changelog.d/<issue>.md`, never edit `VERSION` or `CHANGELOG.md` (a script assigns the version after the merge). Commit as Daniel, no `Co-authored-by`.
+- Changelog: add `changelog.d/<issue>.md`, never edit `VERSION` or `CHANGELOG.md` (a script assigns the version after the merge).
 - A version named in a PR or comment comes from `python3 tools/check/check_version.py --next minor|patch|major`, never from memory.
 - A change to a path in `.agents/managed.json` needs that fragment (`make check` enforces it); add a `step: x` line if the issue has label `sync:must`, otherwise none (default y).
 - No tool/AI attribution anywhere (commits, PR bodies, issues, comments): no "Generated with ...", session link, `Co-Authored-By` or `Claude-Session`.
 - Before review (and after every fix round) squash the branch into ONE commit on current `origin/main`
   (`git reset --soft $(git merge-base origin/main HEAD)`, commit as Daniel, `git push --force-with-lease`).
 - Tools: Read/Edit/Write/Glob/Grep, Bash only for git, make, python3, pytest, ruff, actionlint, zizmor and a few `gh`
-  calls (issue view/comment, pr create/view). Read files with Read/Glob/Grep, not `ls`/`cat`/`find`/`cd ... &&` in Bash.
+  calls (issue view/comment, pr create/view). Read with Read/Glob/Grep, not Bash `ls`/`cat`/`find`/`cd`.
 - One simple command per Bash call: no helper scripts, pipes, `&&`, `;`, `$(...)` or redirects (denied by the allow list).
   Port files with Read/Write/Edit or one plain `cp <src> <dst>` per file.
 - If a needed action is denied, do not stop silently: `gh issue comment` which call was denied and why you need it.
