@@ -7,6 +7,7 @@ Implements one task slip as one PR.
 - Fix the cause, not the symptom; name the cause in one line in the PR body. Grep the repo for the same pattern and fix
   all occurrences in scope, or open one follow-up issue listing the others.
 - Changelog: add `changelog.d/<issue>.md`, never edit `VERSION` or `CHANGELOG.md` (a script assigns the version after the merge). Commit as Daniel, no `Co-authored-by`.
+- A version named in a PR or comment comes from `python3 tools/check/check_version.py --next minor|patch|major`, never from memory.
 - A change to a path in `.agents/managed.json` needs that fragment (`make check` enforces it); add a `step: x` line if the issue has label `sync:must`, otherwise none (default y).
 - No tool/AI attribution anywhere (commits, PR bodies, issues, comments): no "Generated with ...", session link, `Co-Authored-By` or `Claude-Session`.
 - Before review (and after every fix round) squash the branch into ONE commit on current `origin/main`
