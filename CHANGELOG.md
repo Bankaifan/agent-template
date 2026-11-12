@@ -3,6 +3,9 @@
 ## [Unreleased]
 - README (EN and DE) and `docs/decisions/0007-template-sync.md`: six-step setup for the template sync, version gate, reuse by other projects.
 
+## [1.19] - 2026-11-12
+- `tools/actions_watch.py`, `watch.yml`: the sweep self-heals. Fallback `agent:dev` on signed watch issues only while the orchestrator is unhealthy and `MAX_DEV` has room; one restart of failed agent work (`stalled:1`, then `needs-human` with the German note); `Kicked: n` counter in the signed `Unstarted run: orchestrator` issue, `needs-human` at 2. Unsigned or foreign-author issues are never touched (design 0012 step 3, #429).
+
 ## [1.18] - 2026-11-12
 - `strip-attribution.yml`, `tools/strip_attribution.py`, `tools/attribution.py`: tool attribution footers are removed from PR and issue bodies by a script (saved only when changed); `check_pr_form.py` shares the pattern list, keeps the rule for commit messages and judges the live body; the reviewer no longer reports a body footer (#471).
 

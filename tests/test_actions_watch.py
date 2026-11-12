@@ -154,3 +154,207 @@ def test_workflow_triggers_and_permissions():
     assert "permission-contents" not in WATCH and "permission-pull-requests" not in WATCH
     for conclusion in aw.fw.KEPT:
         assert f'"{conclusion}"' in WATCH
+    for name in ("OWNER:", "AUTHOR_BOT:", "MAX_DEV:"):
+        assert name in WATCH
+
+
+# --- self-healing (design 0012 section 4.4, test plan item 4) -----------------------------------------
+
+BOT = "author-app"
+ENV = {"AUTHOR_BOT": BOT, "OWNER": "Bankaifan", "MAX_DEV": "2"}
+FAIL_TITLE = fw.TITLE_PREFIX + "ci.yml / build / test"
+BAD_ORCH = [{"conclusion": "cancelled", "createdAt": "2026-11-10T11:30:00Z"}]
+OK_ORCH = [{"conclusion": "success", "createdAt": "2026-11-10T11:30:00Z"}]
+
+
+class Heal(Gh):
+    def __init__(self):
+        super().__init__()
+        self.prs = []
+
+    def __call__(self, *a):
+        if a[:2] == ("pr", "list"):
+            self.calls.append(a)
+            return json.dumps(self.prs)
+        if a[:2] == ("workflow", "run"):
+            self.calls.append(a)
+            return ""
+        return super().__call__(*a)
+
+    def issue(self, title, labels=(), author=BOT, signed=True, body="Body"):
+        n = self.add_issue(title, body, labels=labels)
+        self.issues[n]["author"] = {"login": author}
+        if not signed:
+            self.issues[n]["body"] = body
+        return n
+
+    def dispatches(self):
+        return [a for a in self.calls if a[:2] == ("workflow", "run")]
+
+    def comment_of(self, n):
+        return self.comments[n][-1]["body"]
+
+
+@pytest.fixture(autouse=True)
+def _no_repo(monkeypatch):
+    monkeypatch.delenv("GH_REPO", raising=False)  # owner_hold then fails open, no event lookup
+
+
+def heal(f, env=ENV, dry=False):
+    return aw.heal(NOW, KEY, env, dry, f)
+
+
+def test_fallback_sets_agent_dev_only_when_orchestrator_is_unhealthy():
+    f = Heal()
+    n = f.issue(FAIL_TITLE, ["prio:1"])
+    f.listed["orchestrator.yml"] = OK_ORCH
+    assert heal(f) == [] and "agent:dev" not in f.labels(n)
+    f.listed["orchestrator.yml"] = []  # no run in the last 2 h is not "unhealthy" either
+    assert heal(f) == [] and "agent:dev" not in f.labels(n)
+    f.listed["orchestrator.yml"] = BAD_ORCH
+    assert "set agent:dev" in heal(f)[0]
+    assert "agent:dev" in f.labels(n)
+
+
+def test_fallback_respects_max_dev():
+    f = Heal()
+    f.issue("Task one", ["agent:dev"], author="Bankaifan")
+    f.issue("Task two", ["agent:dev"], author="Bankaifan")
+    n = f.issue(FAIL_TITLE)
+    f.listed["orchestrator.yml"] = BAD_ORCH
+    assert "MAX_DEV 2 reached" in heal(f)[0]
+    assert "agent:dev" not in f.labels(n)
+    assert aw.max_dev("junk") == 4 and aw.max_dev("0") == 4 and aw.max_dev("7") == 7
+
+
+def test_fallback_skips_issues_with_a_closing_pr_or_needs_human_or_agent_dev():
+    f = Heal()
+    pr, human, dev = f.issue(FAIL_TITLE), f.issue(FAIL_TITLE + " 2", ["needs-human"]), f.issue(FAIL_TITLE + " 3", ["agent:dev"])
+    f.prs = [{"number": 9, "body": f"Closes #{pr}"}]
+    f.listed["orchestrator.yml"] = BAD_ORCH
+    assert heal(f) == []
+    assert f.labels(pr) == set() and f.labels(human) == {"needs-human"} and f.labels(dev) == {"agent:dev"}
+
+
+def test_unsigned_and_foreign_author_issues_are_never_touched():
+    f = Heal()
+    unsigned = f.issue(FAIL_TITLE, signed=False)
+    foreign = f.issue(FAIL_TITLE + " 2", author="mallory")
+    owner_made = f.issue(FAIL_TITLE + " 3", author="Bankaifan")
+    f.listed["orchestrator.yml"] = BAD_ORCH
+    f.listed["agent-dev.yml"] = [{"displayTitle": f.issues[n]["title"], "conclusion": "failure",
+                                  "createdAt": "2026-11-10T11:30:00Z"} for n in (unsigned, foreign, owner_made)]
+    assert heal(f) == []
+    assert not [a for a in f.calls if a[0] in ("issue",) and a[1] in ("edit", "comment", "create")]
+    assert not [a for a in f.calls if a[0] == "label"]
+    assert aw.heal(NOW, "", ENV, False, f) == [] and not f.dispatches()  # a wrong key verifies nothing
+
+
+def test_no_author_bot_means_no_action():
+    f = Heal()
+    f.issue(FAIL_TITLE)
+    f.listed["orchestrator.yml"] = BAD_ORCH
+    assert "AUTHOR_BOT is not set" in heal(f, {"MAX_DEV": "2"})[0]
+    assert len(f.calls) == 0
+
+
+def failed_run(title, conclusion="failure", at="2026-11-10T11:30:00Z"):
+    return {"displayTitle": title, "conclusion": conclusion, "createdAt": at}
+
+
+def test_failed_agent_work_restarts_once_then_needs_human_with_marker():
+    f = Heal()
+    n = f.issue(FAIL_TITLE, ["agent:dev"])
+    f.listed["agent-dev.yml"] = [failed_run(FAIL_TITLE)]
+    assert "agent:dev again on #1" in heal(f)[0]
+    assert "stalled:1" in f.labels(n) and "agent:dev" in f.labels(n)
+    assert "needs-human" not in f.labels(n)
+    assert "Restarting once" in f.comment_of(n)
+    assert "park #1" in heal(f)[0]
+    assert "needs-human" in f.labels(n)
+    assert "<!-- decision: yes=restart-issue no=close-issue -->" in f.comment_of(n)
+    assert heal(f) == []  # parked: nothing more happens
+
+
+def test_restart_needs_a_failed_recent_run_and_no_open_pr():
+    f = Heal()
+    n = f.issue(FAIL_TITLE, ["agent:dev"])
+    f.listed["agent-dev.yml"] = [failed_run(FAIL_TITLE, "success")]
+    assert heal(f) == []
+    f.listed["agent-dev.yml"] = [failed_run(FAIL_TITLE, at="2026-11-10T05:00:00Z")]
+    assert heal(f) == []
+    f.listed["agent-dev.yml"] = [failed_run(FAIL_TITLE, "success", "2026-11-10T11:50:00Z"), failed_run(FAIL_TITLE)]
+    assert heal(f) == []  # the newest run is green
+    f.listed["agent-dev.yml"] = [failed_run(FAIL_TITLE, "cancelled")]
+    f.prs = [{"number": 5, "body": f"Fixes #{n}"}]
+    assert heal(f) == []
+    f.prs = []
+    f.listed["agent-fix.yml"] = [failed_run("unrelated")]
+    assert "agent:dev again" in heal(f)[0]
+
+
+def approved(f, at="2026-11-10T11:30:00Z", actor="Bankaifan"):
+    n = f.issue("Do the thing", ["approved"], author="Bankaifan")
+    f.timeline = [{"event": "labeled", "label": {"name": "approved"}, "actor": {"login": actor}, "created_at": at}]
+    return n
+
+
+def test_unstarted_approved_issue_kicks_orchestrator_and_counts():
+    f = Heal()
+    approved(f)
+    f.listed["orchestrator.yml"] = []
+    assert "dispatched orchestrator.yml (Kicked: 1)" in heal(f)[0]
+    assert f.dispatches() == [("workflow", "run", "orchestrator.yml")]
+    k = next(i for i in f.issues.values() if i["title"] == aw.KICK_TITLE)
+    assert guard_mark.verify(k["title"], k["body"], KEY) and aw.kicked(k) == 1
+
+
+def test_kicked_two_gives_needs_human_with_marker_line():
+    f = Heal()
+    approved(f)
+    f.listed["orchestrator.yml"] = []
+    heal(f)
+    k = next(n for n, i in f.issues.items() if i["title"] == aw.KICK_TITLE)
+    f.issues[k]["author"] = {"login": BOT}
+    assert "Kicked: 2" in heal(f)[0]
+    assert aw.kicked(f.issues[k]) == 2 and "needs-human" in f.labels(k)
+    assert "<!-- decision: yes=restart-issue no=close-issue -->" in f.comment_of(k)
+    assert len(f.dispatches()) == 2
+    assert "already kicked 2 times" in heal(f)[0]
+    assert len(f.dispatches()) == 2  # no third start
+
+
+def test_no_kick_when_label_is_young_run_followed_or_set_by_a_stranger():
+    f = Heal()
+    approved(f, at="2026-11-10T11:50:00Z")  # 10 min ago
+    f.listed["orchestrator.yml"] = []
+    assert heal(f) == []
+    g = Heal()
+    approved(g)
+    g.listed["orchestrator.yml"] = [{"conclusion": "success", "createdAt": "2026-11-10T11:45:00Z"}]
+    assert heal(g) == []
+    h = Heal()
+    approved(h, actor="mallory")
+    h.listed["orchestrator.yml"] = []
+    assert heal(h) == []
+    s = Heal()
+    approved(s)
+    s.listed["orchestrator.yml"] = [{"conclusion": "skipped", "createdAt": "2026-11-10T11:45:00Z"}]
+    assert "Kicked: 1" in heal(s)[0]  # a skipped run did not run the gate
+
+
+def test_dry_run_heal_writes_nothing(monkeypatch):
+    monkeypatch.setenv("GUARD_KEY", KEY)
+    f = Heal()
+    f.issue(FAIL_TITLE)
+    approved(f)
+    f.listed["orchestrator.yml"] = BAD_ORCH
+    out = aw.main({"DRY_RUN": "1", **ENV}, f, NOW)
+    assert any("would set agent:dev" in line for line in out) and any("would dispatch" in line for line in out)
+    assert not f.dispatches() and not f.creates()
+    assert not [a for a in f.calls if a[:2] in {("issue", w) for w in aw.WRITES} or a[0] == "label"]
+
+
+def test_readonly_guard_rejects_workflow_dispatch():
+    with pytest.raises(RuntimeError):
+        aw.readonly(lambda *a: "")("workflow", "run", "orchestrator.yml")
