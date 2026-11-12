@@ -31,6 +31,7 @@ Unknown facts are marked "open".
 | `ORCHESTRATOR_EVENTS` | `off` | `orchestrator.yml` (`if`, and env for `tools/orchestrator_gate.py`); `setup.yml` (shown) | `on` also wakes the orchestrator on issues, issue comments, PRs and reviews (`docs/decisions/0012-orchestrator-events.md`) | `on` / `off`; anything other than `on` is off |
 | `MAX_DEV` | `4` | `orchestrator.yml` and `weekly-summary.yml` (env); `tools/prefilter.py`; `tools/weekly_summary.py` | maximum number of open `agent:dev` issues that hold a slot, i.e. agent jobs at once (parked `needs-human` issues and issues with a merged PR do not count) | integer. Empty or non-numeric falls back to the default with a warning |
 | `MAX_PRS` | `5` | `orchestrator.yml` and `weekly-summary.yml` (env); `tools/prefilter.py`; `tools/weekly_summary.py` | maximum number of open agent PRs | integer. Empty or non-numeric falls back to the default with a warning |
+| `DEV_SHELL` | not set (command list) | `agent-dev.yml`, `agent-fix.yml` (`--allowedTools` expression) | `free` gives developer and fix model runs bare `Bash` instead of the command list; the `--settings` deny rules stay (`docs/design/0017-safety-boundary.md`, step 6) | `free`; any other value or unset keeps the command list |
 
 ## Environment inputs that are not repo variables
 
