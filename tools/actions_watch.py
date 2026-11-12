@@ -17,6 +17,7 @@ import re
 import subprocess
 import sys
 
+import budget
 import decision
 import failure_watch as fw
 import guard_mark
@@ -78,6 +79,8 @@ def handle(r, key, dry=False, run=liveness.gh):
     capped = fw.turn_cap(fw.workflow_file(r), r["id"], r.get("conclusion"), run)
     if capped:
         return fw.turn_cap_line(r["id"], capped)
+    if fw.rate_limited(r["id"], r.get("conclusion"), run):
+        return f"run {r['id']}: GitHub API rate limit: no issue, no rerun"
     sig, started = fw.analyse(r, run)
     if fw.expected_cancel(r, started, run):
         return f"run {r['id']}: expected cancellation"
@@ -286,6 +289,8 @@ def main(env=None, run=liveness.gh, now=None):
     env = os.environ if env is None else env
     if env.get("FAILURE_WATCH", "").strip().lower() == "off":
         return ["failure watch is off"]
+    if reason := budget.low(budget.BACKGROUND, run):
+        return [reason]
     key = guard_mark.key_from_env()
     if not key:
         raise SystemExit("GUARD_KEY is not set: nothing can be signed")

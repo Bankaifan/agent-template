@@ -24,6 +24,7 @@ import sys
 from datetime import UTC, datetime
 from itertools import pairwise
 
+import budget
 from agent_guard import same_login
 from ghcall import gh
 
@@ -158,6 +159,10 @@ def main() -> int:
     event, action = env.get("EVENT", ""), env.get("EVENT_ACTION", "labeled" if env.get("EVENT") == "issues" else "")
     run_id = int(env.get("RUN_ID", "0"))
     now = datetime.now(UTC)
+    if reason := budget.low(budget.BACKGROUND, gh):
+        print(reason, file=sys.stderr)
+        print("false")
+        return 0
     kw = {}
     runs = []
     if event in EVENTS and not (event == "issues" and action == "labeled"):

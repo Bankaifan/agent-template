@@ -197,6 +197,8 @@ jobs:
             Changes under .github/workflows/ are allowed: commit them like any file. After your run a script carries them
             past the token as a patch file (workflow-apply applies it after the security review). Older comments saying a
             workflow push was refused or that Daniel applies it by hand are outdated: implement and commit anyway.
+            To read a run log, run `python3 tools/run_log.py <run id>` and Read ci-failure.log: a large `gh run view`
+            output lands in a file you may not read.
             Use Read/Glob/Grep to read files, not shell reads. If a needed action is denied,
             comment on the issue/PR saying which one instead of stopping silently.
             Template sync issue: the template files at the issue's `Template-Sync` SHA are in .template/

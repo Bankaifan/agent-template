@@ -1,4 +1,4 @@
-"""Run gh. A read call is retried on a transient failure, a write never; the final error carries stderr."""
+"""Run gh. A read call is retried on a transient failure (not on the rate limit), a write never; the error carries stderr."""
 
 import subprocess
 import time
@@ -6,6 +6,12 @@ import time
 DELAYS = (2, 5)  # seconds before retry 1 and retry 2
 READ_GROUPS = {"pr": {"view", "diff", "list"}, "issue": {"view", "list"}, "run": {"view", "list"}, "label": {"list"}}
 WRITE_FLAGS = ("-f", "-F", "--input", "--field", "--raw-field")
+RATE_LIMIT = ("rate limit exceeded", "secondary rate limit")  # waiting seconds does not help: no retry
+
+
+def rate_limited(text):
+    """GitHub refused the call for the API rate limit (the budget comes back within the hour)."""
+    return any(m in (text or "").lower() for m in RATE_LIMIT)
 
 
 class GhError(subprocess.CalledProcessError):
@@ -13,7 +19,8 @@ class GhError(subprocess.CalledProcessError):
 
     def __str__(self):
         err = (self.stderr or "").strip()[-300:] or "(no stderr)"
-        return f"{super().__str__()} stderr: {err}"
+        flag = " GitHub API rate limit exceeded." if rate_limited(self.stderr) else ""
+        return f"{super().__str__()}{flag} stderr: {err}"
 
 
 def is_read(args):
@@ -44,7 +51,7 @@ def gh(*args, sleep=time.sleep):
         try:
             return subprocess.run(["gh", *args], check=True, capture_output=True, text=True).stdout
         except subprocess.CalledProcessError as e:
-            if attempt >= len(delays):
+            if attempt >= len(delays) or rate_limited(e.stderr):
                 raise GhError(e.returncode, e.cmd, output=e.output, stderr=e.stderr) from e
             sleep(delays[attempt])
             attempt += 1

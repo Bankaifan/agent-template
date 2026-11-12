@@ -80,6 +80,14 @@ def test_agent_run_at_the_turn_cap_is_neither_rerun_nor_an_issue():
     assert "opened failure issue" in aw.handle(g.runs[0], KEY, False, g)
 
 
+def test_rate_limited_run_is_neither_rerun_nor_an_issue():
+    """#511, #617: a run that died on GitHub's API rate limit is load, not a defect; an issue only adds load."""
+    f = setup(mkrun(16, "orchestrator.yml", "failure"))
+    f.logs[16] = "gh: API rate limit exceeded for installation ID 180079554."
+    assert aw.handle(f.runs[0], KEY, False, f) == "run 16: GitHub API rate limit: no issue, no rerun"
+    assert not f.reruns() and not f.creates()
+
+
 def test_real_failure_is_never_rerun():
     f = setup(mkrun(9, "ci.yml", "failure"))
     aw.handle(f.runs[0], KEY, False, f)
