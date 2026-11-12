@@ -168,6 +168,8 @@ def release_pr(run, versions, fragments):
         run("pr", "close", str(number), "--comment", "Nothing left to release.")
         return f"closed release PR #{number}: nothing to release"
     title = f"Release {', '.join(versions)}"
+    if len(title) > 100:  # check_pr_form caps titles at 100 characters
+        title = f"Release {versions[0]} to {versions[-1]} ({len(versions)} versions)"
     body = f"Versions: {', '.join(versions)}\nFragments: {', '.join(fragments) or 'none'}"
     if number is None:
         run("pr", "create", "--base", "main", "--head", RELEASE_BRANCH, "--title", title, "--body", body)

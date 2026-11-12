@@ -261,6 +261,12 @@ def test_train_runs_the_release_first_and_reports_it(capsys):
     assert "opened release PR Release 1.20, 1.21" in capsys.readouterr().out
 
 
+def test_long_release_title_is_shortened_to_100_characters(capsys):
+    versions = [f"1.{n}" for n in range(21, 61)]
+    assert train.run_train(ENV, Gh([]), releaser=lambda: versions) == 0
+    assert "opened release PR Release 1.21 to 1.60 (40 versions)" in capsys.readouterr().out
+
+
 def test_failed_release_does_not_stop_the_train(capsys):
     prs = [pr(5, merge="DIRTY")]
     run = Gh(prs, approved(*prs))
