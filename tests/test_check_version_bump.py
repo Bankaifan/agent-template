@@ -2,6 +2,10 @@
 import importlib.util
 import pathlib
 
+import pytest
+
+pytestmark = pytest.mark.template_only
+
 ROOT = pathlib.Path(__file__).parent.parent
 _spec = importlib.util.spec_from_file_location("check_version_bump", ROOT / "tools" / "check" / "check_version_bump.py")
 mod = importlib.util.module_from_spec(_spec)
@@ -52,3 +56,12 @@ def test_main_uses_git_output(monkeypatch, capsys):
     monkeypatch.setattr(mod, "template_managed", lambda: MANAGED)
     assert mod.main(["origin/main"]) == 1
     assert "without a changelog fragment" in capsys.readouterr().out
+
+
+def test_downstream_skips_without_git(monkeypatch, tmp_path, capsys):
+    (tmp_path / ".agents").mkdir()
+    (tmp_path / ".agents" / "template.json").write_text("{}")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(mod, "git", lambda *a: pytest.fail("no git call downstream"))
+    assert mod.main([]) == 0
+    assert "skipped" in capsys.readouterr().out

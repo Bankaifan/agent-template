@@ -13,9 +13,14 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 from managed_guard import template_managed
 from release_fragments import FRAGMENT_DIR, FRAGMENT_NAME, Refused, parse_fragment
-from template_sync import ConfigError, is_managed
+from template_sync import CONFIG, ConfigError, is_managed
 
 VERSION_FILE = "VERSION"
+
+
+def is_downstream():
+    """A downstream project has .agents/template.json and no VERSION policy of its own (design 0014 section 4.4)."""
+    return CONFIG.is_file()
 
 
 def is_fragment(path):
@@ -55,6 +60,9 @@ def read_file(path):
 def main(argv=None) -> int:
     args = sys.argv[1:] if argv is None else argv
     base = args[0] if args else "origin/main"
+    if is_downstream():
+        print("check_version_bump: skipped (downstream project: .agents/template.json exists)")
+        return 0
     try:
         changed = [f for f in git("diff", "--name-only", f"{base}...HEAD").split("\n") if f]
         errs = errors(changed, template_managed(), read_file)
