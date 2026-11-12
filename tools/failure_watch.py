@@ -25,8 +25,6 @@ FAILED_JOB = ("failure", "timed_out")
 CANCELLED_STEP = "cancelled"  # step name of a job that never started (displaced by concurrency, design 0012 4.2)
 # Cancellations that are normal (design 0012 4.2): value True = only when a newer run of the same branch exists.
 EXPECTED_CANCEL = {"agent-review.yml": False, "validate.yml": True, "orchestrator.yml": True}
-# Workflows whose pending run is displaced by a newer one in the concurrency group (cancelled, no step ever started).
-DISPLACED_OK = ("orchestrator.yml",)
 MERGE_GATES = ("validate.yml", "risk.yml", "agent-security-review.yml")
 PR_ONLY = ("risk.yml", "agent-security-review.yml", "agent-review.yml")  # green on any non-agent ref counts
 AGENT_OWNED = ("validate.yml", "agent-review.yml")  # failures on agent/* branches belong to agent-fix rounds
@@ -100,21 +98,29 @@ def signature(run_obj, run=liveness.gh):
     return analyse(run_obj, run)[0]
 
 
-def newer_run(run_obj, run=liveness.gh):
-    """A later run of the same workflow file on the same branch exists, in any status (a queued one counts)."""
-    branch = quote(run_obj.get("head_branch") or "", safe="")
-    runs = _api(f"repos/{{owner}}/{{repo}}/actions/runs?branch={branch}&per_page=100", run).get("workflow_runs") or []
+def newer_run(run_obj, run=liveness.gh, any_branch=False):
+    """A later run of the same workflow file exists (same branch unless ANY_BRANCH), in any status (a queued one counts)."""
+    if any_branch:
+        path = f"repos/{{owner}}/{{repo}}/actions/workflows/{quote(workflow_file(run_obj), safe='')}/runs?per_page=100"
+    else:
+        branch = quote(run_obj.get("head_branch") or "", safe="")
+        path = f"repos/{{owner}}/{{repo}}/actions/runs?branch={branch}&per_page=100"
+    runs = _api(path, run).get("workflow_runs") or []
     return any(o["id"] > run_obj["id"] and workflow_file(o) == workflow_file(run_obj)
-               and o.get("head_branch") == run_obj.get("head_branch") for o in runs)
+               and (any_branch or o.get("head_branch") == run_obj.get("head_branch")) for o in runs)
 
 
 def expected_cancel(run_obj, started, run=liveness.gh):
-    """Design 0012 4.2: a cancelled run with started steps is normal for EXPECTED_CANCEL workflows
-    (agent-review always, validate.yml only when a newer run of the same branch replaced it)."""
-    wf = workflow_file(run_obj)
-    if run_obj.get("conclusion") != "cancelled" or wf not in EXPECTED_CANCEL:
+    """A cancelled run that never started (no job, or no step ran) is a pending run replaced in its concurrency
+    group: expected when a newer run of the same workflow exists, a lost trigger otherwise (issue #482).
+    Design 0012 4.2: a cancelled run with started steps is normal for EXPECTED_CANCEL workflows
+    (agent-review always, validate.yml and orchestrator.yml only when a newer run of the same branch replaced it)."""
+    if run_obj.get("conclusion") != "cancelled":
         return False
-    if not started and wf not in DISPLACED_OK:
+    if not started:
+        return newer_run(run_obj, run, any_branch=True)
+    wf = workflow_file(run_obj)
+    if wf not in EXPECTED_CANCEL:
         return False
     return not EXPECTED_CANCEL[wf] or newer_run(run_obj, run)
 
@@ -267,6 +273,26 @@ def auto_close(issues, touched, key, run=liveness.gh):
     return closed
 
 
+def close_expected(issues, touched, key, run=liveness.gh):
+    """Close open `<workflow> / <job> / cancelled` issues whose last run is an expected replaced pending run."""
+    closed = []
+    for issue in issues.values():
+        if issue["state"] != "OPEN" or issue["title"] in touched or not issue["title"].endswith(" / " + CANCELLED_STEP):
+            continue
+        last_id = parse_body(issue["body"])["last_id"]
+        if not last_id:
+            continue
+        try:
+            r = _api(f"repos/{{owner}}/{{repo}}/actions/runs/{last_id}", run)
+            expected = expected_cancel(r, analyse(r, run)[1], run)
+        except Exception:  # noqa: BLE001, S112 - an unreadable run keeps the issue open
+            continue
+        if expected:
+            _close(issue, "Closed by the failure watch: the last run was a pending run replaced by a newer one.", run)
+            closed.append(issue["number"])
+    return closed
+
+
 def close_overdue(overdue_labels, key, run=liveness.gh):
     """Close signed `Overdue scheduled run: <label>` issues whose workflow is not overdue any more."""
     closed = []
@@ -315,6 +341,7 @@ def watch(since, now, overdue_labels, key=None, run=liveness.gh, self_wf=SELF):
         touched.add(title)
         handled = max(handled, created)
     actions += [f"closed failure issue #{n}" for n in auto_close(issues, touched, key, run)]
+    actions += [f"closed expected-cancel issue #{n}" for n in close_expected(issues, touched, key, run)]
     actions += [f"closed overdue issue #{n}" for n in close_overdue(overdue_labels, key, run)]
     if deferred:
         actions.append(f"failure watch: {len(deferred)} signatures deferred")

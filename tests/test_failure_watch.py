@@ -73,6 +73,9 @@ class Fake:
     def api(self, path):
         if "/jobs" in path:
             return json.dumps(self.jobs[int(path.split("/runs/")[1].split("/")[0])])
+        one = [r for r in self.runs if path.endswith(f"/runs/{r['id']}")]
+        if one:
+            return json.dumps(one[0])
         if "/timeline" in path:
             return json.dumps(self.timeline)
         if "/pulls" in path:
@@ -155,6 +158,40 @@ def test_orchestrator_run_displaced_by_a_newer_run_is_expected():
     actions, _ = tick(f)
     assert [i["title"] for i in f.issues.values()] == [title("orchestrator.yml / orchestrate / cancelled")]
     assert len(actions) == 1
+
+
+def test_replaced_pending_run_with_a_newer_run_is_expected_for_any_workflow():
+    """Issue #482: job-level cancel without steps, or no job at all, plus a newer run: no issue."""
+    f = Fake()
+    cancelled(f, 1, wf="dispatch.yml", job="go")
+    f.runs.append(mkrun(2, "status.yml", "cancelled"))
+    f.jobs[2] = {"jobs": []}
+    f.runs.append(mkrun(3, "dispatch.yml", None))  # queued newer run
+    f.runs.append(mkrun(4, "status.yml", "success"))
+    actions, _ = tick(f)
+    assert actions == [] and f.issues == {}
+
+
+def test_replaced_pending_run_without_a_newer_run_is_a_failure():
+    f = Fake()
+    cancelled(f, 1, wf="dispatch.yml", job="go")
+    cancelled(f, 2, wf="watch.yml", job="w")
+    f.runs.append(mkrun(3, "other.yml", "success"))  # newer, but another workflow
+    tick(f)
+    assert sorted(i["title"] for i in f.issues.values()) == [
+        title("dispatch.yml / go / cancelled"), title("watch.yml / w / cancelled")]
+
+
+def test_open_cancelled_issue_whose_last_run_is_expected_is_closed():
+    f = Fake()
+    cancelled(f, 1, wf="dispatch.yml", job="go")
+    f.runs.append(mkrun(2, "dispatch.yml", "success"))
+    f.runs[0]["created_at"] = "2026-11-09T00:00:00+00:00"  # outside the window: not collected again
+    sig = "dispatch.yml / go / cancelled"
+    f.add_issue(title(sig), fw.make_body(sig, 97, "https://github.com/o/r/actions/runs/1"))
+    f.add_issue(title("ci.yml / build / test"), body())  # other family stays open
+    fw.watch(NOW, NOW, [], KEY, f)
+    assert f.issues[1]["state"] == "CLOSED" and f.issues[2]["state"] == "OPEN"
 
 
 def test_startup_failure_has_step_dash():

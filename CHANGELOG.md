@@ -3,6 +3,9 @@
 ## [Unreleased]
 - README (EN and DE) and `docs/decisions/0007-template-sync.md`: six-step setup for the template sync, version gate, reuse by other projects.
 
+## [1.20] - 2026-11-12
+- `tools/failure_watch.py`, `tools/actions_watch.py`: a cancelled run whose job never started (no job, or no step ran) is expected when a newer run of the same workflow exists: no issue, no rerun. Open `<workflow> / <job> / cancelled` issues whose last run is expected are closed (#482, Refs #440).
+
 ## [1.19] - 2026-11-12
 - `tools/template_apply.py`: step 1 of the template sync by script (design 0014): plan, path guard (relative managed paths only), three-way merge through `git merge-file` (a conflict leaves the file untouched), write and delete for clean files. Not wired into a workflow yet (#475, #414).
 
