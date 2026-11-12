@@ -26,7 +26,7 @@ Idea: **rules a script can check live in CI, not in prompts.** The agents get a 
   enables auto-merge; majors get `needs-human`. The update type comes from `dependabot/fetch-metadata` (grouped PRs: highest type wins),
   falling back to the title ("Update x requirement from A to B" is parsed too); unknown means major.
 - Every `needs-human` on a PR also requests Daniel's review (`gh pr edit --add-reviewer Bankaifan`, skipped if he is the author), so it shows up under "Needs your review".
-- Design study before big work: architectural, breaking, release-relevant or multi-PR issues first get a `docs/design/NNNN-<slug>.md` PR
+- Design study only if a change touches who or what is trusted, token or app permissions, CODEOWNERS paths, or what leaves the repo: such an issue first gets a `docs/design/NNNN-<slug>.md` PR
   (see `docs/design/README.md`), reviewed by a design reviewer (`.agents/roles/design-reviewer.md`). Only the section *Owner decisions* needs Daniel;
   if it is empty the design merges without him. Afterwards the orchestrator creates the implementation issues (body line `Design: docs/design/...`;
   `tools/trusted_issues.py` trusts them when `AUTHOR_BOT` wrote them and the file exists on `main`).

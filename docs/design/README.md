@@ -1,7 +1,8 @@
 # Design studies
 
-Big work (architectural, breaking, release-relevant, multi-PR) starts with a design PR that adds
-`docs/design/NNNN-<slug>.md` (next free four-digit number). No implementation in that PR.
+A design PR adds `docs/design/NNNN-<slug>.md` (next free four-digit number) only if the work changes who or what
+is trusted, token or app permissions, CODEOWNERS paths, or what leaves the repo (AGENTS.md). Other big or multi-PR
+work starts directly with a split in the issue. No implementation in a design PR.
 
 Sections, in this order:
 1. Goal

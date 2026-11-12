@@ -50,6 +50,25 @@ def test_parking_rules_name_marker_and_answer_effects():
     assert "decision marker" in read("unblocker.md")
 
 
+FOUR_CASES = "who or what is trusted, token or app permissions, CODEOWNERS paths, or what leaves the repo"
+
+
+def test_design_study_is_required_only_for_the_four_cases():
+    root = ROLES.parent.parent
+    sources = ((root / "AGENTS.md").read_text(encoding="utf-8"),
+               (root / "README.md").read_text(encoding="utf-8"),
+               (root / "docs" / "design" / "README.md").read_text(encoding="utf-8"),
+               (root / ".github" / "workflows" / "orchestrator.yml").read_text(encoding="utf-8"))
+    for text in sources:
+        flat = " ".join(text.split())  # the prompt and README wrap lines
+        assert FOUR_CASES in flat
+        assert "architectural, breaking, release-relevant, multi-PR) starts" not in flat
+        assert "Big work" not in flat
+    role = " ".join(read("orchestrator.md").split())
+    assert "Design study first only for the four cases in AGENTS.md" in role
+    assert "Big work" not in role
+
+
 def test_orchestrator_leaves_unblocker_items_alone():
     text = read("orchestrator.md")
     assert "Do not restart or rewrite an item the unblocker owns" in text

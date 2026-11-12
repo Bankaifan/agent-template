@@ -221,10 +221,11 @@ jobs:
                do not start the slip (it stays approved, retried next run). Never start more
                issues than the free agent:dev slots. Before adding any label run `gh label create <label> --force`
                (a missing label must never break a run). Start nothing when free PR slots is 0.
-               Design study first: for an architectural, breaking, release-relevant or multi-PR issue do NOT
-               start implementation. Write a slip for a design task instead (output docs/design/NNNN-<slug>.md as
-               described in .agents/roles/orchestrator.md). Small issues (docs, tests, fixes, contained
-               features) start directly. Issues in the list with a non-null `design` come from a merged design:
+               Design study first only if the issue changes who or what is trusted, token or app permissions,
+               CODEOWNERS paths, or what leaves the repo: then do NOT start implementation. Write a slip for a
+               design task instead (output docs/design/NNNN-<slug>.md as described in .agents/roles/orchestrator.md).
+               Every other issue, also architectural, breaking or multi-PR, starts directly; its split is in the issue.
+               Issues in the list with a non-null `design` come from a merged design:
                split issues run in parallel; an issue that needs an earlier step merged carries a
                `Depends on: #N` line and the script holds it back until #N is closed.
             1c. Open design PR (only docs/design/ files) approved by the reviewer: read its section
