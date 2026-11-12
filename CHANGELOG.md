@@ -3,6 +3,33 @@
 ## [Unreleased]
 - README (EN and DE) and `docs/decisions/0007-template-sync.md`: six-step setup for the template sync, version gate, reuse by other projects.
 
+## [1.87] - 2026-11-12
+- A dev run without a PR on an issue that already has a merged PR now drops agent:dev instead of retrying and opening a stuck-run issue.
+
+## [1.86] - 2026-11-12
+- The orchestrator changes its body files with Edit instead of a denied sed call.
+
+## [1.85] - 2026-11-12
+- A silent developer or fix run retries once by itself (fix: the task restarts from main) and then becomes one signed prio:1 issue for the agents instead of needs-human.
+
+## [1.84] - 2026-11-12
+- A PR title over 100 characters is cut at a word boundary by script instead of parking the PR with Daniel; the fix run's silent-run note now knows the author app and can offer a restart.
+
+## [1.83] - 2026-11-12
+- Developer and fix runs may pipe into head, tail, grep, sort, wc and jq (read-only filters; both runs already have python3).
+
+## [1.82] - 2026-11-12
+- The orchestrator writes long issue and comment bodies to `.agent-out/` (its only writable path) instead of a denied `/tmp` file.
+
+## [1.81] - 2026-11-12
+- Pipeline canary: a signed haiku issue after merges to workflows/tools, a 45 min check that names the stage where the chain stopped.
+
+## [1.80] - 2026-11-12
+- The developer model is chosen by script from the slip: haiku by default, sonnet for workflows, CI, trust or guard tools, CODEOWNERS and design docs, or after a failed round; a `Model:` line is only a hint.
+
+## [1.79] - 2026-11-12
+- Failure watch: a red validate run on a PR branch no longer opens or reopens a failing-workflow issue; only main does.
+
 ## [1.78] - 2026-11-12
 - Automerge also runs when agent-security-review completes, so a security-review success that arrives after the approval no longer leaves the PR waiting.
 
