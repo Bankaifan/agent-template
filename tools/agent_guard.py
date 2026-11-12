@@ -7,7 +7,9 @@ CLI (needs the gh CLI with GH_TOKEN and GH_REPO):
   agent_guard.py agent-pr AUTHOR [LABELS]    exit 0 if the PR is an agent PR (env AUTHOR_BOT, OWNER; LABELS comma list)
   agent_guard.py reviewed PR SHA [BODYHASH]  exit 0 if the approver app (env APPROVER_BOT) reviewed SHA (and BODYHASH)
   agent_guard.py body-hash PR                print the hash of the PR body (the reviewer repeats it as `body-hash: H`)
-  agent_guard.py silent dev ISSUE SINCE      after agent-dev: no PR for agent/ISSUE-* created at/after SINCE (UTC ISO) -> escalate
+  agent_guard.py refund PR SHA               give the round of SHA back if the approver app (env APPROVER_BOT) approved it
+  agent_guard.py form-failure RUN_ID         exit 0 if the failed validate run failed on PR form or VERSION/CHANGELOG only (no round)
+  agent_guard.py silent dev ISSUE SINCE     after agent-dev: no PR for agent/ISSUE-* created at/after SINCE (UTC ISO) -> escalate
   agent_guard.py silent fix PR HEAD_BEFORE [BODY_FILE]
                                              after agent-fix: PR head and body (BODY_FILE = body before the run) unchanged -> escalate
   agent_guard.py silent review PR SHA [BODYHASH]
@@ -106,6 +108,79 @@ def count_round(number, sha, run=gh):
         except (subprocess.CalledProcessError, OSError):
             pass
     return "counted"
+
+
+def reviews_of(pr, run=gh):
+    pages = json.loads(run("api", "--paginate", "--slurp", f"repos/{os.environ['GH_REPO']}/pulls/{pr}/reviews"))
+    return [r for page in pages for r in page]
+
+
+def refund_round(number, sha, approver, run=gh):
+    """A round counts only for a finding. The reviewer counts a head before it reviews; when the approver app's latest
+    review of that head is APPROVED, the round is given back (label review:N lowered, marker removed).
+    Returns "refunded", "kept" (no approval of this head) or "none" (this head was not counted)."""
+    labels = set(run("pr", "view", str(number), "--json", "labels", "--jq", ".labels[].name").split())
+    mark = f"round:{sha[:7]}"
+    if mark not in labels:
+        return "none"
+    mine = [r for r in reviews_of(number, run) if r.get("commit_id") == sha
+            and same_login((r.get("user") or {}).get("login"), approver)]
+    if not mine or mine[-1].get("state") != "APPROVED":
+        return "kept"
+    if "risk:security" in labels:  # the security verdict comes from a separate run; without its approve keep the round
+        import approval  # imports agent_guard itself: load it here, not at module level
+
+        pages = json.loads(run("api", "--paginate", "--slurp", f"repos/{os.environ['GH_REPO']}/issues/{number}/comments"))
+        if approval.security_verdict([c for page in pages for c in page], sha, approver) != "approve":
+            return "kept"
+    cur = next((n for n in ("review:3", "review:2", "review:1") if n in labels), None)
+    if cur:  # the labels accumulate (review:2 implies review:1): the highest one is this head's round
+        run("pr", "edit", str(number), "--remove-label", cur)
+    run("pr", "edit", str(number), "--remove-label", mark)
+    return "refunded"
+
+
+# Failing lines of the form checks (PR title/body, VERSION/CHANGELOG): no round; agent-fix gives the first one per PR a fix run.
+_FORM_FAIL = re.compile(r"check_(?:pr_form|version_bump|version):\s+(?!ok\b|skipped\b|cannot run\b)")
+
+
+def form_failure(log):
+    """True if the failed validate log shows a PR-form or version/changelog failure (not a defect in the diff)."""
+    return bool(_FORM_FAIL.search(log or ""))
+
+
+def is_form_failure(run_id, run=gh):
+    """Unknown (log unreadable) is not a form failure: the red CI counts as a round, as before."""
+    try:
+        return form_failure(run("run", "view", str(run_id), "--log-failed"))
+    except (subprocess.CalledProcessError, OSError):
+        return False
+
+
+def settled(view, comments, approver):
+    """The PR is green and approved by the reviewers at its head: `view` is `gh pr view --json
+    reviewDecision,labels,headRefOid,statusCheckRollup`. A risk:security PR also needs the security `approve`."""
+    import approval  # late: approval imports this module
+    checks = view.get("statusCheckRollup") or []
+    states = [(c.get("conclusion") or c.get("state") or "").upper() for c in checks]
+    green = bool(states) and all(s in ("SUCCESS", "NEUTRAL", "SKIPPED") for s in states)
+    labels = {x["name"] for x in view.get("labels", [])}
+    sha = view.get("headRefOid", "")
+    if not (green and approval.effective_approval(view.get("reviewDecision"), labels, comments, sha, approver)):
+        return False
+    return "risk:security" not in labels or approval.security_verdict(comments, sha, approver) == "approve"
+
+
+def is_settled(number, approver, run=gh):
+    """Read failures count as not settled: the silent run then escalates as before."""
+    try:
+        view = json.loads(run("pr", "view", str(number), "--json", "reviewDecision,labels,headRefOid,statusCheckRollup"))
+        pages = json.loads(run("api", "--paginate", "--slurp",
+                               f"repos/{os.environ['GH_REPO']}/issues/{number}/comments") or "[]")
+        comments = [c for p in pages for c in (p if isinstance(p, list) else [p])]
+        return settled(view, comments, approver)
+    except (subprocess.CalledProcessError, OSError, ValueError, KeyError):
+        return False
 
 
 def is_stale_head(number, sha, run=gh):
@@ -276,11 +351,6 @@ def escalate(kind, number, is_pr, what, owner, run=gh):
             print("assignment failed")
 
 
-def reviews_of(pr, run=gh):
-    pages = json.loads(run("api", "--paginate", "--slurp", f"repos/{os.environ['GH_REPO']}/pulls/{pr}/reviews"))
-    return [r for page in pages for r in page]
-
-
 class UsageError(ValueError):
     pass
 
@@ -298,7 +368,11 @@ def silent_check(args, owner):
     elif kind == "fix" and len(args) >= 3:
         now = json.loads(gh("pr", "view", number, "--json", "headRefOid,body"))
         before = read_body_before(args[3]) if len(args) >= 4 else None
-        if not fix_produced(args[2], now["headRefOid"], before, now.get("body")):
+        if fix_produced(args[2], now["headRefOid"], before, now.get("body")):
+            pass
+        elif is_settled(number, os.environ.get("APPROVER_BOT", "")):  # nothing to fix: log it, no needs-human
+            print(f"fix run on #{number} pushed nothing, but the PR is green and approved at its head: logged only")
+        else:
             escalate("fix", number, True, "no fix was produced (no new commit, PR body unchanged)", owner)
     elif kind == "review" and len(args) >= 3:
         bh = args[3] if len(args) >= 4 else None
@@ -345,6 +419,10 @@ def main(argv):
         add_labels(args[0], args[1], args[2:])
     elif cmd == "round" and len(args) == 2:
         print(count_round(args[0], args[1]))
+    elif cmd == "refund" and len(args) == 2:
+        print(refund_round(args[0], args[1], os.environ.get("APPROVER_BOT", "")))
+    elif cmd == "form-failure" and len(args) == 1:
+        return 0 if is_form_failure(args[0]) else 1
     elif cmd == "agent-pr" and len(args) in (1, 2):
         labels = (args[1] if len(args) == 2 else "").split(",")
         return 0 if is_agent_pr(args[0], labels, os.environ.get("AUTHOR_BOT", ""), owner) else 1

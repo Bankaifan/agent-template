@@ -4,10 +4,10 @@ run-name: "${{ github.event_name == 'pull_request_review' && github.event.pull_r
 #  - the approver app requesting changes (pull_request_review), or
 #  - a failed `validate` run (workflow_run), which counts as a round too.
 # Both triggers run in the base repo context and get the repo secrets.
-# Also started by `workflow_dispatch` with input `pr` (the status run, for a PR that conflicts with main; it has
-# already bumped the round label).
+# Also started by `workflow_dispatch` with input `pr` (the status run, for a PR that conflicts with main): a conflict
+# is no finding, so it starts a fix without reading or bumping the round labels.
 # Rounds: labels review:1, review:2 -> fix; review:3 -> restart the issue once (restart:1), else needs-human.
-# A red CI bumps the label first.
+# A red CI bumps the label first; the first PR-form or VERSION/CHANGELOG failure of a PR gets an uncounted fix run (formfix).
 on:
   pull_request_review:
     types: [submitted]
@@ -50,6 +50,7 @@ jobs:
       REVIEW_BRANCH: ${{ github.event.pull_request.head.ref }}
       RUN_BRANCH: ${{ github.event.workflow_run.head_branch }}
       RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+      RUN_ID: ${{ github.event.workflow_run.id }}
       REVIEWER: ${{ github.event.review.user.login }}
       REVIEW_STATE: ${{ github.event.review.state }}
       REVIEW_COMMIT: ${{ github.event.review.commit_id }}
@@ -69,6 +70,7 @@ jobs:
           client-id: ${{ vars.APPROVER_CLIENT_ID }}
           private-key: ${{ secrets.APPROVER_APP_KEY }}
           permission-pull-requests: write
+          permission-actions: read
       # main only: the label and login helper.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -143,7 +145,19 @@ jobs:
           echo "model=$model" >> "$GITHUB_OUTPUT"
           case "$labels" in *,needs-human,*) echo "fix=false" >> "$GITHUB_OUTPUT"; exit 0 ;; esac
           if [ "$EVENT" = workflow_run ]; then
-            # A red CI is a round: bump the counter like the reviewer does.
+            # A red CI caused by PR form or VERSION/CHANGELOG is no finding on the diff: the first one per PR gets a
+            # fix run without a round (label formfix); a second one counts a round like any red CI, so it cannot loop.
+            # An unreadable log counts as a round, as before.
+            if guard form-failure "$RUN_ID"; then
+              case "$labels" in
+                *,formfix,*) echo "Second form red CI on this PR: counts a round" ;;
+                *)
+                  guard label pr "$pr" formfix
+                  echo "Red CI from PR form or VERSION/CHANGELOG: fix run without a round"
+                  echo "fix=true" >> "$GITHUB_OUTPUT"; exit 0 ;;
+              esac
+            fi
+            # Any other red CI is a round: bump the counter like the reviewer does.
             case "$labels" in
               *,review:3,*) limit; exit 0 ;;
               *,review:2,*) guard label pr "$pr" review:3; limit; exit 0 ;;
@@ -151,6 +165,8 @@ jobs:
               *) guard label pr "$pr" review:1 ;;
             esac
             echo "fix=true" >> "$GITHUB_OUTPUT"
+          elif [ "$EVENT" = workflow_dispatch ]; then
+            echo "fix=true" >> "$GITHUB_OUTPUT"  # conflict with main: no round
           else
             # The reviewer already bumped the counter before reviewing.
             case "$labels" in
@@ -353,6 +369,7 @@ jobs:
           EXEC_FILE: ${{ steps.claude.outputs.execution_file }}
           HEAD_BEFORE: ${{ steps.before.outputs.sha }}
           GUARD_KEY: ${{ secrets.GUARD_KEY }}  # script step only, never a model step (tests/test_guard_mark.py)
+          APPROVER_BOT: ${{ vars.APPROVER_BOT }}
         run: |
           # Rule: the guard comes from main, this call from the PR branch. `silent` ignores extra trailing args and a
           # usage error escalates ("guard error"); only ever append args, never reorder or remove them.

@@ -238,6 +238,27 @@ def test_silent_fix_paths(stub_gh):
     assert len(stub_gh()) == len(open_log) + 1  # only the pr view
 
 
+def _settled_view(**kw):
+    view = {"headRefOid": "abc", "labels": [], "reviewDecision": "APPROVED", "body": "Closes #456",
+            "author": {"login": "app/x"},
+            "statusCheckRollup": [{"name": "validate", "conclusion": "SUCCESS"}]}
+    view.update(kw)
+    return json.dumps(view)
+
+
+def test_silent_fix_on_a_settled_pr_is_logged_not_parked(stub_gh, monkeypatch, capsys):
+    monkeypatch.setenv("GH_PR_VIEW", _settled_view())
+    assert g.main(["g", "silent", "fix", "5", "abc"]) == 0
+    assert "logged only" in capsys.readouterr().out
+    assert not any("needs-human" in c or c.startswith("pr comment") for c in stub_gh())
+
+
+def test_silent_fix_on_an_unsettled_pr_still_escalates(stub_gh, monkeypatch):
+    monkeypatch.setenv("GH_PR_VIEW", _settled_view(reviewDecision="REVIEW_REQUIRED"))
+    assert g.main(["g", "silent", "fix", "5", "abc"]) == 0
+    assert "pr edit 5 --add-label needs-human" in stub_gh()
+
+
 def test_silent_review_paths(stub_gh, monkeypatch):
     monkeypatch.setenv("APPROVER_BOT", "ap[bot]")
     assert g.main(["g", "silent", "review", "5", "sha1"]) == 0  # no review -> escalate
