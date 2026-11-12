@@ -4,7 +4,8 @@ Reads PR_TITLE and PR_BODY from the environment (pull_request events). On workfl
 title and body of the open PR for GITHUB_REF_NAME via `gh pr view` (needs GH_TOKEN); no PR means skipped.
 Also fails an `agent/<N>-*` PR whose body does not mention `#<N>`. Also fails (when the PR file list is known): a design PR (only `docs/design/`) with a closing keyword
 (use `Refs #N`), and a PR touching HANDOVER.md that is not an orchestrator PR (`agent/orchestrator-handover-*`).
-Also fails a body or commit message with a tool footer (`Generated with`, `claude.ai/code/session`, `Claude-Session:`).
+Also fails a commit message or body with a tool footer (patterns: tools/attribution.py). Bodies are stripped by
+strip-attribution.yml first (tools/strip_attribution.py), so the body rule only sees what the strip left or missed.
 An optional `## Friction` section (see tools/friction.py) is accepted, never required.
 Skipped for local runs and pushes to main. Whether the title is really English cannot be verified.
 """
@@ -14,6 +15,9 @@ import re
 import subprocess
 import sys
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+import attribution  # tools/, the one pattern list shared with strip_attribution.py
+
 # One pattern for every GitHub closing form: `Closes #N`, `Closes owner/repo#N`, `Closes https://github.com/owner/repo/issues/N`.
 # agent-fix.yml runs `check_pr_form.py closing FILE` (from main) instead of keeping its own copy.
 CLOSING = re.compile(
@@ -21,8 +25,6 @@ CLOSING = re.compile(
     r"(?:(?:[\w.-]+/[\w.-]+)?#\d+|(?:https?://)?(?:www\.)?github\.com/[\w.-]+/[\w.-]+/issues/\d+)",
     re.IGNORECASE,
 )
-# Tool/AI attribution footers are banned in PR bodies and commit messages (AGENTS.md, Commits and PRs).
-ATTRIBUTION = re.compile(r"Generated with|claude\.ai/code/session|Claude-Session:", re.IGNORECASE)
 AGENT_BRANCH = re.compile(r"^agent/(\d+)-")
 ORCHESTRATOR_BRANCH = "agent/orchestrator-handover"
 
@@ -43,8 +45,8 @@ def gh_pr(ref):
 def form_errors(body, head_ref, files, commits=""):
     """Rules that need the changed files or commit messages; nothing known means nothing to check."""
     errors = []
-    if ATTRIBUTION.search(body) or ATTRIBUTION.search(commits):
-        errors.append("no tool/AI attribution in the PR body or commit messages (`Generated with`, `claude.ai/code/session`, `Claude-Session:`)")
+    if attribution.found(body) or attribution.found(commits):
+        errors.append("no tool/AI attribution in the PR body or commit messages (patterns: tools/attribution.py)")
     if files and all(f.startswith("docs/design/") for f in files) and CLOSING.search(body):
         errors.append("design PRs must use `Refs #N`, not a closing keyword (only the PR that completes an issue closes it)")
     if "HANDOVER.md" in files and not head_ref.startswith(ORCHESTRATOR_BRANCH):
@@ -75,6 +77,8 @@ def main() -> int:
         if title is not None and number:
             pr = gh_pr(number)
             files, commits = (pr[3], pr[4]) if pr else ([], "")
+            if pr:
+                body = pr[1]  # live body: strip-attribution.yml may have cleaned it after the event was queued
     else:
         title, body = None, ""
     if title is None:

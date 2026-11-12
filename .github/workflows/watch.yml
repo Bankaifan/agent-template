@@ -31,6 +31,7 @@ on:
       - scout
       - setup
       - status
+      - strip-attribution
       - template-sync
       - train
       - unblocker
