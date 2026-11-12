@@ -7,7 +7,6 @@ test_template_sync_e2e.py; apply, the guard and make check run as in production.
 import importlib.util
 import io
 import json
-import os
 import pathlib
 import re
 import shutil
@@ -158,7 +157,7 @@ def test_checks_file_adds_its_name_to_the_template_set(tmp_path):
 
 
 @pytest.mark.slow
-def test_fresh_downstream_with_the_project_files_passes_make_check(tmp_path):
+def test_fresh_downstream_with_the_project_files_passes_make_check(tmp_path, clean_env):
     sha = _git(ROOT, "rev-parse", "HEAD").strip()
     dst = tmp_path / "downstream"
     dst.mkdir()
@@ -175,7 +174,7 @@ def test_fresh_downstream_with_the_project_files_passes_make_check(tmp_path):
     _write(dst, PROJECT_FILES)
     _git(dst, "init", "-q")
     _commit(dst, "downstream")
-    env = {k: v for k, v in os.environ.items() if k not in ("PR_BASE_REF", "PR_NUMBER", "GH_REPO")}
+    env = clean_env
 
     make = subprocess.run(["make", "check"], check=False, cwd=dst, env=env, capture_output=True, text=True)
     assert make.returncode == 0, (make.stdout + make.stderr)[-4000:]

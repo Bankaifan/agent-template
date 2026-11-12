@@ -6,7 +6,6 @@ answered from the template repo. apply, materialize, the guard, risk.classify an
 import importlib.util
 import io
 import json
-import os
 import pathlib
 import re
 import shutil
@@ -199,7 +198,7 @@ def test_acceptance_2_sync_touching_judge_settings_runs_no_model(tmp_path, monke
 
 
 @pytest.mark.slow
-def test_acceptance_3_fresh_downstream_passes_make_check_and_needs_the_marker(tmp_path):
+def test_acceptance_3_fresh_downstream_passes_make_check_and_needs_the_marker(tmp_path, clean_env):
     sha = _git(ROOT, "rev-parse", "HEAD").strip()
     dst = tmp_path / "downstream"
     dst.mkdir()
@@ -215,7 +214,7 @@ def test_acceptance_3_fresh_downstream_passes_make_check_and_needs_the_marker(tm
     (dst / ".agents" / "template.json").write_text(_cfg_text(sha, []))
     _git(dst, "init", "-q")
     _commit(dst, "downstream")
-    env = {k: v for k, v in os.environ.items() if k not in ("PR_BASE_REF", "PR_NUMBER", "GH_REPO")}
+    env = clean_env
 
     make = subprocess.run(["make", "check"], check=False, cwd=dst, env=env, capture_output=True, text=True)
     assert make.returncode == 0, (make.stdout + make.stderr)[-4000:]
