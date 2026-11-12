@@ -3,6 +3,42 @@
 ## [Unreleased]
 - README (EN and DE) and `docs/decisions/0007-template-sync.md`: six-step setup for the template sync, version gate, reuse by other projects.
 
+## [1.78] - 2026-11-12
+- Automerge also runs when agent-security-review completes, so a security-review success that arrives after the approval no longer leaves the PR waiting.
+
+## [1.77] - 2026-11-12
+- The downstream e2e tests run their inner make check without the PR_*, GH_* and GITHUB_* variables of the outer CI run.
+
+## [1.76] - 2026-11-12
+- workflow-apply finds the security-approved agent PRs itself; the review run's branch name is always the default branch.
+
+## [1.75] - 2026-11-12
+- Validate checks an agent PR with its pending workflow patch applied, so the security review can start.
+
+## [1.74] - 2026-11-12
+- Decision record 0016 on the safety boundary (design 0017 step 7) and README entries for `agent-refs.json` and `DEV_SHELL`.
+
+## [1.73] - 2026-11-12
+- Repo variable `DEV_SHELL=free` gives developer and fix runs a free shell (bare `Bash`) with the deny settings kept; unset keeps the command list (design 0017 step 6).
+
+## [1.72] - 2026-11-12
+- The orchestrator model step is comment-only: no Edit, Write, git or make, and its app token has no contents scope. HANDOVER.md is committed and pushed by a script step.
+
+## [1.71] - 2026-11-12
+- The security reviewer is told which Bash forms it may use, so it no longer stops without a verdict after a denied piped command.
+
+## [1.70] - 2026-11-12
+- Background scripts (status, failure watch, orchestrator gate, dispatch) skip a tick while the GitHub API budget is low, a rate-limited run no longer becomes a failure issue, and agent runs read failed run logs through `tools/run_log.py`.
+
+## [1.69] - 2026-11-12
+- `tools/outside_intake.py`: script core of the outside intake (owed state per thread, author-app markers, cursor, daily run caps); no workflow or model step yet.
+
+## [1.68] - 2026-11-12
+- The answer receiver accepts a multi-line evidence quote when the owner comment uses CRLF line breaks; evidence is still checked as an exact, case-sensitive quote.
+
+## [1.67] - 2026-11-12
+- The orchestrator parks items with Daniel through `agent_guard.py park`, which refuses a note without a valid decision marker (#416).
+
 ## [1.66] - 2026-11-12
 - Developer and fix runs are told that workflow changes are allowed and travel as a patch, so they no longer stop on old refusal comments.
 
