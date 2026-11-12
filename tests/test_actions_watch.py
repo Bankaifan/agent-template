@@ -69,6 +69,17 @@ def test_second_attempt_is_a_normal_failure(conclusion, jobs):
     assert not f.reruns() and len(f.creates()) == 1
 
 
+def test_agent_run_at_the_turn_cap_is_neither_rerun_nor_an_issue():
+    """Issue #562: the work was done, the run only ran past --max-turns; the job is red but nothing repeats it."""
+    f = setup(mkrun(14, "agent-fix.yml", "failure"))
+    f.logs[14] = "Action failed with error: Claude reported a successful result after 66 turns, exceeding the configured maximum of 60"
+    assert aw.handle(f.runs[0], KEY, False, f) == "run 14: turn cap, 66 turns over the maximum of 60: no issue, no rerun"
+    assert not f.reruns() and not f.creates()
+    g = setup(mkrun(15, "agent-dev.yml", "failure"))
+    g.logs[15] = "Action failed with error: Claude Code process exited with code 1"
+    assert "opened failure issue" in aw.handle(g.runs[0], KEY, False, g)
+
+
 def test_real_failure_is_never_rerun():
     f = setup(mkrun(9, "ci.yml", "failure"))
     aw.handle(f.runs[0], KEY, False, f)
@@ -314,6 +325,19 @@ def test_older_failed_run_does_not_park_a_restarted_issue():
     f.listed["agent-dev.yml"] = [failed_run(FAIL_TITLE, at="2026-11-10T11:30:00Z")]
     assert heal(f) == []  # the restart's run is not listed yet: nothing parks
     assert "needs-human" not in f.labels(n) and n not in f.comments
+
+
+def test_turn_capped_agent_run_is_not_restarted_or_parked():
+    """Issue #562: the newest run hit the turn cap after a successful result; the restart would only repeat it."""
+    f = Heal()
+    n = f.issue(FAIL_TITLE, ["agent:dev"])
+    f.listed["agent-dev.yml"] = [{**failed_run(FAIL_TITLE), "databaseId": 77}]
+    f.logs[77] = "Action failed with error: Claude reported a successful result after 80 turns, exceeding the configured maximum of 60"
+    assert heal(f) == [] and "stalled:1" not in f.labels(n) and n not in f.comments
+    f.timeline = stalled_mark("2026-11-10T11:45:00Z")
+    f.listed["agent-dev.yml"] = [{**failed_run(FAIL_TITLE, at="2026-11-10T11:50:00Z"), "databaseId": 78}]
+    f.logs[78] = f.logs[77]
+    assert heal(f) == [] and "needs-human" not in f.labels(n)
 
 
 def test_failed_run_after_the_mark_parks():

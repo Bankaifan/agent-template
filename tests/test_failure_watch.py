@@ -24,7 +24,7 @@ def mkjobs(job="build", step="test", conclusion="failure"):
 class Fake:
     def __init__(self):
         self.runs, self.jobs, self.issues, self.comments, self.calls = [], {}, {}, {}, []
-        self.listed, self.timeline, self.pulls = {}, [], []
+        self.listed, self.timeline, self.pulls, self.logs = {}, [], [], {}
 
     def add_issue(self, title, body, state="OPEN", labels=()):
         n = len(self.issues) + 1
@@ -38,6 +38,8 @@ class Fake:
             return self.api(a[1])
         if a[:2] == ("run", "list"):
             return json.dumps(self.listed.get(a[3], []))
+        if a[:2] == ("run", "view"):
+            return self.logs.get(int(a[2]), "")
         if a[0] == "label":
             return ""
         if a[:2] == ("issue", "list"):
@@ -434,3 +436,64 @@ def test_no_log_text_in_any_body():
     tick(f)
     core = guard_mark.split(f.issues[1]["body"])[0]
     assert core == fw.make_body("ci.yml / build / test", 1, "https://github.com/o/r/actions/runs/1")
+
+
+# --- turn cap (issue #562) -------------------------------------------------------------------------
+
+CAP_LOG = ("build\tRun claude\tAction failed with error: Claude reported a successful result after 64 turns, "
+           "exceeding the configured maximum of 60\n")
+
+
+def test_agent_run_at_the_turn_cap_opens_no_issue_and_no_rerun_and_reports_the_turns():
+    f = Fake()
+    failing(f, 1, wf="agent-dev.yml")
+    f.logs[1] = CAP_LOG
+    actions, _ = tick(f)
+    assert actions == ["run 1: turn cap, 64 turns over the maximum of 60: no issue, no rerun"]
+    assert f.issues == {} and f.creates() == []
+
+
+def test_turn_cap_also_covers_agent_fix_and_an_open_issue_is_left_alone():
+    f = Fake()
+    f.add_issue(title("agent-fix.yml / build / test"), fw.make_body("agent-fix.yml / build / test", 2, "x"))
+    failing(f, 1, wf="agent-fix.yml")
+    f.logs[1] = CAP_LOG.replace("64", "104")
+    actions, _ = tick(f)
+    assert actions == ["run 1: turn cap, 104 turns over the maximum of 60: no issue, no rerun"]
+    assert f.issues[1]["state"] == "OPEN" and f.issues[1]["title"] == title("agent-fix.yml / build / test")
+    assert "Failures: 2" in f.issues[1]["body"] and f.creates() == []
+
+
+def test_other_claude_errors_and_other_workflows_keep_todays_rules():
+    f = Fake()
+    failing(f, 1, wf="agent-dev.yml")
+    f.logs[1] = "Action failed with error: Claude Code process exited with code 1\n"
+    failing(f, 2, wf="ci.yml")
+    f.logs[2] = CAP_LOG  # same text outside the agent workflows: not a turn cap
+    tick(f)
+    assert sorted(i["title"] for i in f.issues.values()) == [
+        title("agent-dev.yml / build / test"), title("ci.yml / build / test")]
+    assert not [c for c in f.calls if c[:2] == ("run", "view") and c[2] == "2"]
+
+
+def test_unreadable_log_keeps_todays_rules():
+    def no_log(*a):
+        raise OSError("gh: log not available")
+
+    assert fw.turn_cap("agent-dev.yml", 1, "failure", no_log) is None
+    assert fw.turn_cap("agent-dev.yml", None, "failure", no_log) is None
+    assert fw.turn_cap("agent-dev.yml", 1, "cancelled", no_log) is None
+    f = Fake()
+    failing(f, 1, wf="agent-dev.yml")  # no log entry: the fake returns empty text, so no cap
+    tick(f)
+    assert len(f.creates()) == 1
+
+
+def test_turn_cap_reads_the_numbers_only():
+    f = Fake()
+    f.logs[1] = CAP_LOG
+    assert fw.turn_cap("agent-dev.yml", 1, "failure", f) == (64, 60)
+    f.logs[2] = "Claude reported a successful result after 70 turns, exceeding the configured maximum of 60"
+    assert fw.turn_cap("agent-dev.yml", 2, "failure", f) == (70, 60)
+    f.logs[3] = "Claude reported a successful result after 70 turns"
+    assert fw.turn_cap("agent-dev.yml", 3, "failure", f) is None

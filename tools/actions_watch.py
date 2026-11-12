@@ -75,6 +75,9 @@ def handle(r, key, dry=False, run=liveness.gh):
     """Act on one failed run R; returns a one-line action text."""
     if not fw.keep(r, SELF_WF):
         return f"run {r['id']}: not watched"
+    capped = fw.turn_cap(fw.workflow_file(r), r["id"], r.get("conclusion"), run)
+    if capped:
+        return fw.turn_cap_line(r["id"], capped)
     sig, started = fw.analyse(r, run)
     if fw.expected_cancel(r, started, run):
         return f"run {r['id']}: expected cancellation"
@@ -194,6 +197,8 @@ def restart_failed(now, trusted, closed, runs, owner, dry, run):
         mine = sorted((r for r in runs if _covers(r, i)), key=lambda r: r["createdAt"], reverse=True)
         if not mine or mine[0].get("conclusion") not in FAILED_AGENT or _age_h(mine[0]["createdAt"], now) > RESTART_HOURS:
             continue
+        if fw.turn_cap(mine[0].get("wf"), mine[0].get("databaseId"), mine[0].get("conclusion"), run):
+            continue  # the run did its work and hit the turn cap (#562): a restart would only repeat it
         parked = stalled_dev.STALLED in labels
         if parked and not after_mark(i, mine[0], run):
             continue
@@ -270,7 +275,9 @@ def heal(now, key, env, dry=False, run=liveness.gh):
     out = fallback(trusted, issues, closed, orchestrator_unhealthy(now, orch_runs), max_dev(env.get("MAX_DEV")), dry, run)
     agent_runs = []
     for wf in ("agent-dev.yml", "agent-fix.yml"):
-        agent_runs += _jl(run, "run", "list", "--workflow", wf, "--limit", "20", "--json", "displayTitle,conclusion,createdAt")
+        listed = _jl(run, "run", "list", "--workflow", wf, "--limit", "20",
+                     "--json", "displayTitle,conclusion,createdAt,databaseId")
+        agent_runs += [{**r, "wf": wf} for r in listed]
     out += restart_failed(now, trusted, closed, agent_runs, owner, dry, run)
     return out + kick(now, issues, trusted, key, owner, orch_runs, dry, run)
 
