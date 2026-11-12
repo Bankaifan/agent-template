@@ -69,7 +69,7 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ github.token }}
-          allowed_bots: ${{ vars.AUTHOR_BOT }}
+          allowed_bots: ${{ vars.AUTHOR_BOT }},${{ vars.APPROVER_BOT }}
           prompt: |
             Act as the unblocker described in .agents/roles/unblocker.md and follow AGENTS.md.
             The blocked item is ${{ env.KIND }} #${{ env.NUMBER }} in ${{ github.repository }}.
