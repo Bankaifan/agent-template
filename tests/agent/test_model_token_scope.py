@@ -43,12 +43,13 @@ def test_ci_token_is_actions_only_and_serves_the_ci_steps(workflow, job, report)
 
 
 @pytest.mark.parametrize("workflow,job,report", JOBS)
-def test_refused_workflow_push_is_reported_after_the_model_step(workflow, job, report):
+def test_workflow_changes_are_carried_as_a_patch_after_the_model_step(workflow, job, report):
     steps = _steps(workflow, job)
-    idx = [i for i, s in enumerate(steps) if "refused" in s.get("name", "")]
+    idx = [i for i, s in enumerate(steps) if s.get("name") == "Carry workflow changes as a patch"]
     assert len(idx) == 1
     step = steps[idx[0]]
-    assert report in step["run"] and "git diff --name-only" in step["run"] and ".github/workflows" in step["run"]
+    assert report in step["run"] and '"$RUNNER_TEMP/guard/tools/workflow_patch.py" stash' in step["run"]
+    assert step["env"]["GH_TOKEN"] == "${{ steps.app.outputs.token }}"  # the model token: no workflows scope
     assert idx[0] > next(i for i, s in enumerate(steps) if s.get("id") == "claude")
 
 

@@ -75,9 +75,23 @@ jobs:
           if [ "$n" -gt 0 ]; then echo "design=true" >> "$GITHUB_OUTPUT"; echo "PR touches docs/design/: no auto-merge"; fi
       # A risk:security PR merges only when security-review is success for exactly the current head SHA.
       # Pending or failed is not an error: the PR waits, and the status event re-runs this workflow on success.
+      - name: Refuse PRs with a pending workflow patch
+        id: patch
+        if: steps.pr.outputs.number != '' && steps.design.outputs.design != 'true'
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ steps.pr.outputs.number }}
+        run: |
+          files=$(gh api --paginate "repos/$GH_REPO/pulls/$PR/files" --jq '.[].filename')
+          if grep -q '^\.agents/workflow-patches/' <<<"$files"; then
+            echo "wait=true" >> "$GITHUB_OUTPUT"
+            echo "PR holds a workflow patch: workflow-apply applies it first"
+            gh pr merge "$PR" --disable-auto || true
+          fi
       - name: Wait for security-review on risk:security PRs
         id: gate
-        if: steps.pr.outputs.number != '' && steps.design.outputs.design != 'true'
+        if: steps.pr.outputs.number != '' && steps.design.outputs.design != 'true' && steps.patch.outputs.wait != 'true'
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           GH_REPO: ${{ github.repository }}
@@ -99,7 +113,7 @@ jobs:
             echo "risk:security PR #$PR: security-review is $state for $sha; not merging yet"
           fi
       - name: Enable auto-merge (rebase, keeps Daniel as author); GitHub merges once the ruleset is satisfied
-        if: steps.pr.outputs.number != '' && steps.design.outputs.design != 'true' && steps.gate.outputs.wait != 'true'
+        if: steps.pr.outputs.number != '' && steps.design.outputs.design != 'true' && steps.patch.outputs.wait != 'true' && steps.gate.outputs.wait != 'true'
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           GH_REPO: ${{ github.repository }}
