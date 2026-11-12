@@ -612,6 +612,17 @@ def test_owner_note_refuses_a_body_without_decision_marker():  # #416 req. 7
     assert r.posted and "decision:" in r.posted[0]["body"]
 
 
+def test_park_adds_marker_and_refuses_a_bad_action():  # #416 req. 7
+    r = Recorder()
+    g.park("pr", 5, "drop-block", "close-pr", "Frage?", r)
+    assert decision.parse(r.posted[0]["body"]) == {"yes": "drop-block", "no": "close-pr"}
+    g.park("issue", 6, "-", "close-issue", "Frage?", r)
+    assert decision.parse(r.posted[1]["body"]) == {"no": "close-issue"}
+    with pytest.raises(ValueError):
+        g.park("issue", 7, "merge", "-", "Frage?", r)
+    assert len(r.posted) == 2
+
+
 # --- upstream issue for an allow-list miss (#416 goal 2, security requirements 3 to 5) ---
 
 GKEY = "k" * 40
