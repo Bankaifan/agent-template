@@ -32,8 +32,10 @@ AGENT_OWNED = ("validate.yml", "agent-review.yml")  # failures on agent/* branch
 SELF = "status.yml"  # default only: each caller passes its own workflow file
 ESCALATE_AT = 3
 PART_MAX = 60
+TURN_CAP_WORKFLOWS = ("agent-dev.yml", "agent-fix.yml")  # agent runs that can stop at their --max-turns cap (#562)
 _BAD = re.compile(r"[^A-Za-z0-9 ._:/()-]")
 _FIELD = re.compile(r"^(Failures|Reopened|Last run|Closed by): (.*)$", re.MULTILINE)
+_TURN_CAP = re.compile(r"reported a successful result after (\d+) turns,\s+exceeding the configured maximum of (\d+)")
 
 
 def _api(path, run):
@@ -124,6 +126,24 @@ def expected_cancel(run_obj, started, run=liveness.gh):
     if wf not in EXPECTED_CANCEL:
         return False
     return not EXPECTED_CANCEL[wf] or newer_run(run_obj, run)
+
+
+def turn_cap(wf, run_id, conclusion, run=liveness.gh):
+    """(turns, maximum) when a failed agent run stopped at its --max-turns cap after a successful result (#562),
+    else None. The log is read for these two numbers only: no log text reaches a title or a body. An unreadable
+    log keeps the normal rules (None)."""
+    if wf not in TURN_CAP_WORKFLOWS or not run_id or conclusion not in FAILED_JOB:
+        return None
+    try:
+        m = _TURN_CAP.search(run("run", "view", str(run_id), "--log-failed"))
+    except Exception:  # noqa: BLE001 - an unreadable log must never stop the watch
+        return None
+    return (int(m.group(1)), int(m.group(2))) if m else None
+
+
+def turn_cap_line(run_id, capped):
+    turns, maximum = capped
+    return f"run {run_id}: turn cap, {turns} turns over the maximum of {maximum}: no issue, no rerun"
 
 
 def title_for(sig):
@@ -322,6 +342,11 @@ def watch(since, now, overdue_labels, key=None, run=liveness.gh, self_wf=SELF):
     for r in collect(since, now, run, self_wf):
         sig, started = analyse(r, run)
         created = datetime.datetime.fromisoformat(r["created_at"])
+        capped = turn_cap(workflow_file(r), r["id"], r.get("conclusion"), run)
+        if capped:
+            actions.append(turn_cap_line(r["id"], capped))
+            handled = max(handled, created)
+            continue
         if expected_cancel(r, started, run):
             handled = max(handled, created)
             continue
