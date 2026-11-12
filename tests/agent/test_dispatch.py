@@ -45,7 +45,7 @@ def state(numbers, limit=None):
 
 
 def test_design_split_issue_with_slip_gets_model_then_agent_dev():
-    gh = FakeGh({7: slip_issue(extra="Model: sonnet")})
+    gh = FakeGh({7: slip_issue(files="tools/ci/risk.py")})
     assert dispatch.start(state([7]), gh, ok) == [7]
     assert [c[4] for c in gh.edits()] == ["model:sonnet", "agent:dev"]  # agent:dev last
 
@@ -92,7 +92,7 @@ def test_only_listed_issues_are_touched():
 
 
 def test_failing_label_create_does_not_stop_the_others():
-    gh = FakeGh({1: slip_issue("tools/x.py", "Model: sonnet"), 2: slip_issue("tools/y.py", "Model: haiku")},
+    gh = FakeGh({1: slip_issue("tools/ci/x.py"), 2: slip_issue("tools/y.py")},
                 fail_label={"model:sonnet"})
     assert dispatch.start(state([1, 2]), gh, ok) == [2]
     assert not any(c[2] == "1" for c in gh.edits())
