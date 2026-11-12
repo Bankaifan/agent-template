@@ -115,7 +115,9 @@ def test_collect_keeps_real_failures_and_drops_the_rest():
     f.runs = [mkrun(1, conclusion="failure"), mkrun(2, conclusion="timed_out"), mkrun(3, conclusion="startup_failure"),
               mkrun(4, conclusion="cancelled"), mkrun(5, conclusion="skipped"), mkrun(6, conclusion="success"),
               mkrun(7, wf="validate.yml", branch="agent/9-x"), mkrun(8, wf="agent-review.yml", branch="agent/9-x"),
-              mkrun(9, wf="status.yml"), mkrun(10, fork=True), mkrun(11, wf="validate.yml", branch="main")]
+              mkrun(9, wf="status.yml"), mkrun(10, fork=True), mkrun(11, wf="validate.yml", branch="main"),
+              mkrun(12, wf="validate.yml", branch="alert-autofix-8"), mkrun(13, wf="validate.yml", branch="fix/578-x"),
+              mkrun(14, wf="validate.yml", branch="release/next")]
     assert [r["id"] for r in fw.collect(SINCE, NOW, f)] == [1, 2, 3, 4, 11]
 
 
@@ -227,9 +229,9 @@ def test_unexpected_cancel_with_started_steps_opens_an_issue_with_the_step():
 def test_expected_cancel_table():
     f = Fake()
     cancelled(f, 1, wf="agent-review.yml", job="review", steps=("run",), branch="feature")
-    cancelled(f, 2, wf="validate.yml", job="check", steps=("run",), branch="feature")
-    f.runs.append(mkrun(3, "validate.yml", "success", "feature"))  # newer run for the same branch
-    cancelled(f, 4, wf="validate.yml", job="check", steps=("run",), branch="other")  # no newer run: unexpected
+    cancelled(f, 2, wf="validate.yml", job="check", steps=("run",), branch="main")
+    f.runs.append(mkrun(3, "validate.yml", "success", "main"))  # newer run for the same branch
+    cancelled(f, 4, wf="validate.yml", job="check", steps=("run",), branch="main")  # no newer run: unexpected
     cancelled(f, 5, wf="agent-review.yml", job="review", steps=())  # never started: not expected
     actions, _ = tick(f)
     assert sorted(i["title"] for i in f.issues.values()) == [
@@ -344,9 +346,16 @@ def test_priority_prio1_on_third_failure_and_for_merge_gates():
     tick(g)
     assert all("prio:1" in g.labels(n) for n in (1, 2, 3))
     h = Fake()
-    failing(h, 1, wf="validate.yml", branch="feature")
+    failing(h, 1, wf="ci.yml", branch="feature")
     tick(h)
     assert "prio:2" in h.labels(1)
+
+
+def test_validate_failure_on_a_pr_branch_opens_no_issue():
+    f = Fake()
+    failing(f, 1, wf="validate.yml", branch="feature")
+    tick(f)
+    assert not f.issues  # the PR's own check carries it; only main opens an issue (#410)
 
 
 # --- auto-close ------------------------------------------------------------------------------------
