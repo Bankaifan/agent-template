@@ -10,6 +10,7 @@ import json
 import os
 import subprocess
 
+import ghcall
 import guard_mark
 
 # workflow file -> (label, expected interval in minutes)
@@ -33,7 +34,7 @@ class ReadbackError(RuntimeError):
 
 
 def gh(*args):
-    return subprocess.run(["gh", *args], check=True, capture_output=True, text=True).stdout
+    return ghcall.gh(*args)
 
 
 def _norm(text):

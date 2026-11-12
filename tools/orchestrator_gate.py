@@ -24,7 +24,8 @@ import sys
 from datetime import UTC, datetime
 from itertools import pairwise
 
-from agent_guard import gh, same_login
+from agent_guard import same_login
+from ghcall import gh
 
 GATED = ("approved", "auto-ok")
 WINDOW = 180  # seconds, label events
