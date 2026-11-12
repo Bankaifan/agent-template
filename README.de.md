@@ -40,28 +40,34 @@ Projekte aus diesem Template bekommen spätere Template-Änderungen als ein Sync
 Template hat eine Version `x.y` in `VERSION`: eine Änderung an `x` ist ein Muss-Update, eine Änderung an `y` ist ein kleiner
 Fix oder Doku und startet allein keinen Sync (`docs/decisions/0007-template-sync.md`, `docs/design/0011-automatic-template-sync.md`).
 `template-sync.yml` prüft täglich (ohne Modell) und startet `tools/template_sync.py`. Ist das `x` des Templates höher als
-`synced_version` in `.agents/template.json`, vergleicht das Skript `main` des Templates mit `synced_sha` und listet geänderte
-Dateien, die zu `managed` passen. Es legt das eine offene Issue `Template sync <kurze sha>` an (Labels `agent:dev`,
-`model:sonnet`) oder bearbeitet es, falls schon eines offen ist. Das Issue endet mit `Template-Sync: <40 hex>`; der
-Orchestrator vertraut ihm nur, wenn die Autor-App (`AUTHOR_BOT`) es geschrieben hat. Der Entwickler übernimmt `clean`-Dateien
-unverändert, `overridden`-Dateien von Hand unter Beachtung der Absicht (agent-dev lädt das Template auf dieser SHA in das
-nicht versionierte `.template/`), setzt `synced_sha` und `synced_version` in `.agents/template.json` und öffnet einen PR mit
-`Closes #<Sync-Issue>`. Der PR berührt `.github/`, also muss Daniel ihn als Code-Owner freigeben.
+`synced_version` in `.agents/template.json`, kopiert ein Skript die geänderten Dateien, die zu `managed` passen (`clean`-Dateien
+unverändert, `overridden`-Dateien per `git merge-file` zusammengeführt), und öffnet einen PR `Template sync <version>`, der
+auch `synced_sha` und `synced_version` setzt. Ein sauberer Sync braucht kein Modell. Eine Datei, deren Zusammenführung
+Konflikte hat, bleibt aus diesem PR heraus: der PR heißt `Template sync <kurze sha> part 1`, und das Issue
+`Template sync <kurze sha>` (Label `agent:dev`) listet nur die Konflikt-Dateien und endet mit `Template-Sync: <40 hex>`. Der
+Orchestrator vertraut dem Issue nur, wenn die Autor-App (`AUTHOR_BOT`) es geschrieben hat. Der Entwickler führt jede
+Konflikt-Datei von Hand zusammen und behält dabei die Absicht bei (agent-dev legt die drei Fassungen vorher in das nicht
+versionierte `.template/`), setzt `synced_sha` und `synced_version` und öffnet einen PR mit `Closes #<Sync-Issue>`.
+Ein PR, der `.github/` berührt, braucht Daniels Freigabe als Code-Owner.
 
 Einrichtung eines Projekts (sechs Schritte):
 
 1. **Autor-App.** Die Autor-App (Einrichtung, Schritt 2) auf dem Projekt installieren und, falls das Template privat ist, auch auf dem Template-Repo.
-2. **Sync-Dateien.** Projekte, die mit *Use this template* entstehen, haben `.github/workflows/template-sync.yml` und
-   `tools/template_sync.py` schon. Ältere Projekte kopieren beide einmal aus dem Template; spätere Änderungen kommen über das Sync-Issue.
+   Der geskriptete Sync braucht Schreibrechte für `contents` und `pull-requests` auf dem Projekt, für Syncs, die
+   `.github/workflows/` ändern, zusätzlich `workflows` (Rechteänderung, Entscheidung von Daniel). Ohne sie fällt der Sync auf das Issue zurück.
+2. **Sync-Dateien.** Projekte, die mit *Use this template* entstehen, haben `.github/workflows/template-sync.yml`,
+   `tools/template_sync.py` und `tools/template_apply.py` schon. Ältere Projekte kopieren alle drei einmal aus dem Template; spätere Änderungen kommen über den Sync.
 3. **`.agents/template.json` anlegen** (Beispiel unten): `template`, `synced_sha` (die 40-stellige Template-SHA, mit der du zuletzt
    übereinstimmst; leer heißt, der Lauf tut nichts), `synced_version` (das `x.y` des Templates, mit dem du zuletzt
    übereinstimmst; fehlt es, gilt `x = 0`, der erste Lauf öffnet also ein Issue), `managed` und `overrides`.
 4. **Optionale Variablen.** `TEMPLATE_SYNC=off` schaltet die Prüfung ab. `TEMPLATE_SYNC_MODE` ist standardmäßig `version`
-   (nur melden, wenn sich `x` geändert hat); `all` meldet jede verwaltete Änderung und überspringt das Gate.
-5. **Prüfen.** *Actions > template-sync > Run workflow* mit gesetztem `force` starten: das Gate wird übersprungen, es sollte
-   ein Issue `Template sync` entstehen. Ein zweiter Lauf bearbeitet dieses Issue, statt ein weiteres anzulegen.
-6. **Wenn der Sync-PR gemergt ist**, rücken `synced_sha` und `synced_version` auf den Template-Commit und die Version vor,
-   mit der er übereinstimmt; das nächste Issue wartet auf das nächste `x`.
+   (nur synchronisieren, wenn sich `x` geändert hat); `all` synchronisiert jede verwaltete Änderung und überspringt das Gate.
+   `TEMPLATE_SYNC_APPLY=off` schaltet zurück auf das reine Issue (das Skript öffnet dann keinen PR).
+5. **Prüfen.** *Actions > template-sync > Run workflow* mit gesetztem `force` starten: das Gate wird übersprungen. Ein sauberes
+   Template ergibt einen PR `Template sync`; ein Konflikt ergibt den PR Teil 1 und das Issue. Ein zweiter Lauf aktualisiert den
+   offenen PR oder das Issue, statt ein weiteres anzulegen.
+6. **Wenn der letzte Sync-PR gemergt ist** (der Skript-PR oder bei Konflikt der PR des Entwicklers), rücken `synced_sha` und
+   `synced_version` auf den Template-Commit und die Version vor, mit der er übereinstimmt; der nächste Sync wartet auf das nächste `x`.
 
 Ein anderes Projekt nutzt dieses Template genauso: mit *Use this template* anlegen, dann Schritte 1 bis 6. Sein Feld
 `template` nennt dieses Repo (`Bankaifan/agent-template`); das Template verweist nirgends zurück auf das Projekt.

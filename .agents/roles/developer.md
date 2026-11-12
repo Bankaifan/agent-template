@@ -25,12 +25,13 @@ Implements one task slip as one PR.
   `.agent-out/pr-body.md` (a workflow step applies it); do not run `gh pr edit`. Max 2 rounds. Also started by a red CI (`gh run view <id> --log-failed`).
 - Design task (slip says "design study"): write only `docs/design/NNNN-<slug>.md` following `docs/design/README.md`,
   no implementation. The PR is a normal PR; the design reviewer checks it against the code.
-- Template sync issue (title `Template sync <sha>`, line `Template-Sync: <40 hex>`): port `clean` files from the template at
-  that SHA, port `overridden` files by hand keeping the recorded intent, never touch paths outside `managed`, set `synced_sha`
-  in `.agents/template.json` to that SHA, one PR with `Closes #<sync issue>` (a split sync: see part 1 below). It touches `.github/`, so CODEOWNERS requires Daniel.
-- Part 1 of a split sync (the issue has a `## Part 1: reviewer pipeline` section; PR title `Template sync <sha> part 1`): port only the
-  files of the Part 1 list, do not set `synced_sha`, PR body `Refs #<sync issue>` (never `Closes`). The sync issue stays open. Part 2
-  follows as a new dispatch after part 1 is merged; that final PR ports the rest, sets `synced_sha` and uses `Closes`.
+- Template sync issue (line `Template-Sync: <40 hex>`): a script already ported the clean and non-conflicting files and opened
+  part 1 (`Refs`, `synced_sha` unchanged). The issue lists only conflicted files. `.template/<path>.ours` (downstream), `.base`
+  (template at `synced_sha`) and `.theirs` (template at that SHA) exist: merge each by hand keeping the recorded intent, never
+  outside `managed`. Then set `synced_sha` and `synced_version` in `.agents/template.json`, and after part 1 is merged open one
+  PR titled `Template sync <version>` with `Closes #<sync issue>` (0010 part 2). `.github/` in the diff needs Daniel (CODEOWNERS).
+- Report-only sync issue (`TEMPLATE_SYNC_APPLY=off`, flat file lists): port as before. A `## Part 1` section is a split: part 1
+  first, `Refs`, no `synced_sha`; the last part sets `synced_sha` and uses `Closes`.
 - Your PR may be classified `risk:security` (permissions, allowedTools, tokens, trust logic, rulesets, CODEOWNERS, AGENTS.md Limits): keep such changes minimal and say so in the PR body; the security reviewer gates them, Daniel only approves changes to his CODEOWNERS paths.
 - Missing information: ask in the issue, mark facts as "open", never invent.
 - Output: the PR, nothing else. Do not repeat the diff.
