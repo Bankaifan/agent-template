@@ -81,7 +81,7 @@ Projekte nicht darauf zurückzeigen):
   "synced_sha": "<40 hex: der Template-Commit, mit dem du zuletzt übereinstimmst>",
   "synced_version": "1.1",
   "managed": [".github/workflows/", ".github/claude-judge-settings.json", ".github/dependabot.yml", ".github/CODEOWNERS", ".github/rulesets/",
-              ".agents/roles/", "tools/", "tests/", "AGENTS.md", "CLAUDE.md", "Makefile", "docs/design/README.md"],
+              ".agents/roles/", "tools/", "tests/agent/", "AGENTS.md", "CLAUDE.md", "Makefile", "docs/design/README.md"],
   "overrides": [
     {"path": ".github/workflows/agent-fix.yml", "why": "workflow_run.workflows braucht den CI-Namen 'Validate'"},
     {"path": "AGENTS.md", "why": "Projektsatz und Projektregeln"}
