@@ -3,6 +3,9 @@
 ## [Unreleased]
 - README (EN and DE) and `docs/decisions/0007-template-sync.md`: six-step setup for the template sync, version gate, reuse by other projects.
 
+## [1.65] - 2026-11-12
+- The dispatcher restarts an agent:dev issue parked with `Waiting for #N` once #N is closed (no run in progress); while #N is open it holds no dev slot.
+
 ## [1.64] - 2026-11-12
 - Agent workflow changes no longer stall: they travel as a patch file and are applied by script after the security review.
 
