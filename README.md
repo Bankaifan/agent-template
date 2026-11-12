@@ -92,28 +92,34 @@ Projects created from this template get later template changes as one sync issue
 a version `x.y` in `VERSION`: a change to `x` is a must-have update, a change to `y` is a small fix or documentation and
 starts no sync by itself (`docs/decisions/0007-template-sync.md`, `docs/design/0011-automatic-template-sync.md`).
 `template-sync.yml` polls daily (no model) and runs `tools/template_sync.py`. When the template's `x` is higher than
-`synced_version` in `.agents/template.json`, it compares the template's `main` with `synced_sha` and lists the changed
-files that match `managed`. It creates the one open issue `Template sync <short sha>` (labels `agent:dev`, `model:sonnet`),
-or edits it if one is already open. The issue ends with `Template-Sync: <40 hex>`; the orchestrator trusts it only when
-the author app (`AUTHOR_BOT`) wrote it. The developer ports `clean` files as they are, ports `overridden` files by hand
-keeping their intent (agent-dev downloads the template at that SHA into the untracked `.template/` first), sets
-`synced_sha` and `synced_version` in `.agents/template.json`, and opens one PR with `Closes #<sync issue>`. That PR
-touches `.github/`, so Daniel must approve it as code owner.
+`synced_version` in `.agents/template.json`, a script copies the changed files that match `managed` (clean files as they
+are, overridden files merged with `git merge-file`) and opens one PR `Template sync <version>` that also sets `synced_sha`
+and `synced_version`. A clean sync needs no model. A file whose merge conflicts stays out of that PR: the PR is titled
+`Template sync <short sha> part 1`, and the issue `Template sync <short sha>` (label `agent:dev`) lists only the conflicted
+files and ends with `Template-Sync: <40 hex>`. The orchestrator trusts the issue only when the author app (`AUTHOR_BOT`)
+wrote it. The developer merges each conflicted file by hand, keeping its intent (agent-dev writes the three versions into
+the untracked `.template/` first), sets `synced_sha` and `synced_version`, and opens one PR with `Closes #<sync issue>`.
+A PR that touches `.github/` needs Daniel's approval as code owner.
 
 Setup for a project (six steps):
 
 1. **Author app.** Install the author app (Setup, step 2) on the project and, if the template is private, on the template repo too.
-2. **Sync files.** Projects created with *Use this template* already have `.github/workflows/template-sync.yml` and
-   `tools/template_sync.py`. Older projects copy both from the template once; later changes arrive through the sync issue.
+   The scripted sync needs `contents` and `pull-requests` write on the project, and `workflows` write for a sync that changes
+   `.github/workflows/` (permission changes, Daniel's decision). Without them the sync falls back to the issue.
+2. **Sync files.** Projects created with *Use this template* already have `.github/workflows/template-sync.yml`,
+   `tools/template_sync.py` and `tools/template_apply.py`. Older projects copy all three from the template once; later changes
+   arrive through the sync.
 3. **Create `.agents/template.json`** (example below): `template`, `synced_sha` (the 40-hex template commit you last matched;
    empty means the run is a no-op), `synced_version` (the template `x.y` you last matched; missing counts as `x = 0`, so the
    first run opens one issue), `managed` and `overrides`.
-4. **Optional variables.** `TEMPLATE_SYNC=off` turns the poll off. `TEMPLATE_SYNC_MODE` is `version` by default (report only
-   when `x` moved); `all` reports every managed change and skips the gate.
-5. **Check.** Run *Actions > template-sync > Run workflow* with `force` set: it skips the gate and should open one
-   `Template sync` issue. A second run edits that issue instead of opening another.
-6. **When the sync PR merges**, `synced_sha` and `synced_version` move to the template commit and version it matched; the
-   next issue waits for the next `x`.
+4. **Optional variables.** `TEMPLATE_SYNC=off` turns the poll off. `TEMPLATE_SYNC_MODE` is `version` by default (sync only
+   when `x` moved); `all` syncs every managed change and skips the gate. `TEMPLATE_SYNC_APPLY=off` returns to the issue-only
+   report (no PR is opened by the script).
+5. **Check.** Run *Actions > template-sync > Run workflow* with `force` set: it skips the gate. A clean template gives one
+   `Template sync` PR; a conflict gives the part 1 PR and the issue. A second run updates the open PR or issue instead of
+   opening another.
+6. **When the last sync PR merges** (the script's PR, or the developer's PR after a conflict), `synced_sha` and `synced_version`
+   move to the template commit and version it matched; the next sync waits for the next `x`.
 
 Another project reuses this template the same way: create it with *Use this template*, then follow steps 1 to 6. Its
 `template` field names this repo (`Bankaifan/agent-template`); nothing in the template points back at the project.
