@@ -3,6 +3,7 @@ import json
 import subprocess
 
 import agent_guard as g
+import decision
 import pytest
 
 
@@ -509,3 +510,102 @@ def test_silent_review_check_ignores_a_superseded_head(monkeypatch):
     monkeypatch.setattr(g, "gh", _pr_run(head="c" * 40)[1])
     monkeypatch.setattr(g, "reviews_of", lambda *a: pytest.fail("must not look for a review of a stale head"))
     assert g.silent_check(["review", "5", "d" * 40], "Bankaifan") == 0
+
+
+# --- denial notes (#416 goals 1, 3, 4): retrigger only after a change, never on protected paths, cap on a repeat ---
+
+DENIED = {"tool_name": "Bash", "tool_input": {"command": "gh issue list | head"}}
+OTHER = {"tool_name": "Bash", "tool_input": {"command": "gh pr list"}}
+T1, T2 = "2026-11-09T10:10:00Z", "2026-11-09T11:00:00Z"
+
+
+def write_exec(tmp_path, monkeypatch, denials):
+    f = tmp_path / "exec.json"
+    f.write_text(json.dumps([{"type": "result", "permission_denials": list(denials)}]))
+    monkeypatch.setenv("EXEC_FILE", str(f))
+    monkeypatch.setenv("AUTHOR_BOT", BOT)
+    monkeypatch.setenv("GH_REPO", "o/r")
+
+
+def note(id, body, at, login=BOT):
+    return {"id": id, "user": {"login": login}, "created_at": at, "body": body}
+
+
+class Hist(Recorder):
+    """Recorder that also serves the issue comments (the history) and the commits of the watched files."""
+    def __init__(self, history=(), commits=None):
+        super().__init__()
+        self.history, self.commits = list(history), commits or {}
+
+    def __call__(self, *args):
+        if args[:2] == ("api", "--paginate") and args[-1].endswith("/comments"):
+            return json.dumps([self.history])
+        if args[0] == "api" and "/commits?" in args[1]:
+            return json.dumps(self.commits.get(args[1].split("path=")[1].split("&")[0], []))
+        return super().__call__(*args)
+
+
+def denial_run(tmp_path, monkeypatch, history=(), commits=None, denials=(DENIED,)):
+    """One denied run escalated on issue 22; returns the posted note and the fake gh."""
+    write_exec(tmp_path, monkeypatch, denials)
+    r = Hist(history, commits)
+    g.escalate("dev", "22", False, "no PR", "Bankaifan", r)
+    return r.posted[0]["body"], r
+
+
+def test_first_denial_offers_the_retrigger(tmp_path, monkeypatch):
+    body, _ = denial_run(tmp_path, monkeypatch)
+    assert "(ja)" in body and decision.parse(body) == {"yes": "drop-block", "no": "close-issue"}
+
+
+def test_135_same_denial_again_gives_no_retrigger_and_ends_restarts(tmp_path, monkeypatch):
+    first, _ = denial_run(tmp_path, monkeypatch)
+    second, r = denial_run(tmp_path, monkeypatch, history=[note(1, first, T1)])
+    assert "(ja)" not in second and decision.parse(second) == {"no": "close-issue"}
+    assert ("issue", "edit", "22", "--add-label", "needs-human", "--add-label", "restart:1",
+            "--add-label", "unblock:1") in r.calls
+
+
+def test_a_slip_comment_after_the_last_denial_offers_the_retrigger_again(tmp_path, monkeypatch):
+    first, _ = denial_run(tmp_path, monkeypatch)
+    hist = [note(1, first, T1), {"id": 2, "user": {"login": "stranger"}, "created_at": T2, "body": "clarified"}]
+    second, _ = denial_run(tmp_path, monkeypatch, history=hist, denials=(OTHER,))
+    assert "(ja)" in second
+
+
+def test_answered_owner_comment_and_receiver_confirmation_do_not_reopen(tmp_path, monkeypatch):
+    first, _ = denial_run(tmp_path, monkeypatch)
+    hist = [note(1, first, T1), {"id": 2, "user": {"login": "Bankaifan"}, "created_at": T2, "body": "ja"},
+            note(3, "Verstanden <!-- answer-receiver comment=2 -->", T2)]
+    second, _ = denial_run(tmp_path, monkeypatch, history=hist, denials=(OTHER,))
+    assert "(ja)" not in second
+
+
+def test_a_commit_to_the_allow_list_offers_the_retrigger_again(tmp_path, monkeypatch):
+    first, _ = denial_run(tmp_path, monkeypatch)
+    commits = {".github/workflows/agent-dev.yml": [{"sha": "abc"}]}
+    second, _ = denial_run(tmp_path, monkeypatch, history=[note(1, first, T1)], commits=commits, denials=(OTHER,))
+    assert "(ja)" in second
+
+
+def test_protected_path_gives_a_note_and_never_a_retrigger(tmp_path, monkeypatch):
+    edit = {"tool_name": "Edit", "tool_input": {"file_path": ".github/CODEOWNERS"}}
+    body, _ = denial_run(tmp_path, monkeypatch, denials=(edit,))
+    assert "(ja)" not in body and "geschuetzte Datei" in body and "CODEOWNERS" in body
+    assert decision.parse(body) == {"no": "close-issue"}
+
+
+def test_unreadable_history_offers_no_retrigger(tmp_path, monkeypatch):
+    write_exec(tmp_path, monkeypatch, [DENIED])
+    r = Recorder()  # the history read returns nothing: unknown, fail closed
+    g.escalate("dev", "22", False, "no PR", "Bankaifan", r)
+    assert "(ja)" not in r.posted[0]["body"] and "nicht lesbar" in r.posted[0]["body"]
+
+
+def test_owner_note_refuses_a_body_without_decision_marker():  # #416 req. 7
+    r = Recorder()
+    with pytest.raises(ValueError):
+        g.post_owner_note("issue", 5, "Soll ich das tun?", r)
+    assert not any(c[:2] == ("issue", "comment") for c in r.calls)
+    g.post_owner_note("issue", 5, "Soll ich das tun?\n" + decision.build(yes="drop-block"), r)
+    assert r.posted and "decision:" in r.posted[0]["body"]
