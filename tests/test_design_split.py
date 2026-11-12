@@ -35,15 +35,19 @@ none
 class FakeGh:
     """Records calls; keeps the created issues so a rerun sees them."""
 
-    def __init__(self, source_labels=("prio:2", "agent:dev", "needs-human")):
+    def __init__(self, source_labels=("prio:2", "agent:dev", "needs-human"), source_body="Source text\n"):
         self.issues = []
         self.calls = []
         self.source_labels = source_labels
+        self.source_body = source_body
 
     def __call__(self, *args):
         self.calls.append(args)
         if args[:2] == ("issue", "view"):
-            return json.dumps({"labels": [{"name": n} for n in self.source_labels]})
+            return json.dumps({"labels": [{"name": n} for n in self.source_labels], "body": self.source_body})
+        if args[:2] == ("issue", "edit") and "--body" in args:
+            self.source_body = args[args.index("--body") + 1]
+            return ""
         if args[:2] == ("issue", "list"):
             return json.dumps(self.issues)
         if args[:2] == ("issue", "create"):
@@ -75,6 +79,35 @@ def test_source_issue_loses_agent_dev_and_needs_human():
     gh = FakeGh()
     design_split.split(DESIGN, GOOD, 417, gh)
     assert ("issue", "edit", "417", "--remove-label", "agent:dev", "--remove-label", "needs-human") in gh.calls
+
+
+def test_source_body_gets_depends_on_with_the_final_steps():
+    gh = FakeGh()
+    design_split.split(DESIGN, GOOD, 417, gh)
+    # step 3 depends on 1 and 2, so step 3 (#102) is the only final step
+    assert gh.source_body == "Source text\nDepends on: #102"
+
+
+def test_several_final_steps_are_listed_in_step_order():
+    gh = FakeGh()
+    design_split.split(DESIGN, GOOD.replace("Depends on: 1, 2", "Depends on: 1"), 417, gh)
+    assert gh.source_body.splitlines()[-1] == "Depends on: #101, #102"
+
+
+def test_existing_depends_on_line_is_replaced_and_the_rest_kept():
+    gh = FakeGh(source_body="Intro\nDepends on: #5\nOutro\n")
+    design_split.split(DESIGN, GOOD, 417, gh)
+    assert gh.source_body == "Intro\nDepends on: #102\nOutro"
+
+
+def test_rerun_leaves_the_source_body_alone():
+    gh = FakeGh()
+    design_split.split(DESIGN, GOOD, 417, gh)
+    body = gh.source_body
+    gh.calls.clear()
+    design_split.split(DESIGN, GOOD, 417, gh)
+    assert gh.source_body == body
+    assert not [c for c in gh.calls if c[:2] == ("issue", "edit") and "--body" in c]
 
 
 def test_rerun_creates_nothing():

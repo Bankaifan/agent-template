@@ -12,9 +12,10 @@ Section 8 of a design is a fixed format, one block per step (see docs/design/REA
 
 `run` creates one issue per step: body `Design: <path>`, `Depends on: #<n>[, #<m>]` (step numbers mapped to the issue
 numbers), then the slip (`Files:` and `Acceptance:`). The label is the prio of the source issue (the issue the design PR
-names with `Refs #N`), which also loses `agent:dev` and `needs-human`. Idempotent: a step whose title already exists in an
-issue with the same `Design:` line is reused, not created again. Text is untrusted: only these lines are parsed. Needs gh
-(GH_TOKEN, GH_REPO) and git.
+names with `Refs #N`), which also loses `agent:dev` and `needs-human`. The source issue body gets one `Depends on:` line
+with the final steps (no other step depends on them), so the dispatcher does not start it again (#544); an existing
+`Depends on:` line is replaced. Idempotent: a step whose title already exists in an issue with the same `Design:` line is
+reused, not created again. Text is untrusted: only these lines are parsed. Needs gh (GH_TOKEN, GH_REPO) and git.
 """
 import json
 import os
@@ -107,14 +108,37 @@ def existing(gh, design):
     return {i["title"]: i["number"] for i in found if f"\nDesign: {design}\n" in f"\n{i['body']}\n"}
 
 
+def _final_steps(steps):
+    """Step numbers that no other step depends on, in step order."""
+    needed = {d for st in steps for d in st["depends"]}
+    return [st["step"] for st in steps if st["step"] not in needed]
+
+
+def _with_depends(body, line):
+    """BODY with its `Depends on:` lines replaced by LINE (kept at the first one's place), or LINE appended."""
+    out = []
+    placed = False
+    for text in body.splitlines():
+        if text.startswith("Depends on:"):
+            if not placed:
+                out.append(line)
+                placed = True
+            continue
+        out.append(text)
+    if not placed:
+        out.append(line)
+    return "\n".join(out)
+
+
 def split(design, text, source, gh=prefilter.gh):
     """Create the issues of the design file DESIGN (TEXT is its content); returns {step: issue number}.
     SOURCE is the source issue number or None."""
     steps = parse_section8(text)
     prio = []
+    view = {}
     if source:
-        labels = json.loads(gh("issue", "view", str(source), "--json", "labels"))["labels"]
-        prio = [lab["name"] for lab in labels if lab["name"] in _PRIOS][:1]
+        view = json.loads(gh("issue", "view", str(source), "--json", "labels,body"))
+        prio = [lab["name"] for lab in view["labels"] if lab["name"] in _PRIOS][:1]
     have = existing(gh, design)
     numbers = {}
     for st in steps:
@@ -131,6 +155,11 @@ def split(design, text, source, gh=prefilter.gh):
         numbers[st["step"]] = _issue_number(gh(*args))
         print(f"step {st['step']}: created #{numbers[st['step']]}")
     if source:
+        body = view.get("body") or ""
+        line = "Depends on: " + ", ".join(f"#{numbers[s]}" for s in _final_steps(steps))
+        new = _with_depends(body, line)
+        if new != body.rstrip("\n"):
+            gh("issue", "edit", str(source), "--body", new)
         gh("issue", "edit", str(source), "--remove-label", "agent:dev", "--remove-label", "needs-human")
     return numbers
 
