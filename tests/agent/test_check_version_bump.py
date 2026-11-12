@@ -66,6 +66,7 @@ def test_release_pr_refuses_other_paths_and_added_fragments():
 
 def test_main_uses_git_output(monkeypatch, capsys):
     monkeypatch.chdir(ROOT)
+    monkeypatch.delenv("PR_HEAD_REF", raising=False)
     monkeypatch.setattr(mod, "git", lambda *a: "tools/a.py\n")
     monkeypatch.setattr(mod, "template_managed", lambda: MANAGED)
     assert mod.main(["origin/main"]) == 1
