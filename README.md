@@ -21,6 +21,7 @@ Idea: **rules a script can check live in CI, not in prompts.** The agents get a 
   hidden decision marker (`<!-- decision: yes=<action> no=<action> -->`, allowlist in `tools/decision.py`); a sonnet step without app token or shell only
   picks which answer he gave, and a script applies that action and confirms in German. Labels Daniel removes are not set again by agents (`tools/owner_hold.py`).
   `ANSWER_RECEIVER=off` disables it (`docs/decisions/0011-answer-receiver.md`).
+- Token boundary (`docs/decisions/0016-safety-boundary.md`, design 0017): the dev and fix model tokens have no `workflows` or `actions` write; a workflow change travels as a patch that `workflow-apply` applies after the security review. Repo variable `DEV_SHELL=free` gives dev and fix runs a free shell (unset: the command list); the deny rules for `Read` stay in both cases. `.github/rulesets/agent-refs.json` confines the app token to `agent/**` branches once Daniel imports it.
 - Untrusted text: all model steps get a deny list for reads outside the workspace. The unblocker and answer receiver also read masked files instead of calling `gh` and write one validated verdict that a script applies; the other steps are not migrated yet (`docs/decisions/0013-untrusted-text-boundary.md`).
 - Dependabot PRs are not reviewed by AI: a model-free workflow approves patch/minor once `validate` is green and
   enables auto-merge; majors get `needs-human`. The update type comes from `dependabot/fetch-metadata` (grouped PRs: highest type wins),
@@ -70,6 +71,7 @@ Quota is scarce: `ORCHESTRATOR_ENABLED` and `IDEAS_PER_WEEK` control the autonom
    Optional variable: `RUNNER` (default `ubuntu-latest`, e.g. `self-hosted`).
 4. **Import the ruleset**: *Settings > Rules > Rulesets > New > Import* with `.github/rulesets/main.json`.
    Re-import it whenever that file changes (it is not applied automatically); delete the old ruleset first.
+   The optional `.github/rulesets/agent-refs.json` (agent branches only) is imported the same way, once Daniel decides so.
 5. **Run the `setup` workflow** (*Actions > setup > Run workflow*): it creates all labels (idempotent) and fails with
    the list of missing secrets and variables (names only, values are never printed).
 6. **First task**: open an issue with a goal and acceptance criteria, add label `agent:dev` (or comment `/dev`).
@@ -191,7 +193,7 @@ Rationale: [docs/decisions/0007-template-sync.md](docs/decisions/0007-template-s
   secrets are still missing there, add the four app secrets under *Secrets > Dependabot* too. Dependabot
   `github-actions` PRs touch `.github/`, so they still need Daniel as code owner.
 - Use private repos or keep `AUTHOR_BOT`/`APPROVER_BOT` set: the review workflow accepts bot-authored PRs.
-- `allowedTools` is not a security boundary (e.g. `Bash(git:*)` still allows a lot). The boundaries are the token rights of the two apps and the ruleset on `main`.
+- `allowedTools` is not a security boundary (e.g. `Bash(git:*)` still allows a lot). The boundaries are the token rights of the two apps and the rulesets on `main` and, once imported, on agent branches (`agent-refs.json`).
 - Not verified end to end yet; see `docs/decisions/0001-agent-setup.md`.
 
 All repo variables with defaults, readers, effects and allowed values: [docs/variables.md](docs/variables.md).
