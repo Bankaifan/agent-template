@@ -3,10 +3,11 @@
   python3 tools/dispatch.py start
   python3 tools/dispatch.py after-merge PR_NUMBER
 
-start: candidates come only from the start list of `prefilter.start_state()` (trusted issues from
-`tools/trusted_issues.py`, unblocked, within the free slots). Each one with a slip (`slip.py`) is checked with
-`overlap.py` (exit 1 or 2: skipped, retried next run), then gets its model label and `agent:dev` last. N free slots and
-N ready issues start N issues in one run. after-merge: removes `agent:dev` from the issues a merged same-repo `agent/`
+start: candidates are the whole startable list of `prefilter.start_state()` (trusted issues from
+`tools/trusted_issues.py`, unblocked, in list order), not the cut list the orchestrator sees. Slip-less issues are skipped
+(the orchestrator writes their slip). Each one with a slip (`slip.py`) is checked with `overlap.py` (exit 1 or 2:
+skipped, retried next run), then gets its model label and `agent:dev` last. The walk stops after min(free dev, free PR
+slots) starts. after-merge: removes `agent:dev` from the issues a merged same-repo `agent/`
 PR names with `Refs #N` / `Closes #N`, then runs start. Writes labels only; issue text is read for numbers and
 `Files:` / `Model:` / `Depends on:` lines and never copied into a comment. Needs the gh CLI (GH_TOKEN, GH_REPO).
 """
@@ -22,9 +23,12 @@ LABEL_COLOR = "ededed"
 
 
 def start(state, gh=prefilter.gh, overlap_main=overlap.main, authors=overlap.DEFAULT_TRUSTED):
-    """Start the issues of STATE["start"] that hold a slip; returns the numbers started."""
+    """Start the first issues of STATE["startable"] that hold a slip, up to STATE["limit"] starts; slip-less issues
+    are passed over, not counted. Returns the numbers started."""
     started = []
-    for n in state["start"]:
+    for n in state["startable"]:
+        if len(started) >= state["limit"]:
+            break
         issue = json.loads(gh("issue", "view", str(n), "--json", "labels,body,author,comments"))
         files = slip.slip_files(issue, authors)
         if not files:

@@ -253,7 +253,10 @@ def start_state():
     blocked = {i["number"] for i in issues if deps.blocked(i["number"], i.get("body"), open_numbers)}
     return {"dev": dev, "stuck": stuck, "waiting_prs": w_prs, "free_dev": free_dev, "free_prs": free_prs,
             "trusted": trusted, "blocked": blocked,
-            "start": start_candidates(trusted, free_dev, free_prs, w_prs, blocked)}
+            "start": start_candidates(trusted, free_dev, free_prs, w_prs, blocked),
+            # the dispatcher walks the whole startable list (slip check first) and stops at LIMIT starts
+            "startable": startable(trusted, free_dev, w_prs, blocked) if free_prs > 0 else [],
+            "limit": min(free_dev, free_prs)}
 
 
 def main(mode) -> int:
