@@ -18,6 +18,7 @@ import json
 import subprocess
 import sys
 
+import budget
 import overlap
 import prefilter
 import slip
@@ -105,6 +106,9 @@ def main(argv) -> int:
         return 2
     if argv[0] == "after-merge":
         print(f"agent:dev removed from {after_merge(int(argv[1]))}")
+    if reason := budget.low(budget.START):
+        print(reason)
+        return 0
     state = prefilter.start_state()
     restart_waiting(state)
     start(state)

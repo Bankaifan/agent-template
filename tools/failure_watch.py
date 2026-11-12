@@ -11,6 +11,7 @@ import re
 from urllib.parse import quote
 
 import decision
+import ghcall
 import guard_mark
 import liveness
 from agent_guard import add_labels
@@ -126,6 +127,17 @@ def expected_cancel(run_obj, started, run=liveness.gh):
     if wf not in EXPECTED_CANCEL:
         return False
     return not EXPECTED_CANCEL[wf] or newer_run(run_obj, run)
+
+
+def rate_limited(run_id, conclusion, run=liveness.gh):
+    """A failed run whose log names GitHub's API rate limit: load, not a defect, and the next event or sweep redoes
+    the work (#511, #617). An issue would only add events and use up more of the budget. Unreadable log: False."""
+    if not run_id or conclusion not in FAILED_JOB:
+        return False
+    try:
+        return ghcall.rate_limited(run("run", "view", str(run_id), "--log-failed"))
+    except Exception:  # noqa: BLE001 - an unreadable log keeps the normal rules
+        return False
 
 
 def turn_cap(wf, run_id, conclusion, run=liveness.gh):

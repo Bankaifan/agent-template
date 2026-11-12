@@ -37,6 +37,7 @@ import subprocess
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "ci"))
+import budget
 import design_parents
 import failure_watch
 import flow
@@ -680,6 +681,9 @@ def main(argv):
     if argv[1:] == ["gate"]:
         return gate(os.environ, now)
     if len(argv) == 1:
+        if reason := budget.low(budget.BACKGROUND):
+            print(reason)
+            return 0
         try:
             return run_status(os.environ, now)
         except liveness.ReadbackError as e:

@@ -47,3 +47,11 @@ def clean_env():
 def _no_ci_repo(monkeypatch):
     """CI sets GH_REPO; tests that need it set it themselves, so local and CI runs match."""
     monkeypatch.delenv("GH_REPO", raising=False)
+
+
+@pytest.fixture(autouse=True)
+def _budget_unknown(request, monkeypatch):
+    """No test asks GitHub for the real API budget (tools/budget.py); test_budget checks the logic itself."""
+    if request.module.__name__ != "test_budget":
+        import budget
+        monkeypatch.setattr(budget, "low", lambda *a, **k: None)

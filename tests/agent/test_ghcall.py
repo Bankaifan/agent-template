@@ -55,3 +55,14 @@ def test_write_is_not_repeated(monkeypatch, args):
 ])
 def test_reads_are_recognised(args):
     assert ghcall.is_read(args)
+
+
+def test_rate_limit_is_not_retried_and_is_named(monkeypatch):
+    """#511: waiting seconds does not bring the hourly budget back; the error says what happened."""
+    calls, waits = [], []
+    err = "gh: API rate limit exceeded for installation ID 1. If you reach out to GitHub Support " + "x" * 300
+    monkeypatch.setattr(ghcall.subprocess, "run", fake_run([{"err": err}], calls))
+    with pytest.raises(ghcall.GhError) as e:
+        ghcall.gh("api", "repos/o/r/actions/runs", sleep=waits.append)
+    assert len(calls) == 1 and not waits and "GitHub API rate limit exceeded." in str(e.value)
+
