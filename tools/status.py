@@ -37,6 +37,7 @@ import sys
 
 import design_parents
 import failure_watch
+import flow
 import liveness
 import owner_hold
 import stalled_dev
@@ -384,7 +385,7 @@ def merged_rows(merged, now, hours=24):
 
 
 def build_body(runs, prs, issues, ages, orchestrator, ideas, actions, now, owner, scheduled=None, added=None,
-               merged=None, watch_since=None, required=None):
+               merged=None, watch_since=None, required=None, flow_lines=None):
     run_rows = [f"- [{r['workflowName']}]({r['url']}) {r.get('displayTitle', '')} ({r['status']}, "
                 f"{age(r['createdAt'], now)})" for r in runs]
     pr_rows = [pr_line(p, owner, required) for p in prs]
@@ -401,6 +402,8 @@ def build_body(runs, prs, issues, ages, orchestrator, ideas, actions, now, owner
              section("Open ideas", idea_rows)]
     if merged is not None:
         parts.append(section("Merged in the last 24 h (undo: Revert button on the PR)", merged_rows(merged, now)))
+    if flow_lines is not None:
+        parts.append(section("Flow, last 24 h", flow_lines))
     if scheduled is not None:
         parts.append(section("Last successful scheduled runs", scheduled_rows(scheduled, now, added)))
     parts.append(section("Actions of this run", [f"- {a}" for a in actions]))
@@ -495,6 +498,19 @@ def gate(env, now):
     return 0
 
 
+def flow_lines_for(env, repo, now, run=gh):
+    """Lines of the "Flow, last 24 h" block (tools/flow.py); the CSV goes to FLOW_CSV if set (workflow artifact).
+    A failure leaves the block out and never stops the status run."""
+    try:
+        rows, flow_runs = flow.collect(repo, run)
+        if env.get("FLOW_CSV"):
+            flow.write_csv(rows, env["FLOW_CSV"])
+        return flow.flow_block(rows, flow_runs, now)
+    except (subprocess.CalledProcessError, OSError, ValueError, KeyError) as e:
+        print(f"flow metrics failed: {type(e).__name__}")
+        return None
+
+
 def run_status(env, now, run=gh):
     repo, owner, bot = env["GH_REPO"], env.get("OWNER", OWNER_DEFAULT), env.get("AUTHOR_BOT", "")
     runs = []
@@ -569,8 +585,9 @@ def run_status(env, now, run=gh):
     watch_since = watch_failures(env, now, successes, added, actions, run)
     merged = safe(jlist, run, "pr", "list", "--state", "merged", "--limit", "30", "--json",
                   "number,title,mergedAt,labels")
+    flow_lines = flow_lines_for(env, repo, now, run)
     number = update_issue(build_body(runs, prs, issues, ages, orch, ideas, actions, now, owner, successes, added,
-                                     merged, watch_since, required_contexts()), run, bot)
+                                     merged, watch_since, required_contexts(), flow_lines), run, bot)
     print(f"status issue #{number}; actions: {len(actions)}")
     for a in actions:
         print(a)
