@@ -7,7 +7,7 @@ import actions_watch as aw
 import failure_watch as fw
 import guard_mark
 import pytest
-from test_failure_watch import KEY, NOW, Fake, mkjobs, mkrun
+from test_failure_watch import KEY, NOW, Fake, body, cancelled, mkjobs, mkrun, title
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 WATCH = (ROOT / ".github/workflows/watch.yml").read_text(encoding="utf-8")
@@ -115,6 +115,30 @@ def test_sweep_handles_missed_runs_with_flood_cap():
         f.jobs[n] = mkjobs(job=f"j{n}")
     out = aw.sweep(NOW, KEY, False, f)
     assert len(f.creates()) == fw.MAX_NEW and "flood cap" in out[-1]
+
+
+def expected_cancel_issue():
+    f = Gh()
+    cancelled(f, 1, wf="dispatch.yml", job="go")
+    f.runs.append(mkrun(2, "dispatch.yml", "success"))
+    f.runs[0]["created_at"] = "2026-11-09T00:00:00+00:00"  # outside the sweep window
+    sig = "dispatch.yml / go / cancelled"
+    f.add_issue(title(sig), fw.make_body(sig, 97, "https://github.com/o/r/actions/runs/1"))
+    f.add_issue(title("ci.yml / build / test"), body())
+    return f
+
+
+def test_sweep_closes_issue_whose_last_run_is_an_expected_cancel():
+    f = expected_cancel_issue()
+    out = aw.sweep(NOW, KEY, False, f)
+    assert f.issues[1]["state"] == "CLOSED" and f.issues[2]["state"] == "OPEN"
+    assert "closed expected-cancel issue #1" in out
+
+
+def test_dry_sweep_closes_nothing():
+    f = expected_cancel_issue()
+    aw.sweep(NOW, KEY, True, f)
+    assert f.issues[1]["state"] == "OPEN"
 
 
 def test_no_log_text_in_issue_body():

@@ -70,6 +70,9 @@ def sweep(now, key, dry=False, run=liveness.gh):
         line = handle(r, key, dry, run)
         new += "opened" in line or "would open" in line
         out.append(line)
+    if not dry:
+        out += [f"closed expected-cancel issue #{n}"
+                for n in fw.close_expected(fw.load_issues(key, run), set(), key, run)]
     return out
 
 
