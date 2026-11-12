@@ -110,6 +110,16 @@ Measurement after rollout (numbers go into the PR of step 5; numbers before are 
   timeline. Target: under 2 minutes for an issue with a slip (baseline 26 min, #415).
 - Stop rule: if, after 14 days, any issue with a slip waited for the model or any start was denied, open one follow-up issue.
 
+### Result (step 5, measured 2026-11-12)
+
+Command: `python3 tools/run_stats.py 14 orchestrator.yml` (the 14-day window, DISPATCH on since 2026-11-12).
+- Model runs of `orchestrator.yml`: 27, gate-skipped runs: 610. All 27 model runs fall on 2026-11-12 (the only day listed).
+- Merged PRs in the window: **open**. `gh pr list --state merged` is denied to the developer run (issue #583, #590).
+- Model runs per merged PR, before and after `DISPATCH=on`: **open** (no merged-PR count, and the window holds no day
+  before the switch-on, so there is no baseline).
+- Latency from label to `agent:dev` (target under 2 minutes): **open**, not read from the issue timeline.
+- Do not read the 2026-11-12 count as a result: it is one day, and it mixes runs from before and after the switch.
+
 ## 7. Rollback
 
 Set `DISPATCH` to off or unset: `dispatch.yml` skips, the prompt again labels and starts as today. Reverting the PRs of steps
