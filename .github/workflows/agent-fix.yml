@@ -292,7 +292,7 @@ jobs:
             authored by Daniel (no Co-authored-by) on top of current origin/main and `git push --force-with-lease`.
             No tool or AI attribution in commits, PR bodies or comments (no "Generated with", session link, Co-Authored-By, Claude-Session).
             The tools for `make check` (and the test dependencies) are already installed: run plain `make check`,
-            never `pip install`. Use one simple command per Bash call: no pipes, `&&`, `;`, `$(...)` or redirects
+            never `pip install`. Use one simple command per Bash call (a pipe may end in head, tail, grep, sort, wc or jq); no `&&`, `;`, `$(...)` or redirects
             (they do not match the allow list and are denied).
             Changes under .github/workflows/ are allowed: commit them like any file. After your run a script carries them
             past the token as a patch file (workflow-apply applies it after the security review). Older comments saying a
@@ -309,7 +309,7 @@ jobs:
             --max-turns 60
             --setting-sources user
             --settings .github/claude-judge-settings.json
-            --allowedTools "Read,Edit,Write,Glob,Grep,${{ vars.DEV_SHELL == 'free' && 'Bash' || 'Bash(git:*),Bash(cp:*),Bash(mkdir:*),Bash(diff:*),Bash(cmp:*),Bash(wc:*),Bash(ls:*),Bash(make:*),Bash(bash tools/check/check_drift.sh),Bash(python3:*),Bash(pytest:*),Bash(ruff:*),Bash(actionlint:*),Bash(zizmor:*),Bash(gh issue view:*),Bash(gh pr view:*),Bash(gh run view:*),Bash(gh release view:*),Bash(gh release list:*)' }}"
+            --allowedTools "Read,Edit,Write,Glob,Grep,${{ vars.DEV_SHELL == 'free' && 'Bash' || 'Bash(git:*),Bash(cp:*),Bash(mkdir:*),Bash(diff:*),Bash(cmp:*),Bash(wc:*),Bash(head:*),Bash(tail:*),Bash(grep:*),Bash(sort:*),Bash(jq:*),Bash(ls:*),Bash(make:*),Bash(bash tools/check/check_drift.sh),Bash(python3:*),Bash(pytest:*),Bash(ruff:*),Bash(actionlint:*),Bash(zizmor:*),Bash(gh issue view:*),Bash(gh pr view:*),Bash(gh run view:*),Bash(gh release view:*),Bash(gh release list:*)' }}"
       # Deterministic, fixed flags: the agent only writes the file, it never runs `gh pr edit`.
       # Only after a successful agent run. The file must be a regular file (no symlink) and pass the checks below.
       - name: Apply the PR body the agent wrote
