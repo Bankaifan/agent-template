@@ -6,8 +6,9 @@
    has no validate run for more than 10 min. First time: re-trigger and label `status:retriggered`;
    second time: needs-human, review request for OWNER, comment.
 3. Held runs: runs in `action_required` are approved only if the head belongs to an open same-repo PR of the author app.
-4. Merge conflicts: an agent PR with mergeStateStatus DIRTY gets one fix round (label review:N, then agent-fix is
-   dispatched with the PR number). After round 2 the PR gets needs-human instead.
+4. Merge conflicts: an agent PR with mergeStateStatus DIRTY gets one fix run per head (marker conflict:<sha7>, then
+   agent-fix is dispatched with the PR number). A conflict is no review round. A needs-human PR that is green and
+   approved at its head and touches no CODEOWNERS path loses the label (owner decision 2026-11-12).
 5. Exhausted rounds: an open agent PR with `review:3`, not approved, no needs-human, no agent job running and an
    idle head for more than 30 min was never handed over (the limit step failed): restart.py limit hands it over
    (issue restart once, else needs-human + review request). A failure is escalated with needs-human.
@@ -35,15 +36,17 @@ import re
 import subprocess
 import sys
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "ci"))
 import design_parents
 import failure_watch
 import flow
 import ghcall
 import liveness
 import owner_hold
+import risk
 import stalled_dev
 from agent_guard import add_labels, same_login, tail_text
-from approval import effective_approval
+from approval import effective_approval, security_verdict
 from restart import close_superseded, handle_limit, superseded
 
 TITLE = "Agent status"
@@ -280,8 +283,63 @@ def handle_stuck_limit(pr, owner, run=gh):
         return "escalated"
 
 
+def conflict_mark(pr):
+    return f"conflict:{pr.get('headRefOid', '')[:7]}"
+
+
 def conflict_prs(prs):
-    return [p for p in prs if is_agent_pr(p) and p.get("mergeStateStatus") == "DIRTY" and "needs-human" not in names(p)]
+    """DIRTY agent PRs whose head has not had its conflict fix yet (marker conflict:<sha7>)."""
+    return [p for p in prs if is_agent_pr(p) and p.get("mergeStateStatus") == "DIRTY" and "needs-human" not in names(p)
+            and conflict_mark(p) not in names(p)]
+
+
+AUTO_PARK = ("Review limit reached", "no fix was produced")  # comments of the round-limit and silent-fix paths
+
+
+def parked_by_script(comments, approver):
+    """True if needs-human came from the round limit or a silent fix run: the newest approver comment that is no
+    security verdict or owner-hold note is one of those, and nobody else (the owner, a human) commented after it."""
+    last = None
+    for i, c in enumerate(comments or []):
+        body = c.get("body") or ""
+        if not same_login((c.get("author") or {}).get("login"), approver):
+            if last is not None:
+                last = None  # a human spoke after the script: the hold may be theirs
+            continue
+        if body.startswith(("security-review:", "Daniel removed")):
+            continue
+        last = i if any(m in body for m in AUTO_PARK) else None
+    return last is not None
+
+
+def parked_but_settled(prs, approver, required, codeowners, owner, files_of, set_by_bot=lambda p: True):
+    """Agent PRs with needs-human that the round limit or a silent fix run set, green and approved at their head (a
+    risk:security PR also needs the security `approve`), touching no CODEOWNERS path of OWNER: the label is stale.
+    A label set by a human, the guard or another path, or commented on by a human afterwards, stays. `set_by_bot(p)`
+    says whether a bot applied the newest needs-human label (a human re-label without a comment must stay)."""
+    out = []
+    for p in prs:
+        if not is_agent_pr(p) or "needs-human" not in names(p) or ci_state(p.get("statusCheckRollup"), required) != "green":
+            continue
+        sha, comments = p.get("headRefOid"), p.get("comments")
+        if not parked_by_script(comments, approver):
+            continue
+        try:
+            if not set_by_bot(p):
+                continue
+        except (ValueError, KeyError, TypeError, subprocess.CalledProcessError, OSError):  # unknown: keep the label
+            continue
+        if not effective_approval(p.get("reviewDecision"), names(p), comments, sha, approver):
+            continue
+        if "risk:security" in names(p) and security_verdict(comments, sha, approver) != "approve":
+            continue
+        try:
+            files = files_of(p)
+        except (ValueError, KeyError, TypeError, subprocess.CalledProcessError, OSError):  # files unknown: keep the label
+            continue
+        if not any(risk.owned_by(f, codeowners, owner) for f in files):
+            out.append(p)
+    return out
 
 
 def main_was_red(main_runs, at):
@@ -348,14 +406,39 @@ def clear_retrigger(kind, item, run=gh):
 
 
 def handle_conflict(pr, owner, run=gh):
-    label, limit = fix_round(names(pr))
-    if label:
-        safe_labels("pr", pr["number"], [label], run)
-    if limit:
-        escalate("pr", pr["number"], "the PR conflicts with main and the fix rounds are used up.", owner, run)
-        return "escalated"
+    """A conflict with main is no finding: no review round. One fix run per head (marker conflict:<sha7>); a run that
+    pushes nothing is escalated by agent-fix itself."""
+    safe_labels("pr", pr["number"], [conflict_mark(pr)], run)
     safe(run, "workflow", "run", "agent-fix.yml", "-f", f"pr={pr['number']}")
     return "fix dispatched"
+
+
+FILES_CAP = 3000  # GitHub's limit for pulls/N/files
+
+
+def release_settled(prs, approver, owner, run=gh):
+    """Remove needs-human from PRs that are green and approved at their head and touch no CODEOWNERS path."""
+    def files_of(p):
+        """Paginated `pulls/N/files` with old names of renames (risk.pr_paths). GitHub lists at most 3000 files:
+        a list that may be cut off raises, and the caller keeps the label."""
+        pages = json.loads(run("api", "--paginate", "--slurp", f"repos/{os.environ['GH_REPO']}/pulls/{p['number']}/files"))
+        if sum(len(page) for page in pages) >= FILES_CAP:
+            raise ValueError("file list may be incomplete")
+        return risk.pr_paths(pages)
+
+    def set_by_bot(p):
+        """True if the newest `labeled` event of needs-human came from a bot (the script paths), not a person."""
+        pages = json.loads(run("api", "--paginate", "--slurp", f"repos/{os.environ['GH_REPO']}/issues/{p['number']}/events"))
+        events = [e for page in pages for e in page
+                  if e.get("event") == "labeled" and (e.get("label") or {}).get("name") == "needs-human"]
+        return bool(events) and events[-1]["actor"]["type"] == "Bot"
+
+    out = []
+    for p in parked_but_settled(prs, approver, required_contexts(), risk.read_text(".github/CODEOWNERS"), owner, files_of,
+                                set_by_bot):
+        if safe(run, "pr", "edit", str(p["number"]), "--remove-label", "needs-human") is not None:
+            out.append(f"needs-human removed from PR #{p['number']}: green and approved at its head")
+    return out
 
 
 # --- status issue -----------------------------------------------------------------------------
@@ -571,6 +654,7 @@ def run_status(env, now, run=gh):
 
     for p in limit_prs(prs, runs, now, env.get("APPROVER_BOT", ""), is_held):
         actions.append(f"review:3 PR #{p['number']}: {handle_stuck_limit(p, owner, run)}")
+    actions += release_settled(prs, env.get("APPROVER_BOT", ""), owner, run)
     if not any(r["workflowName"] == "agent-fix" for r in runs):  # one fix job at a time
         for p in [c for c in conflict_prs(prs) if not is_held(c)][:1]:
             actions.append(f"conflict PR #{p['number']}: {handle_conflict(p, owner, run)}")
