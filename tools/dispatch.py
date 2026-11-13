@@ -66,7 +66,7 @@ def slip_time(issue, authors):
 def step_landed(n, issue, authors, gh=prefilter.gh):
     """True when a same-repo `agent/` PR naming issue N merged after its newest slip (issue #661): the slip's step is
     done and a restart from it would only produce an empty run."""
-    out = gh("pr", "list", "--state", "merged", "--search", f"#{n} in:body", "--limit", "5",
+    out = gh("pr", "list", "--state", "merged", "--search", f"#{n} in:body", "--limit", "20",
              "--json", "body,headRefName,isCrossRepository,mergedAt")
     since = slip_time(issue, authors)
     return any(p.get("mergedAt", "") > since and n in prefilter.closing_issues(p.get("body"))
