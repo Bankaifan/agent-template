@@ -3,6 +3,15 @@
 ## [Unreleased]
 - README (EN and DE) and `docs/decisions/0007-template-sync.md`: six-step setup for the template sync, version gate, reuse by other projects.
 
+## [1.91] - 2026-11-13
+- Dispatcher: a one-line prose slip (`Slip. Goal: ... Files: a.py. Model: haiku.`) is read; before, only a `Files:` line at the start of a line counted, so such issues were never started.
+
+## [1.90] - 2026-11-13
+- managed_guard: every part of a split template sync (`Template sync <sha> part 2a`, `part 2b-1`, ...) is exempt like part 1, not only part 1.
+
+## [1.89] - 2026-11-13
+- Failure watch: a security review cancelled by a newer run of the same branch (cancel-in-progress) no longer opens a failure issue.
+
 ## [1.88] - 2026-11-12
 - A settled dev run (merged PR, nothing left) now closes the issue as well as dropping agent:dev, so the dispatcher cannot restart it in a loop.
 
