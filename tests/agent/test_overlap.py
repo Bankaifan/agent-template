@@ -118,3 +118,15 @@ def test_main_fails_closed_when_gh_fails(monkeypatch):
         raise subprocess.CalledProcessError(1, "gh")
     monkeypatch.setattr(mod, "gh_json", boom)
     assert mod.main(["--files", "tools/a.py"]) == 2
+
+
+def test_parse_files_reads_a_one_line_prose_slip():
+    text = "Slip. Goal: canary, append one line to docs/canary.md. Files: docs/canary.md. Model: haiku. Acceptance: x"
+    assert mod.parse_files(text) == ["docs/canary.md"]
+    text = ("Slip (Files line for the dispatcher). Files: .github/workflows/a.yml, tests/test_b.py. Model: sonnet. "
+            "Acceptance: y")
+    assert mod.parse_files(text) == [".github/workflows/a.yml", "tests/test_b.py"]
+
+
+def test_parse_files_ignores_files_inside_a_sentence():
+    assert mod.parse_files("see the Files: line below") == []
