@@ -198,6 +198,7 @@ def test_acceptance_2_sync_touching_judge_settings_runs_no_model(tmp_path, monke
 
 
 @pytest.mark.slow
+@pytest.mark.template_only  # checks the template's own files, not a downstream project
 def test_acceptance_3_fresh_downstream_passes_make_check_and_needs_the_marker(tmp_path, clean_env):
     sha = _git(ROOT, "rev-parse", "HEAD").strip()
     dst = tmp_path / "downstream"
