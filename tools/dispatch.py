@@ -39,8 +39,7 @@ def start(state, gh=prefilter.gh, overlap_main=overlap.main, authors=overlap.DEF
         if not files:
             continue  # no slip: the model writes it
         if step_landed(n, issue, authors, gh):
-            print(f"#{n}: its slip's step is merged, waits for a new slip")
-            continue
+            continue  # its slip's step is merged: the model writes the next slip
         if overlap_main(["--files", ",".join(files), "--issue", str(n)]) != 0:
             print(f"#{n}: overlap or unreadable, deferred")
             continue
