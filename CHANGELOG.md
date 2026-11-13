@@ -3,6 +3,9 @@
 ## [Unreleased]
 - README (EN and DE) and `docs/decisions/0007-template-sync.md`: six-step setup for the template sync, version gate, reuse by other projects.
 
+## [1.92] - 2026-11-13
+- Unblocker: a developer run whose step already landed on main is restarted by script (class 1) instead of being sent to Daniel as an owner decision.
+
 ## [1.91] - 2026-11-13
 - Dispatcher: a one-line prose slip (`Slip. Goal: ... Files: a.py. Model: haiku.`) is read; before, only a `Files:` line at the start of a line counted, so such issues were never started.
 
