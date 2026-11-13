@@ -244,7 +244,13 @@ def test_security_review_cancelled_by_a_newer_run_is_expected():
     f = Fake()
     cancelled(f, 1, wf="agent-security-review.yml", job="security-review", steps=("Run claude",), branch="main")
     f.runs.append(mkrun(2, "agent-security-review.yml", "success", "main"))
-    cancelled(f, 3, wf="agent-security-review.yml", job="security-review", steps=("Run claude",), branch="main")
+    tick(f)
+    assert f.issues == {}
+
+
+def test_lone_security_review_cancel_still_opens_an_issue():
+    f = Fake()
+    cancelled(f, 1, wf="agent-security-review.yml", job="security-review", steps=("Run claude",), branch="main")
     tick(f)
     assert [i["title"] for i in f.issues.values()] == [title("agent-security-review.yml / security-review / Run claude")]
 
