@@ -3,6 +3,9 @@
 ## [Unreleased]
 - README (EN and DE) and `docs/decisions/0007-template-sync.md`: six-step setup for the template sync, version gate, reuse by other projects.
 
+## [1.93] - 2026-11-13
+- Dispatcher: a multi-step issue is no longer restarted from the slip of a step that already merged; it waits for the next slip instead of producing an empty run and `needs-human`.
+
 ## [1.92] - 2026-11-13
 - Unblocker: a developer run whose step already landed on main is restarted by script (class 1) instead of being sent to Daniel as an owner decision.
 
