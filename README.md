@@ -77,7 +77,7 @@ Quota is scarce: `ORCHESTRATOR_ENABLED` and `IDEAS_PER_WEEK` control the autonom
 6. **First task**: open an issue with a goal and acceptance criteria, add label `agent:dev` (or comment `/dev`).
    Add `model:sonnet` for core work, otherwise haiku is used. The PR is reviewed, auto-merged after approval and green CI.
 
-Then fill in `AGENTS.md` (one sentence about the project) and replace the placeholders in `HANDOVER.md`.
+Then fill in `AGENTS.project.md` (one sentence about the project) and replace the placeholders in `HANDOVER.md`.
 
 ## Green means the agents work too
 
@@ -153,8 +153,7 @@ point back at it):
   "managed": [".github/workflows/", ".github/claude-judge-settings.json", ".github/dependabot.yml", ".github/CODEOWNERS", ".github/rulesets/",
               ".agents/roles/", "tools/", "tests/agent/", "AGENTS.md", "CLAUDE.md", "Makefile", "docs/design/README.md"],
   "overrides": [
-    {"path": ".github/workflows/agent-fix.yml", "why": "workflow_run.workflows needs the CI name 'Validate'"},
-    {"path": "AGENTS.md", "why": "project sentence and project rules"}
+    {"path": ".github/workflows/agent-fix.yml", "why": "workflow_run.workflows needs the CI name 'Validate'"}
   ]
 }
 ```
