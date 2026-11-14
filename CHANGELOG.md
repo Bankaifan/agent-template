@@ -3,6 +3,30 @@
 ## [Unreleased]
 - README (EN and DE) and `docs/decisions/0007-template-sync.md`: six-step setup for the template sync, version gate, reuse by other projects.
 
+## [1.101] - 2026-11-14
+- The actions watcher skips with a warning when `GUARD_KEY` is unset instead of failing every scheduled run.
+
+## [1.100] - 2026-11-14
+- A downstream project no longer turns the template's own design studies into implementation issues or closes issues through their `Issue: #N` header (`TEMPLATE_DESIGNS` in `tools/design_origin.py`, delivered by template sync).
+
+## [1.99] - 2026-11-14
+- AGENTS.md no longer has a per-project placeholder: the project sentence lives in AGENTS.project.md, so a project needs no override of AGENTS.md.
+
+## [1.98] - 2026-11-14
+- Docs: `docs/bootstrap.md` describes the first PR of a project that imports the template (title for `managed_guard`, leave `HANDOVER.md` out, install both apps before `agent-smoke`).
+
+## [1.97] - 2026-11-14
+- Template tests no longer assert text in the root README: the README-link check is marked `template_only`, and the operator-switch check reads `docs/variables.md`, so a project can replace its README.
+
+## [1.96] - 2026-11-14
+- The fresh-downstream e2e test (`test_acceptance_3`) no longer fails in projects with their own `project.mk`: its scratch copy drops the project-owned extension files before `make check`.
+
+## [1.95] - 2026-11-14
+- A project can install its own tools with an optional unmanaged `.agents/install.sh`: `tools/ci/install_tools.sh` runs it once, only the version on the base branch (`origin/main`), before `make check`.
+
+## [1.94] - 2026-11-14
+- Template tests that check the template's own files (watch list, fresh-downstream e2e, README design rule, real checks.json, validate.yml shape) are marked `template_only` and no longer fail in downstream projects.
+
 ## [1.93] - 2026-11-13
 - Dispatcher: a multi-step issue is no longer restarted from the slip of a step that already merged; it waits for the next slip instead of producing an empty run and `needs-human`.
 
