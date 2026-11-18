@@ -6,8 +6,17 @@ paths the project may change on purpose). Two checks, both no-ops in the templat
   python3 tools/managed_guard.py check          # validate: fail a PR that changes managed, non-override paths
   python3 tools/managed_guard.py route-issue    # agent-dev: route a slip that only touches such paths to the template
 
-`check` reads PR_NUMBER (gh pr view for files, title, head branch). A template-sync PR is exempt: its title starts
+`check` reads PR_NUMBER (gh pr view for files, title, author). A template-sync PR is exempt: its title starts
 with `Template sync` and it changes .agents/template.json (it must set synced_sha).
+Two exemptions, decided per file (see exempt_paths); when the template tree or the PR file list cannot be read,
+every managed path stays protected:
+  - a Dependabot PR may bump `uses:` pins in .github/workflows/ (the template bumps its own pins; a sync overwrites
+    the project copy anyway): each removed pin line must name the same action as an added one, so no other action
+    can be swapped in; any other changed line in a managed path is still an error;
+  - a file the template does not have, under tools/ (a project's own tool), is not protected when this PR modifies or
+    removes it; an added or renamed file under a managed prefix stays protected, and so does everything else: CI and
+    check scripts (tools/ci/, tools/check/), the guard's own modules, workflows, roles, CODEOWNERS, rulesets and tests
+    (an override with a reason lets a project file through).
 Every part of a split sync (title `Template sync <sha> part <label>`, e.g. `part 1`, `part 2a`, `part 2b-1`) is exempt
 without that change; only the last part sets synced_sha (issue #648).
 `route-issue` reads the issue JSON (`gh issue view --json number,title,body,comments`; comments of untrusted authors are ignored) from ISSUE_JSON, takes the
@@ -29,6 +38,12 @@ SYNC_TITLE = "Template sync"
 PART_TITLE = re.compile(r"Template sync [0-9a-f]{7,40} part [0-9][0-9a-z-]*(?![\w-])", re.IGNORECASE)
 FILES_LINE =re.compile(r"^\s*Files touched:\s*(.+)$", re.IGNORECASE | re.MULTILINE)
 PATH_RE = re.compile(r"[A-Za-z0-9_.][A-Za-z0-9_./-]*")
+DEPENDABOT = ("app/dependabot", "dependabot[bot]")  # gh pr view shows apps as app/<slug>
+WORKFLOWS = ".github/workflows/"
+TOOLS_NOT_EXEMPT = ("tools/ci/", "tools/check/")  # CI and check scripts stay protected
+GUARD_MODULES = ("tools/managed_guard.py", "tools/template_sync.py")  # the guard cannot exempt itself
+PIN_LINE = re.compile(r"^[+-]\s*(?:-\s+)?uses:\s+\S+@\S+(?:\s+#.*)?$")
+USES_ACTION = re.compile(r"uses:\s+([^\s@]+)@")
 
 
 def load(path=CONFIG):
@@ -72,11 +87,11 @@ def is_sync_pr(title, files):
     return title.strip().lower().startswith(SYNC_TITLE.lower()) and CONFIG.as_posix() in files
 
 
-def pr_errors(cfg, project, title, files):
-    """Error lines for a PR; empty list means fine."""
+def pr_errors(cfg, project, title, files, exempt=()):
+    """Error lines for a PR; empty list means fine. exempt: changed paths let through (see exempt_paths)."""
     if not cfg or is_template_repo(cfg, project) or is_sync_pr(title, files):
         return []
-    bad = protected(files, cfg)
+    bad = [f for f in protected(files, cfg) if f not in exempt]
     if not bad:
         return []
     tpl = cfg["template"]
@@ -111,6 +126,61 @@ def gh(*args, token=None):
     return subprocess.run(["gh", *args], check=True, capture_output=True, text=True, env=env).stdout
 
 
+def template_files(cfg):
+    """Blob paths of the template at synced_sha (else its default branch), or None when unreadable or truncated."""
+    ref = cfg.get("synced_sha") or "HEAD"
+    try:
+        tree = json.loads(gh("api", f"repos/{cfg['template']}/git/trees/{ref}?recursive=1"))
+        if tree.get("truncated"):
+            return None
+        return {t["path"] for t in tree["tree"] if t.get("type") == "blob"}
+    except (OSError, subprocess.CalledProcessError, ValueError, KeyError, TypeError, AttributeError):
+        return None
+
+
+def pr_files(project, number):
+    """Path -> {status, patch} from the PR files API; None when unreadable or truncated (a full page of 100)."""
+    try:
+        rows = json.loads(gh("api", f"repos/{project}/pulls/{number}/files?per_page=100"))
+        if not isinstance(rows, list) or len(rows) >= 100:
+            return None
+        return {r["filename"]: {"status": r.get("status"), "patch": r.get("patch")} for r in rows}
+    except (OSError, subprocess.CalledProcessError, ValueError, KeyError, TypeError, AttributeError):
+        return None
+
+
+def pin_bump(path, detail):
+    """A modified workflow whose changed lines are all `uses:` pins (what Dependabot's github-actions updates change),
+    and every removed pin names the same action as an added one (equal multisets: same count, same action names)."""
+    lines = [ln for ln in (detail.get("patch") or "").splitlines() if ln[:1] in ("+", "-")]
+    if not (path.startswith(WORKFLOWS) and detail.get("status") == "modified" and lines
+            and all(PIN_LINE.match(ln) for ln in lines)):
+        return False
+    removed = sorted(USES_ACTION.search(ln).group(1) for ln in lines if ln[0] == "-")
+    added = sorted(USES_ACTION.search(ln).group(1) for ln in lines if ln[0] == "+")
+    return bool(removed) and removed == added
+
+
+def project_tool(path):
+    """A tools/ file (not CI or check scripts, not the guard's own modules): may be a project's own tool."""
+    return path.startswith("tools/") and not path.startswith(TOOLS_NOT_EXEMPT) and path not in GUARD_MODULES
+
+
+def exempt_paths(author, paths, tree, details):
+    """Protected paths let through: a Dependabot pin bump (pin_bump), or a project tool (project_tool) that the
+    template does not have and this PR modifies or removes (an added or renamed file is not exempt). Nothing when
+    tree or details is None."""
+    if tree is None or details is None:
+        return set()
+    out = set()
+    for f in paths:
+        d = details.get(f) or {}
+        missing_tool = f not in tree and project_tool(f) and d.get("status") in ("modified", "removed")
+        if (author in DEPENDABOT and pin_bump(f, d)) or missing_tool:
+            out.add(f)
+    return out
+
+
 def cmd_check():
     number = os.environ.get("PR_NUMBER")
     cfg = load()
@@ -118,12 +188,17 @@ def cmd_check():
         print("managed_guard: skipped (no PR or no .agents/template.json)")
         return 0
     try:
-        pr = json.loads(gh("pr", "view", number, "--json", "title,files"))
+        pr = json.loads(gh("pr", "view", number, "--json", "title,files,author"))
     except (OSError, subprocess.CalledProcessError, ValueError):
         print("managed_guard: skipped (cannot read the PR)")
         return 0
     files = [f.get("path", "") for f in pr.get("files") or []]
-    errors = pr_errors(cfg, os.environ.get("GH_REPO", ""), pr.get("title") or "", files)
+    project, title = os.environ.get("GH_REPO", ""), pr.get("title") or ""
+    author = (pr.get("author") or {}).get("login", "")
+    errors = pr_errors(cfg, project, title, files)
+    if errors:
+        exempt = exempt_paths(author, protected(files, cfg), template_files(cfg), pr_files(project, number))
+        errors = pr_errors(cfg, project, title, files, exempt)
     for e in errors:
         print(f"managed_guard: {e}")
     if not errors:

