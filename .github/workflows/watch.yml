@@ -44,6 +44,14 @@ on:
 permissions:
   contents: read
 jobs:
+  alive:
+    # GitHub fires the cron only every few hours; a run whose only job is skipped does not count as a success for
+    # tools/liveness.py. This no-op job makes every workflow_run delivery a success. No concurrency: it never blocks watch.
+    if: github.event_name == 'workflow_run'
+    runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 2
+    steps:
+      - run: echo "watch is alive"
   watch:
     # Skipped runs take no minutes and, at job level, do not take over the concurrency group.
     if: >-
