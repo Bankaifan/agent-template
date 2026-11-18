@@ -37,7 +37,8 @@ def test_without_file_uses_the_script_versions(tmp_path):
     assert r.returncode == 0, r.stderr
     assert "ruff==0.17.4" in calls[0]
     assert "zizmor==1.32.0" in calls[0]
-    assert "v1.7.7/" in calls[1]
+    # curl and tar run in one pipeline, so their log order is not fixed
+    assert any("v1.7.7/" in c for c in calls[1:])
 
 
 def test_empty_file_keeps_the_script_versions(tmp_path):
@@ -52,7 +53,7 @@ def test_pins_override_the_three_tools(tmp_path):
     assert "ruff==9.9.9" in calls[0]
     assert "zizmor==2.0.1" in calls[0]
     assert "ruff==0.17.4" not in calls[0]
-    assert "v1.8.0/" in calls[1]
+    assert any("v1.8.0/" in c for c in calls[1:])
 
 
 REFUSED = [
