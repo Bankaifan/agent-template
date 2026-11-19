@@ -18,6 +18,7 @@ import sys
 
 import budget
 import failure_watch as fw
+import ghcall
 import guard_mark
 import liveness
 import stalled_dev
@@ -227,6 +228,12 @@ def main(env=None, run=liveness.gh, now=None):
 
 
 if __name__ == "__main__":
-    for line in main():
-        print(line)
+    try:
+        for line in main():
+            print(line)
+    except ghcall.GhError as e:
+        if not ghcall.rate_limited(e.stderr):
+            raise
+        # The budget comes back within the hour and the sweep catches up: a red watcher would only report itself.
+        print("::warning::GitHub API rate limit reached: watcher skipped, the next sweep catches up")
     sys.exit(0)
