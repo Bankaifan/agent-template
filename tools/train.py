@@ -25,7 +25,9 @@ Model-free. The workflow (a later PR) runs it on push to main, on a schedule and
    no docs/design/ file and whose files are pairwise disjoint (`batchable`) land as ONE PR on BATCH_BRANCH. No model:
    `build_batch` cherry-picks them onto main, the PR body records `Batch: #a@<sha7> ...` and their `Closes`/`Refs`
    numbers, tools/reapprove.py approves it. Per run (`batch_step`, before the serial plan):
-   - a merged batch: its members still open at the recorded head are closed with `Merged with #<batch>.`;
+   - a merged batch: its members still open at the recorded head are closed with `Merged with #<batch>.`, but only
+     agent/<N>- PRs and only when the approver's review of the merged head names the hash of the body the member
+     list is read from (`vouched`: a body edited after the approval closes nothing);
    - an open batch is closed when it is red, conflicting, has changes requested, has fewer than two members left,
      or is still open BATCH_WAIT_MIN minutes after its head was committed. That last rule is the signal for
      "refused" (a refusal writes nothing, and a workflow_run review run cannot be matched to a PR head): CI and the
@@ -271,7 +273,15 @@ def build_batch(remote, members, token="", base="main", avoid=frozenset()):
         return None
 
 
-def batch_step(run, repo, prs, cands, reviews_of, required, now, builder, enabled=True, idle=True):
+def vouched(pr, reviews, approver):
+    """The approver's APPROVED review of this head carries the hash of this body: the `Batch:` line read from it is
+    the one tools/reapprove.py checked, not a later edit."""
+    mine = [r for r in reviews if (r.get("state") or "").upper() == "APPROVED"
+            and agent_guard._BODY_HASH_LINE.search(r.get("body") or "")]
+    return bool(approver) and agent_guard.has_review(mine, approver, pr["headRefOid"], agent_guard.body_hash(pr.get("body")))
+
+
+def batch_step(run, repo, prs, cands, reviews_of, required, now, builder, enabled=True, idle=True, approver=""):
     """Step 7 of the module text. Returns (numbers of PRs closed as landed, text when a batch holds the train or "")."""
     known = [p for p in jlist(run, "pr", "list", "--state", "all", "--head", BATCH_BRANCH, "--limit", "5",
                               "--json", BATCH_FIELDS)
@@ -280,10 +290,12 @@ def batch_step(run, repo, prs, cands, reviews_of, required, now, builder, enable
     last = next((p for p in known if p.get("state") in ("MERGED", "CLOSED")), None)
     landed = set()
     if last and last["state"] == "MERGED":
-        for n, sha7 in recorded(last):
-            if any(p["number"] == n and p["headRefOid"].startswith(sha7) for p in prs):
-                run("pr", "close", str(n), "--comment", f"Merged with #{last['number']}.")
-                landed.add(n)
+        pool = {p["number"]: p["headRefOid"] for p in prs
+                if status.is_agent_pr(p) and check_pr_form.AGENT_BRANCH.match(p["headRefName"])}
+        mine = [n for n, sha7 in recorded(last) if pool.get(n, "").startswith(sha7)]
+        for n in mine if mine and vouched(last, reviews_of(last["number"]), approver) else []:
+            run("pr", "close", str(n), "--comment", f"Merged with #{last['number']}.")
+            landed.add(n)
     ready = [p for p in cands if p["number"] not in landed]
     failed = {n for n, _ in recorded(last)} if last and last["state"] == "CLOSED" else frozenset()
     fresh = batchable(ready, required) if enabled else []
@@ -313,6 +325,8 @@ def batch_step(run, repo, prs, cands, reviews_of, required, now, builder, enable
         print(f"batch: closed PR #{number}: {why}")
         return landed, ""
     if [(p["number"], p["headRefOid"][:7]) for p in kept] != old:
+        if jlist(run, "pr", "view", str(number), "--json", "state").get("state") != "OPEN":
+            return landed, f"batch: PR #{number} was merged or closed meanwhile; its body stays as approved"
         title, body = batch_text(kept)
         run("pr", "edit", str(number), "--title", title, "--body", body)
     return landed, f"waiting: batch PR #{number} is about to merge; the train runs again after its push"
@@ -392,7 +406,7 @@ def run_train(env, run=status.gh, releaser=None, now=None, builder=None):
         fix_busy = any(r.get("status") in ACTIVE_RUN for r in fix_runs)
         landed, hold = batch_step(run, repo, prs, cands, reviews_of, required, now or datetime.datetime.now(datetime.UTC),
                                   builder, env.get("TRAIN_BATCH") != "off",
-                                  idle=not plan(cands, fix_busy, waiting, required)[0])
+                                  idle=not plan(cands, fix_busy, waiting, required)[0], approver=approver)
         if hold:
             print(hold)
             return int(released is None)

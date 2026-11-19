@@ -458,7 +458,9 @@ class BatchGh(Gh):
 
     def __init__(self, prs, batches=(), built="2026-11-19T11:55:00Z", **kw):
         super().__init__(prs, approved(*prs), **kw)
-        self.batches, self.built, self.builds = list(batches), built, []
+        self.batches, self.built, self.builds, self.state_now = list(batches), built, [], "OPEN"
+        for b in self.batches:  # what tools/reapprove.py left on the batch it approved
+            self.reviews[b["number"]] = [{**review(b["headRefOid"]), "body": f"ok\n\nbody-hash: {train.agent_guard.body_hash(b['body'])}"}]
 
     def __call__(self, *args):
         if args[:2] == ("pr", "list") and train.BATCH_BRANCH in args:
@@ -466,6 +468,8 @@ class BatchGh(Gh):
             return json.dumps(self.batches)
         if args[0] == "api" and "/commits/" in args[1]:
             return self.built + "\n"
+        if args[:2] == ("pr", "view"):
+            return json.dumps({"state": self.state_now})
         return super().__call__(*args)
 
     def builder(self, members, avoid):
@@ -528,6 +532,26 @@ def test_members_are_closed_once_their_batch_is_merged():
     assert run.go() == [("pr", "close", "1", "--comment", "Merged with #50."),
                         ("pr", "close", "3", "--comment", "Merged with #50."),
                         ("api", "-X", "PUT", "repos/o/r/pulls/2/update-branch", "-f", "update_method=rebase")]
+
+
+def test_a_merged_batch_closes_only_what_the_approval_of_its_body_vouches_for():
+    edited = batch_pr([ready(1), ready(2)], state="MERGED")  # approved as #1 #2, the body rewritten afterwards
+    prs = [{**ready(7), "headRefName": "feature/owner-work"}, ready(8), ready(9)]
+    run = BatchGh(prs, [edited])
+    edited["body"] = f"Batch: #7@{'7' * 7} #8@{'8' * 7}"
+    assert not any(c[:2] == ("pr", "close") for c in run.go())
+    honest = batch_pr([prs[0], ready(8)], state="MERGED")  # even a vouched line closes agent/<N>- PRs only
+    assert [c for c in BatchGh(prs, [honest]).go() if c[:2] == ("pr", "close")] == [("pr", "close", "8", "--comment", "Merged with #50.")]
+    for bad in ({"state": "COMMENTED"}, {"commit_id": "c" * 40}, {"user": {"login": "app/author"}}, {"body": "ok"}):
+        run = BatchGh(prs, [honest])
+        run.reviews[50] = [{**run.reviews[50][0], **bad}]
+        assert not any(c[:2] == ("pr", "close") for c in run.go())
+
+
+def test_the_body_of_a_batch_that_is_no_longer_open_is_never_edited(capsys):
+    run = BatchGh([ready(1), {**ready(2), "headRefOid": "c" * 40}, ready(3)], [batch_pr([ready(1), ready(2)])])
+    run.state_now = "MERGED"  # merged while the train built it again
+    assert run.go() == [] and "merged or closed meanwhile" in capsys.readouterr().out
 
 
 def test_an_open_batch_with_ready_members_holds_the_train(capsys):
