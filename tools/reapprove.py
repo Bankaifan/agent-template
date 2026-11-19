@@ -17,6 +17,8 @@ Approve only if ALL hold, else refuse:
 3. `git patch-id --verbatim` of the diff of OLD against its merge base equals that of SHA. Refused on binary markers, mode changes,
    a patch over MAX_PATCH characters, or a `diff --git` count that differs from the PR's file count (truncation).
 4. The head is re-read just before posting, and the review is submitted through the API with `commit_id=SHA`.
+5. Every commit of the PR has exactly one parent and the commit list is complete (both modes): a merge commit can
+   carry content the three-dot diff does not show.
 
 Batch mode (docs/decisions/0018-batch-train.md, rule 3): a PR whose head branch is exactly `agent/batch` is never
 compared with an earlier head. It is approved only if ALL hold, else refused (and no model reviews it):
@@ -92,6 +94,13 @@ def check_patch(patch, nfiles):
         raise Refuse("patch changes a file mode")
     if len(re.findall(r"^diff --git ", patch, re.MULTILINE)) != nfiles:
         raise Refuse("patch does not cover the PR's files")
+
+
+def check_linear(run, repo, pr_no, pr):
+    """Gate 5: the PR's commits are all there and none is a merge."""
+    commits = paged(run, f"repos/{repo}/pulls/{pr_no}/commits")
+    if not commits or len(commits) != pr.get("commits") or any(len(c.get("parents") or []) != 1 for c in commits):
+        raise Refuse("commit list is incomplete or holds a merge commit")
 
 
 def patch_id(patch):
@@ -228,6 +237,7 @@ def run_reapprove(pr_no, sha, env, run=gh, ident=patch_id):
         patch = run("api", f"repos/{repo}/compare/{(pr.get('base') or {}).get('ref', '')}...{sha}", "-H", PATCH_ACCEPT)
         check_patch(patch, len(files))
         members = check_batch(pr, patch, repo, approver, author_bot, run, ident)
+        check_linear(run, repo, pr_no, pr)
         again = json.loads(run("api", f"repos/{repo}/pulls/{pr_no}"))  # neither head nor member list moved meanwhile
         check_pr(again, repo, sha)
         if agent_guard.body_hash(again.get("body")) != bhash:
@@ -254,6 +264,7 @@ def run_reapprove(pr_no, sha, env, run=gh, ident=patch_id):
     pid, old_pid = ident(new_patch), ident(old_patch)
     if pid != old_pid:
         raise Refuse("patch changed since the approved head")
+    check_linear(run, repo, pr_no, pr)
     check_pr(json.loads(run("api", f"repos/{repo}/pulls/{pr_no}")), repo, sha)  # head did not move while we compared
     body = f"Re-approved without model: patch unchanged since {old} (patch-id {pid}).\n\nbody-hash: {bhash}"
     run("api", "-X", "POST", f"repos/{repo}/pulls/{pr_no}/reviews", "-f", f"commit_id={sha}", "-f", "event=APPROVE",

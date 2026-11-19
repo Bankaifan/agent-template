@@ -677,7 +677,10 @@ def test_what_the_train_builds_is_what_reapprove_accepts(tmp_path, monkeypatch):
             return json.dumps([[review(shas[n])] if n != 9 else []])
         if path.endswith("/files"):
             return json.dumps([[{"filename": "a.txt"}, {"filename": "b.txt"}]])
+        if path.endswith("/commits"):
+            return json.dumps([[{"parents": [{}]}] * 2])
         return json.dumps({"state": "open", "labels": [], "changed_files": 2 if n == 9 else 1, "base": {"ref": "main"},
+                           "commits": 2,
                            "user": {"login": "app/author"}, "body": train.batch_text([one, two])[1],
                            "head": {"sha": shas[n], "ref": "agent/batch" if n == 9 else f"agent/{n}-x",
                                     "repo": {"full_name": "o/r"}}})
