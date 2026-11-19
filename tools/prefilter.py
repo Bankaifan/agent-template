@@ -209,7 +209,7 @@ def parked_waiting(dev, gh=gh):
 
 def waiting_for_owner(owner, approver):
     """(issue numbers, PR count) of PRs waiting only for the owner; see train.waiting_for_owner."""
-    prs = json.loads(gh("pr", "list", "--state", "open", "--limit", "20", "--json", train.LIST_FIELDS + ",body"))
+    prs = json.loads(gh("pr", "list", "--state", "open", "--limit", "20", "--json", train.LIST_FIELDS))
     repo = os.environ["GH_REPO"]
     issues, n = set(), 0
     for p in prs:
