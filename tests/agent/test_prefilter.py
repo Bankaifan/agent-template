@@ -279,3 +279,9 @@ def test_handover_done_today(monkeypatch):
     assert "head:agent/orchestrator-handover-" in calls[0][calls[0].index("--search") + 1]
     monkeypatch.setattr(mod, "gh", lambda *a: "[]")
     assert not mod.handover_done_today()
+
+
+def test_a_failure_issue_waits_for_its_second_failure():
+    assert mod.first_failure("The workflow x.yml failed in job j, step s.\nFailures: 1\nLast run: u\n")
+    assert not mod.first_failure("The workflow x.yml failed in job j, step s.\nFailures: 2\nLast run: u\n")
+    assert not mod.first_failure("Goal: x\nFiles: a.py") and not mod.first_failure(None)
