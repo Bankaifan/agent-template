@@ -7,7 +7,7 @@ Runs from the default branch (agent-review.yml, workflow_run); PR data is read t
 
 Approve only if ALL hold, else refuse:
 1. The PR is open, same repo, `agent/*`, SHA is its head, one commit, fewer than 100 files (the file list is complete),
-   no `needs-human`, not a design PR, no changed path owned by the owner in CODEOWNERS, and the risk classifier
+   not `parked`, not a design PR, no changed path owned by the owner in CODEOWNERS, and the risk classifier
    (tools/ci/risk.py) rates the commit patch `none` or `security` (infra refuses). A `security` patch or a
    `risk:security` label also needs a `security-review: approve <sha>` comment of the approver app for the new head.
 2. No reviewer's latest decisive review is CHANGES_REQUESTED. The newest approver review for another head OLD is an
@@ -58,8 +58,8 @@ def check_pr(pr, repo, sha):
         raise Refuse("not a same-repo agent/* branch")
     if pr.get("commits") != 1:
         raise Refuse("PR has not exactly one commit")
-    if "needs-human" in labels:
-        raise Refuse("PR is labelled needs-human")
+    if "parked" in labels:
+        raise Refuse("PR is parked")
 
 
 def check_files(files, pr, codeowners, owner):
