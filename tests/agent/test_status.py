@@ -340,8 +340,8 @@ def test_no_rebase_while_main_is_red_or_for_foreign_prs():
     dependabot = pr(8, "dependabot/x", mergeStateStatus="BEHIND")
     assert st.rebase_candidates([dependabot], main, _failed, "Bankaifan") == []
     two = _agent_pr()
-    two["commits"] = two["commits"] * 2
-    assert st.rebase_candidates([two], main, _failed, "Bankaifan") == []
+    two["commits"] = two["commits"] * 2  # many small commits by the owner are fine
+    assert st.rebase_candidates([two], main, _failed, "Bankaifan") == [two]
 
 
 # --- liveness (issue #74) ----------------------------------------------------------------------
