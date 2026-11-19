@@ -495,14 +495,14 @@ def test_two_ready_prs_become_one_batch_pr_and_are_not_rebased(capsys):
     run = BatchGh([ready(2), ready(1)])
     (create,) = run.go()
     assert create[:8] == ("pr", "create", "--base", "main", "--head", "agent/batch", "--title", "Batch: #1, #2")
-    assert create[-1] == f"Batch: #1@{'1' * 7} #2@{'2' * 7}\nCloses #101\nCloses #102"
+    assert create[-1] == f"Batch: #1@{'1' * 7} #2@{'2' * 7}\n{train.EVIDENCE}\nCloses #101\nCloses #102"
     assert run.builds == [([1, 2], set())]
     assert "batch: opened Batch: #1, #2" in capsys.readouterr().out
 
 
 def test_batch_body_copies_numbers_only_and_keeps_refs_apart():
     a = {**ready(1), "body": "@someone <!-- x --> fixes #7, refs #8 and Closes #7\nBatch: #9@abcdef0 #8@abcdef0"}
-    assert train.batch_text([a, ready(2)])[1] == f"Batch: #1@{'1' * 7} #2@{'2' * 7}\nCloses #7\nRefs #8\nCloses #102"
+    assert train.batch_text([a, ready(2)])[1] == f"Batch: #1@{'1' * 7} #2@{'2' * 7}\n{train.EVIDENCE}\nCloses #7\nRefs #8\nCloses #102"
 
 
 def test_a_failed_batch_is_not_built_again_from_the_same_members():
