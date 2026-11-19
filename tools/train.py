@@ -226,7 +226,8 @@ def batch_text(members):
 
 def build_batch(remote, members, token="", base="main", avoid=frozenset()):
     """Cherry-pick every member (merge base to its listed head, fetched by PR ref) onto `base` in a scratch clone and
-    force-push the result to BATCH_BRANCH. A member whose head moved or whose pick fails is dropped. Returns the
+    force-push the result to BATCH_BRANCH. A member whose head moved, whose pick fails or whose files changed on
+    `base` since its merge base (reapprove wants every file blob-exact as approved) is dropped. Returns the
     members kept; [] and no push when fewer than two are left or their numbers equal `avoid`; None on a git error.
     A result with the tree of the branch already there, on top of the current `base`, is not pushed again."""
     env = git_env(token)
@@ -246,6 +247,9 @@ def build_batch(remote, members, token="", base="main", avoid=frozenset()):
                 if got.returncode != 0 or git(tmp, "rev-parse", ref).stdout.strip() != p["headRefOid"]:
                     continue
                 fork = git(tmp, "merge-base", f"origin/{base}", ref).stdout.strip()
+                names = [set(git(tmp, "diff", "--name-only", fork, r).stdout.splitlines()) for r in (ref, f"origin/{base}")]
+                if names[0] & names[1]:
+                    continue
                 if git(tmp, "cherry-pick", f"{fork}..{ref}", check=False).returncode == 0:
                     kept.append(p)
                 else:

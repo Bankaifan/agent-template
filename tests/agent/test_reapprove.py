@@ -327,6 +327,9 @@ def risky(gh):
     (extra_file, "belongs to no member"),
     (lambda gh: gh.patches.update({BATCH: part("src/a.py", "+print(2)\n") + part("src/b.py")}), "missing or changed"),
     (dropped_file, "missing or changed"),
+    # the member's hunk, same patch-id, applied at another place of the file: another blob after it
+    (lambda gh: gh.patches.update({BATCH: part("src/a.py", at=9).replace("..222", "..333") + part("src/b.py")}), "missing or changed"),
+    (lambda gh: gh.patches.update({BATCH: part("src/a.py").replace("111..", "110..") + part("src/b.py")}), "missing or changed"),
     (lambda gh: gh.patches.update({M2: part("src/a.py")}), "missing or changed"),  # one file, two members
     (lambda gh: gh.reviews.update({2: [approval(sha=OLD)]}), "not approved at the recorded head"),
     (lambda gh: gh.reviews.update({2: [approval(sha=M2, login="someone")]}), "not approved at the recorded head"),
