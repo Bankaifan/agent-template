@@ -17,6 +17,7 @@ Unknown facts are marked "open".
 | `PYTHON_VERSION` | `3.x` | `validate.yml`, `agent-dev.yml`, `agent-fix.yml`, `orchestrator.yml`; `setup.yml` (shown) | Python version for `setup-python` in those jobs | a version string accepted by `setup-python`. Open: exact accepted set |
 | `EXTRA_INSTALL` | not set | `validate.yml`, `agent-dev.yml`, `agent-fix.yml`, `orchestrator.yml`; `tools/ci/install_tools.sh` | shell command run once after the common tools; read only from the repo variable, never from a file on a PR branch. A file hook exists too: `.agents/install.sh`, run once from the base branch (`origin/main`) version only | any bash command |
 | `TRAIN` | `on` | `train.yml` (job `if`) | `off` disables the merge train (rebases the oldest approved agent PR that is behind `main`) | `on` / `off`; only `off` disables |
+| `TRAIN_BATCH` | `on` | `train.yml`; `tools/train.py` | `off` keeps the serial train: no batch PR on `agent/batch` is built, an open one is closed (`docs/decisions/0018-batch-train.md`) | `on` / `off`; only `off` disables |
 | `CLEANER` | `on` | `cleaner.yml` | weekly cleaner run (`.agents/roles/cleaner.md`) | `off` disables it |
 | `UNBLOCKER` | `on` | `unblocker.yml` (job `if`); `setup.yml` (shown) | `off` disables the unblocker for `parked` items (`docs/decisions/0010-unblocker.md`) | `on` / `off`; only `off` disables |
 | `INTAKE` | `on` | `intake.yml` (job `if`); `setup.yml` (shown) | `off` disables intake of outside issues and scout ideas (`docs/decisions/0017-hpo-flow.md`) | `on` / `off`; only `off` disables |
