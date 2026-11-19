@@ -67,6 +67,7 @@ LIST_FIELDS = ("number,title,url,headRefName,headRefOid,labels,mergeStateStatus,
 BATCH_BRANCH = check_pr_form.BATCH_BRANCH  # force-updated, at most one open batch PR
 BATCH_MAX = 8
 BATCH_WAIT_MIN = 30  # an open batch older than this (head commit) was refused or is stuck
+EVIDENCE = "Test evidence exempt: every member passed this check in its own PR."
 BATCH_FIELDS = "number,state,body,headRefName,headRefOid,isCrossRepository,mergeStateStatus,statusCheckRollup"
 
 
@@ -212,9 +213,10 @@ def recorded(pr):
 
 
 def batch_text(members):
-    """(title, body) of the batch PR. The body is the `Batch:` line and, per member, the numbers of its own closing
-    keywords and `Refs`: numbers only, no text of a member's body is copied."""
-    lines = ["Batch: " + " ".join(f"#{p['number']}@{p['headRefOid'][:7]}" for p in members)]
+    """(title, body) of the batch PR. The body is the `Batch:` line, one fixed line for check_test_evidence (a
+    member's own exemption cannot be copied) and, per member, the numbers of its own closing keywords and `Refs`:
+    numbers only, no text of a member's body is copied."""
+    lines = ["Batch: " + " ".join(f"#{p['number']}@{p['headRefOid'][:7]}" for p in members), EVIDENCE]
     for p in members:
         closing = [int(n) for n in restart._CLOSING.findall(p.get("body") or "")]
         lines += [f"Closes #{n}" for n in closing]
