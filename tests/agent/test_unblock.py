@@ -188,7 +188,7 @@ def test_class_2_opens_one_issue_and_repeat_finds_duplicate():
     f = Fake()
     assert u.apply("pr", 7, verdict, OWNER, run=f) == 2
     created = [c for c in f.calls if c[:2] == ("issue", "create")]
-    assert len(created) == 1 and "prio:1" in created[0]
+    assert len(created) == 1 and "prio:1,idea" in created[0]  # `idea`: untrusted, the intake triages it
     g = Fake(issues=[{"title": "Guard misfires", "url": "https://x/9"}])
     u.apply("pr", 7, verdict, OWNER, run=g)
     assert not any(c[:2] == ("issue", "create") for c in g.calls) and "https://x/9" in g.comments()[0][4]

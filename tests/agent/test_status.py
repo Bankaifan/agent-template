@@ -672,6 +672,15 @@ def test_un_park_gives_issue_and_pr_a_fresh_start_after_the_cool_down():
     assert st.un_park([parked_pr], "o/r", ["app/author"], NOW, ParkGh(hours=23)) == []
 
 
+def test_un_park_of_a_pr_on_another_branch_only_clears_the_labels():
+    sync = pr(9, "template-sync/1.2", labels=["parked", "review:3", "risk:infra"], body="Refs #8", comments=[])
+    fork = pr(10, "template-sync/1.2", labels=["parked"], isCrossRepository=True, comments=[])
+    run = ParkGh(hours=25)
+    assert st.un_park([sync, fork], "o/r", ["app/author"], NOW, run)[0] == "un-parked pr #9: labels cleared after 24 h"
+    assert ("pr", "edit", "9", "--remove-label", "parked", "--remove-label", "review:3") in run.calls
+    assert not any(c[:2] == ("pr", "close") or c[:3] == ("pr", "edit", "10") for c in run.calls) and not run.comments
+
+
 def test_un_park_that_keeps_failing_on_the_pr_does_not_comment_on_the_issue_every_tick():
     """A PR whose label edit fails stays parked; the park comment on its issue must not be repeated tick after tick."""
     class Failing(ParkGh):
