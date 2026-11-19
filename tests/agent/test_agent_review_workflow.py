@@ -40,7 +40,7 @@ def test_checkout_is_the_default_branch_and_never_the_pr_head():
 
 def test_approver_token_scope_is_unchanged():
     assert "permission-pull-requests: write" in TEXT
-    assert TEXT.count("permission-") == 1
+    assert len(re.findall(r"(?m)^\s+permission-[a-z-]+:", TEXT)) == 1  # token scopes, not --permission-mode
     assert "permissions:\n  contents: read\n  pull-requests: read\n" in TEXT
 
 
