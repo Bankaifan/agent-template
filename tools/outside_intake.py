@@ -19,7 +19,8 @@ the issue gets the fixed answer NEEDS_MAINTAINER and stays open.
   outside_intake.py validate FILE   check a verdict file without acting; exit 0 = valid
   outside_intake.py apply N FILE    answer (comment), decline (comment, close as not planned) or build (one slip issue
                                     from the fixed template with `Intake: #N`, comment, close N); idempotent
-  outside_intake.py failed N        mark a run that applied nothing, so it counts against the caps
+  outside_intake.py failed N        mark a run that applied nothing, so it counts against the caps; the third such
+                                    run on a thread declines it (fixed text, closed as not planned)
 
 Caps: THREAD_CAP model runs per issue and REPO_CAP per repo in 24 hours, counted from the marker comments of the
 author app (Actions keeps no state between runs). Needs the gh CLI (GH_TOKEN, GH_REPO). Environment: OWNER (default
@@ -48,10 +49,12 @@ FAILED = "<!-- outside-intake:failed -->"
 MARKERS = (ANSWERED, DECLINED)
 THREAD_CAP = 3  # model runs per thread in 24 hours
 REPO_CAP = 20  # model runs per repo in 24 hours
+MAX_FAILED = 3  # runs without an applied verdict on one thread, in total: then it is declined without a model
 MAX_REPLY, MAX_LINE, MAX_TITLE, MAX_FILES = 1500, 300, 100, 10
 NEEDS_MAINTAINER = ("Thank you. This request touches a protected part of the project, so this needs a maintainer; "
                     "it is not started automatically.")
 FAILED_TEXT = "Automatic triage did not finish for this issue. It is tried again later."
+GAVE_UP_TEXT = "Automatic triage could not handle this issue, so it is closed. A maintainer can reopen it."
 SLIP = "Goal: {goal}\nFiles: {files}\nAcceptance: {acceptance}\nIntake: #{n}\n"
 # Nothing we post may notify, link, embed or start a line a script reads (slip fields, trust lines).
 _UNSAFE = re.compile(r"@|://|www\.|mailto:|xmpp:|\]\(|\]\[|\]:|<[A-Za-z!/]|[\w.-]/[\w.-]+#\d", re.IGNORECASE)
@@ -252,6 +255,16 @@ def apply(number, verdict, repo, owner, author_bot, gh=None, codeowners="", vers
     return v["action"]
 
 
+def mark_failed(number, repo, author_bot, gh=None):
+    """Mark a run that applied nothing. The MAX_FAILED-th such run on a thread declines it with a fixed text."""
+    gh, n = gh or run_gh, str(number)
+    before = len(_marked(_pages(gh, f"repos/{repo}/issues/{n}/comments"), author_bot, (FAILED,)))
+    _post(gh, "issue", "comment", n, body=f"{FAILED}\n{FAILED_TEXT}")
+    if before + 1 >= MAX_FAILED:
+        _post(gh, "issue", "comment", n, body=f"{DECLINED}\n{GAVE_UP_TEXT}")
+        gh("issue", "close", n, "--reason", "not planned")
+
+
 def _read(path):
     try:
         with open(path, encoding="utf-8") as f:
@@ -288,7 +301,7 @@ def main(argv=None) -> int:
                     version=_read("VERSION")))
         return 0
     if cmd == "failed" and number and len(args) == 1:
-        _post(run_gh, "issue", "comment", number, body=f"{FAILED}\n{FAILED_TEXT}")
+        mark_failed(number, repo, author_bot)
         return 0
     print(__doc__, file=sys.stderr)
     return 2

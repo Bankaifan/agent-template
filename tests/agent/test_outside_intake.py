@@ -227,6 +227,17 @@ def test_apply_does_nothing_when_nothing_is_owed_any_more():
         assert apply(gh, BUILD) == "skip" and gh.writes() == []
 
 
+def test_third_failed_run_on_a_thread_declines_it_with_the_fixed_text():
+    two = [msg(BOT, f"2026-01-0{d}T10:00:00Z", mod.FAILED, "Bot") for d in (1, 2)]
+    gh = FakeGh({1: issue("alice")}, {1: [*two[:1], msg("mallory", "2026-01-01T11:00:00Z", mod.FAILED)]})
+    mod.mark_failed(1, "o/r", BOT, gh)
+    assert gh.writes() == [("issue", "comment")]
+    gh = FakeGh({1: issue("alice")}, {1: two})
+    mod.mark_failed(1, "o/r", BOT, gh)
+    assert gh.writes() == [("issue", "comment"), ("issue", "comment"), ("issue", "close")]
+    assert gh.bodies[-1] == f"{mod.DECLINED}\n{mod.GAVE_UP_TEXT}" and gh.calls[-1][-1] == "not planned"
+
+
 def test_main_list_validate_and_failed(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("GH_REPO", "o/r")
     monkeypatch.setenv("AUTHOR_BOT", BOT)
