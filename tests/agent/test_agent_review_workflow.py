@@ -19,6 +19,11 @@ def test_model_step_is_skipped_after_a_script_approval():
     assert "steps.reapprove.outputs.approved != 'true'" in claude.split("env:")[0]
 
 
+def test_a_refused_batch_is_never_reviewed_by_the_model():
+    after = TEXT[step_index("id: reapprove"):step_index("Request the code owner's review")]
+    assert after.count("&& env.BRANCH != 'agent/batch'\n") == after.count("\n        if: ") - 1 == 3
+
+
 def test_reapprove_never_fails_the_job_and_gets_sha_from_env():
     block = TEXT[step_index("id: reapprove"):step_index("id: claude")]
     assert 'if python3 tools/reapprove.py "$PR" "$SHA"; then' in block
