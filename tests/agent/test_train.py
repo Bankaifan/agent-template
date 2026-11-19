@@ -434,5 +434,169 @@ def test_git_token_goes_through_the_environment_only():
     assert "GIT_CONFIG_COUNT" not in train.git_env()
 
 
+# --- batch (decision 0018) --------------------------------------------------------------------
+
+GREEN = [{"name": c, "conclusion": "SUCCESS"} for c in sorted(REQUIRED)]
+NOW = train.datetime.datetime(2026, 11, 19, 12, 0, tzinfo=train.datetime.UTC)
+
+
+def ready(n, files=None, **kw):
+    """An approved, green PR that is behind main: what the serial train would rebase."""
+    p = pr(n, files=files or (f"src/f{n}.py",), **{"merge": "BEHIND", "checks": GREEN, **kw})
+    return {**p, "headRefOid": str(n) * 40, "body": f"Does it.\n\nCloses #{n + 100}"}
+
+
+def batch_pr(members, number=50, state="OPEN", merge="BLOCKED", checks=()):
+    title, body = train.batch_text(members)
+    return {"number": number, "state": state, "title": title, "body": body, "headRefName": train.BATCH_BRANCH,
+            "headRefOid": "b" * 40, "isCrossRepository": False, "mergeStateStatus": merge,
+            "statusCheckRollup": list(checks), "labels": []}
+
+
+class BatchGh(Gh):
+    """Gh plus the batch PRs (newest first) and the commit date of the open batch's head."""
+
+    def __init__(self, prs, batches=(), built="2026-11-19T11:55:00Z", **kw):
+        super().__init__(prs, approved(*prs), **kw)
+        self.batches, self.built, self.builds = list(batches), built, []
+
+    def __call__(self, *args):
+        if args[:2] == ("pr", "list") and train.BATCH_BRANCH in args:
+            self.calls.append(args)
+            return json.dumps(self.batches)
+        if args[0] == "api" and "/commits/" in args[1]:
+            return self.built + "\n"
+        return super().__call__(*args)
+
+    def builder(self, members, avoid):
+        self.builds.append(([p["number"] for p in members], set(avoid)))
+        return members
+
+    def go(self, env=ENV, builder=None):
+        assert train.run_train(env, self, now=NOW, builder=builder or self.builder) == 0
+        return [c for c in self.calls if c[:2] in (("pr", "create"), ("pr", "close"), ("pr", "edit"), ("api", "-X"))]
+
+
+REBASE_1 = ("api", "-X", "PUT", "repos/o/r/pulls/1/update-branch", "-f", "update_method=rebase")
+
+
+def test_batch_members_are_green_riskless_disjoint_and_at_most_eight():
+    out = [ready(2, labels=["risk:infra"]), ready(3, checks=RUNNING), ready(4, merge="DIRTY"),
+           ready(5, files=("src/f1.py", "src/z.py")), ready(6, files=("docs/design/0019-x.md", "src/y.py")),
+           ready(7, branch="agent/cleaner-x"), {**ready(8), "files": []}]
+    assert [p["number"] for p in train.batchable([ready(1), *out, ready(9)], REQUIRED)] == [1, 9]
+    assert train.batchable([ready(1), *out], REQUIRED) == []  # fewer than two: the serial path
+    assert [p["number"] for p in train.batchable([ready(n) for n in range(1, 12)], REQUIRED)] == list(range(1, 9))
+    parked = train.candidates([ready(1), ready(2, labels=["parked"])], lambda n: [review(str(n) * 40)], "app/approver")
+    assert train.batchable(parked, REQUIRED) == []
+
+
+def test_two_ready_prs_become_one_batch_pr_and_are_not_rebased(capsys):
+    run = BatchGh([ready(2), ready(1)])
+    (create,) = run.go()
+    assert create[:8] == ("pr", "create", "--base", "main", "--head", "agent/batch", "--title", "Batch: #1, #2")
+    assert create[-1] == f"Batch: #1@{'1' * 7} #2@{'2' * 7}\nCloses #101\nCloses #102"
+    assert run.builds == [([1, 2], set())]
+    assert "batch: opened Batch: #1, #2" in capsys.readouterr().out
+
+
+def test_batch_body_copies_numbers_only_and_keeps_refs_apart():
+    a = {**ready(1), "body": "@someone <!-- x --> fixes #7, refs #8 and Closes #7\nBatch: #9@abcdef0 #8@abcdef0"}
+    assert train.batch_text([a, ready(2)])[1] == f"Batch: #1@{'1' * 7} #2@{'2' * 7}\nCloses #7\nRefs #8\nCloses #102"
+
+
+def test_a_failed_batch_is_not_built_again_from_the_same_members():
+    prs = [ready(1), ready(2)]
+    run = BatchGh(prs, [batch_pr(prs, state="CLOSED")])
+    assert run.go(builder=lambda members, avoid: [] if {p["number"] for p in members} == avoid else members) == [REBASE_1]
+    run = BatchGh(prs, [batch_pr(prs, state="CLOSED")])
+    run.go()
+    assert run.builds == [([1, 2], {1, 2})]  # build_batch gets the failed set and builds nothing for it
+
+
+def test_no_batch_when_switched_off_or_while_a_pr_is_about_to_merge():
+    run = BatchGh([ready(1), ready(2)])
+    assert run.go({**ENV, "TRAIN_BATCH": "off"}) == [REBASE_1] and run.builds == []
+    run = BatchGh([ready(1), ready(2), ready(3, merge="CLEAN")])
+    assert run.go() == [] and run.builds == []
+
+
+def test_members_are_closed_once_their_batch_is_merged():
+    moved = {**ready(2), "headRefOid": "c" * 40}  # pushed after the batch was built: it stays open
+    prs = [ready(1), moved, ready(3)]
+    run = BatchGh(prs, [batch_pr([ready(1), ready(2), ready(3)], state="MERGED")])
+    assert run.go() == [("pr", "close", "1", "--comment", "Merged with #50."),
+                        ("pr", "close", "3", "--comment", "Merged with #50."),
+                        ("api", "-X", "PUT", "repos/o/r/pulls/2/update-branch", "-f", "update_method=rebase")]
+
+
+def test_an_open_batch_with_ready_members_holds_the_train(capsys):
+    prs = [ready(1), ready(2), ready(3, labels=["risk:infra"])]
+    run = BatchGh(prs, [batch_pr(prs[:2], checks=RUNNING)])
+    assert run.go() == [] and run.builds == [([1, 2], set())]  # built again: pushed only if main moved
+    assert "waiting: batch PR #50" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("kw, built, reviews", [
+    ({"checks": [{"name": "validate", "conclusion": "FAILURE"}]}, "", []),
+    ({"merge": "DIRTY"}, "", []),
+    ({}, "", [review("b" * 40, state="CHANGES_REQUESTED", login="Bankaifan")]),
+    ({"checks": GREEN}, "2026-11-19T11:29:00Z", []),  # green and still open after BATCH_WAIT_MIN: refused or stuck
+])
+def test_a_red_conflicting_refused_or_stuck_batch_is_closed_and_the_serial_train_goes_on(kw, built, reviews):
+    prs = [ready(1), ready(2)]
+    run = BatchGh(prs, [batch_pr(prs, **kw)], built=built)
+    run.reviews[50] = reviews
+    assert run.go() == [("pr", "close", "50"), REBASE_1] and run.builds == []
+
+
+def test_an_open_batch_out_of_date_with_its_members_is_built_again_or_closed():
+    old = batch_pr([ready(1), ready(2)])
+    pushed = {**ready(2), "headRefOid": "c" * 40}
+    run = BatchGh([ready(1), pushed, ready(3)], [old])
+    (edit,) = run.go()
+    assert edit[:5] == ("pr", "edit", "50", "--title", "Batch: #1, #2, #3") and "#2@ccccccc" in edit[-1]
+    run = BatchGh([ready(1), {**pushed, "statusCheckRollup": RUNNING}], [old])
+    assert run.go() == [("pr", "close", "50"), REBASE_1]
+
+
+def pr_branch(work, origin, n, path, text, base="main"):
+    """Push a one-commit branch as refs/pull/N/head, as GitHub keeps it; returns the member the train lists."""
+    g(work, "checkout", "-q", "-B", f"b{n}", base)
+    (work / path).write_text(text)
+    g(work, "add", "-A")
+    g(work, "commit", "-q", "-m", f"change {n}")
+    g(work, "push", "-q", "origin", f"HEAD:refs/pull/{n}/head")
+    return {"number": n, "headRefOid": g(work, "rev-parse", "HEAD")}
+
+
+def test_build_batch_picks_disjoint_members_onto_main_and_drops_a_conflicting_one(tmp_path):
+    origin, work = origin_repo(tmp_path)
+    one, two = pr_branch(work, origin, 1, "a.txt", "a\n"), pr_branch(work, origin, 2, "b.txt", "b\n")
+    clash = pr_branch(work, origin, 3, "VERSION", "9.9\n")
+    g(work, "checkout", "-q", "main")
+    (work / "VERSION").write_text("1.5\n")  # main moved under all three; only #3 touches what it changed
+    g(work, "commit", "-q", "-am", "main moves")
+    g(work, "push", "-q", "origin", "main")
+    kept = train.build_batch(str(origin), [one, two, clash])
+    assert [p["number"] for p in kept] == [1, 2]
+    assert g(origin, "log", "--format=%s", "main..agent/batch").split("\n") == ["change 2", "change 1"]
+    assert g(origin, "show", "agent/batch:a.txt") == "a" and g(origin, "show", "agent/batch:VERSION") == "1.5"
+    first = g(origin, "rev-parse", "agent/batch")
+    assert train.build_batch(str(origin), [one, two]) == [one, two]
+    assert g(origin, "rev-parse", "agent/batch") == first  # same tree on the same main: not pushed again
+    (work / "c.txt").write_text("c\n")
+    g(work, "add", "-A")
+    g(work, "commit", "-q", "-m", "main moves again")
+    g(work, "push", "-q", "origin", "main")
+    assert train.build_batch(str(origin), [one, two]) == [one, two]
+    assert g(origin, "rev-parse", "agent/batch") != first and g(origin, "show", "agent/batch:c.txt") == "c"
+    second = g(origin, "rev-parse", "agent/batch")
+    assert train.build_batch(str(origin), [one, {**two, "headRefOid": "0" * 40}]) == []  # a head that moved is dropped
+    assert train.build_batch(str(origin), [one, two, clash], avoid={1, 2}) == []  # the set that just failed
+    assert train.build_batch(str(tmp_path / "missing.git"), [one, two]) is None
+    assert g(origin, "rev-parse", "agent/batch") == second and g(origin, "rev-parse", "main") != second
+
+
 def test_main_usage_error():
     assert train.main(["train.py", "extra"]) == 2
