@@ -10,6 +10,8 @@ CLI:
                                  `risk` (the job exits 0 either way; only the check run carries the gate). Only a PR that changes a file owned by OWNER in CODEOWNERS (the outsider boundary)
                                  waits for him: then `risk` fails until OWNER approved the head SHA. Every other `security`
                                  PR is gated by the AI security reviewer (status `security-review`) alone.
+                                 Hard rule (decision 0017, rule 5): the PR of an intake slip (branch `agent/<N>-...`,
+                                 issue #N by the author app with a line `Intake: #M`) must be `none`, else `risk` fails.
                                  Also starts the status `security-review` (pending for agent PRs that need that review).
   risk.py wait NUMBER SHA        (env GH_TOKEN, GH_REPO, APPROVER_BOT) called by agent-review and agent-security-review; acts only
                                  when for SHA the approver approved, validate/agent-smoke are green, risk is complete and
@@ -22,6 +24,9 @@ import os
 import re
 import subprocess
 import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+import trusted_issues
 
 SECURITY_FILES = (".github/rulesets/", ".github/CODEOWNERS", "tools/trusted_issues.py", "tools/agent_guard.py",
                   "tools/exec_log.py", "tools/guard_mark.py",
@@ -156,6 +161,26 @@ def owned_by(path, codeowners, owner):
     return False
 
 
+INTAKE_MSG = "intake work may not change protected paths"
+
+
+def intake_block(ref, level, repo, author_bot, run=None):
+    """Failure text for the PR of an intake slip that is not risk `none`, else "". Branch `agent/<N>-...` names the
+    issue; it is an intake slip when the author app wrote it and it has a line `Intake: #M` (without AUTHOR_BOT the
+    line alone counts). A `none` diff needs no lookup; for any other diff an unreadable issue fails closed."""
+    m = re.match(r"agent/(\d+)-", ref or "")
+    if level == "none" or not m:
+        return ""
+    try:
+        issue = json.loads((run or gh)("api", f"repos/{repo}/issues/{m.group(1)}"))
+        body, author = issue.get("body") or "", (issue.get("user") or {}).get("login")
+    except (subprocess.CalledProcessError, OSError, ValueError, AttributeError):
+        return f"{INTAKE_MSG}: issue #{m.group(1)} could not be read"
+    if trusted_issues.INTAKE.search(body) and (not author_bot or norm(author) == norm(author_bot)):
+        return INTAKE_MSG
+    return ""
+
+
 def waits_for_owner(level, files, codeowners, owner):
     """The PR cannot merge without the owner: a changed file owned by him in CODEOWNERS. `level` is kept for callers;
     risk `security` alone no longer waits for him (decided 2026-11-10: the AI security reviewer gates it)."""
@@ -260,6 +285,9 @@ def run_pr(number):
         if not approved and norm(author) != norm(owner):
             subprocess.run(["gh", "pr", "edit", str(number), "--add-reviewer", owner], check=False, capture_output=True)
     summary = f"Risk class {level}." + ("" if approved else f" Fails until {owner} approves this commit.")
+    blocked = intake_block(pr["head"]["ref"], level, repo, os.environ.get("AUTHOR_BOT", ""))
+    if blocked:  # no approval lifts this: intake work never changes protected paths
+        approved, summary = False, f"Risk class {level}. {blocked}."
     gh("api", f"repos/{repo}/check-runs", "-f", "name=risk", "-f", f"head_sha={sha}", "-f", "status=completed",
        "-f", f"conclusion={'success' if approved else 'failure'}", "-f", f"output[title]=risk: {level}",
        "-f", f"output[summary]={summary}")

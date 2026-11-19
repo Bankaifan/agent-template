@@ -181,9 +181,15 @@ def test_removed_line_starting_with_dashes_is_scanned():
     assert risk.classify(d) == "security"
 
 
-def _pr_stub(calls, pr, statuses=(), diff_text="", files=()):
+PLAIN_ISSUE = {"body": "Goal: x", "user": {"login": "Bankaifan"}}
+INTAKE_ISSUE = {"body": "Goal: x\nFiles: docs/a.md\nIntake: #7\n", "user": {"login": "agent-bot[bot]"}}
+
+
+def _pr_stub(calls, pr, statuses=(), diff_text="", files=(), issue=PLAIN_ISSUE):
     def run(*a):
         calls.append(a)
+        if a[0] == "api" and "/issues/" in a[1]:
+            return json.dumps(issue) if issue else ""
         if a[0] == "api" and a[-1].endswith("/files"):
             return json.dumps([list(files)])
         if a[0] == "api" and a[1].endswith("/statuses"):
@@ -285,6 +291,33 @@ def test_run_pr_security_outside_codeowner_paths_needs_no_owner(monkeypatch, tmp
     assert risk.run_pr("5") == 0
     assert _has(calls, "conclusion=success") and _has(calls, "--add-label", "risk:security")
     assert _has(calls, "context=security-review", "state=pending")  # the AI security reviewer still gates it
+
+
+@pytest.mark.parametrize("path,line", [("tools/status.py", "+x = 1"), (".github/workflows/x.yml", "+permissions:")])
+def test_intake_pr_with_infra_or_security_diff_fails_risk(monkeypatch, tmp_path, path, line):
+    calls = []
+    _setup_pr(monkeypatch, tmp_path, _pr_stub(calls, _pr(), diff_text=diff(path, line), issue=INTAKE_ISSUE))
+    assert risk.run_pr("5") == 0
+    assert _has(calls, "conclusion=failure") and any(risk.INTAKE_MSG in part for c in calls for part in c)
+
+
+def test_intake_pr_with_none_diff_passes_without_reading_the_issue(monkeypatch, tmp_path):
+    calls = []
+    _setup_pr(monkeypatch, tmp_path, _pr_stub(calls, _pr(), diff_text=diff("docs/a.md", "+x"), issue=INTAKE_ISSUE))
+    risk.run_pr("5")
+    assert _has(calls, "conclusion=success") and not _has(calls, "repos/o/r/issues/1")
+
+
+def test_intake_rule_needs_the_author_app_and_fails_closed_on_an_unreadable_issue():
+    def issue(obj):
+        return lambda *a: json.dumps(obj) if obj else ""
+    forged = dict(INTAKE_ISSUE, user={"login": "mallory"})
+    assert risk.intake_block("agent/1-x", "infra", "o/r", "agent-bot", issue(INTAKE_ISSUE)) == risk.INTAKE_MSG
+    assert risk.intake_block("agent/1-x", "infra", "o/r", "agent-bot", issue(forged)) == ""
+    assert risk.intake_block("agent/1-x", "infra", "o/r", "", issue(forged)) == risk.INTAKE_MSG
+    assert risk.intake_block("agent/1-x", "infra", "o/r", "agent-bot", issue(PLAIN_ISSUE)) == ""
+    assert "could not be read" in risk.intake_block("agent/1-x", "security", "o/r", "agent-bot", issue(None))
+    assert risk.intake_block("feature/x", "infra", "o/r", "agent-bot", issue(None)) == ""
 
 
 def test_pr_paths_include_rename_source():
