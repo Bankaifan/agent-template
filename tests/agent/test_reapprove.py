@@ -257,6 +257,8 @@ class BatchGh:
         self.reviews = {9: [], 1: [approval(sha=M1)], 2: [approval(sha=M2)]}
         self.files = [{"filename": "src/a.py"}, {"filename": "src/b.py"}]
         self.patches = {BATCH: part("src/a.py", at=9) + part("src/b.py"), M1: part("src/a.py"), M2: part("src/b.py")}
+        self.risk = {M1: "success", M2: "success"}  # each member's own check run `risk`
+        self.sec = {M1: "success", M2: "success"}  # and its commit status `security-review`
         self.calls = []
 
     def __call__(self, *args):
@@ -266,6 +268,13 @@ class BatchGh:
             return ""
         if "/compare/" in path:
             return self.patches[path.rsplit("...", 1)[1]]
+        if "/commits/" in path:
+            sha, kind = path.split("/commits/")[1].split("?")[0].split("/")
+            if kind == "check-runs":
+                done = [{"name": "risk", "status": "completed", "conclusion": self.risk[sha]}] if self.risk.get(sha) else []
+                return json.dumps({"check_runs": done})
+            return json.dumps([{"context": "validate", "state": "success"}]
+                              + [{"context": "security-review", "state": s} for s in ([self.sec[sha], "success"] if self.sec.get(sha) else [])])
         number, _, rest = path.split("/pulls/")[1].partition("/")
         return json.dumps({"": self.prs[int(number)], "files": [self.files], "reviews": [self.reviews[int(number)]]}[rest])
 
@@ -304,6 +313,11 @@ def dropped_file(gh):
     gh.prs[9]["changed_files"] = 1
 
 
+def design_file(gh):  # the member is approved, but its own risk check is red (intake work on a design file)
+    gh.patches.update({BATCH: part("docs/design/0099-x.md") + part("src/b.py"), M1: part("docs/design/0099-x.md")})
+    gh.files[0] = {"filename": "docs/design/0099-x.md"}
+
+
 def risky(gh):
     gh.patches.update({BATCH: part("tools/a.py") + part("src/b.py"), M1: part("tools/a.py")})
     gh.files[0] = {"filename": "tools/a.py"}
@@ -325,6 +339,11 @@ def risky(gh):
     (lambda gh: gh.prs[2]["head"].update(ref="agent/cleaner-x"), "not a plain agent/<N>- PR"),
     (lambda gh: gh.prs[2]["head"].update(repo={"full_name": "fork/r"}), "same-repo"),
     (risky, "risk class"),
+    (design_file, "docs/design/"),
+    (lambda gh: gh.risk.update({M1: "failure"}), "no green risk check"),
+    (lambda gh: gh.risk.update({M2: None}), "no green risk check"),  # not there (yet): fail closed
+    (lambda gh: gh.sec.update({M2: "pending"}), "no green risk check"),
+    (lambda gh: gh.sec.update({M2: None}), "no green risk check"),
     (lambda gh: gh.prs[9].update(user={"login": "Bankaifan"}), "author app"),
     (lambda gh: gh.reviews[9].append(approval(sha=BATCH, state="CHANGES_REQUESTED", login="Bankaifan")), "requested changes"),
 ])

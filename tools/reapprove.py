@@ -20,10 +20,12 @@ Approve only if ALL hold, else refuse:
 
 Batch mode (docs/decisions/0018-batch-train.md, rule 3): a PR whose head branch is exactly `agent/batch` is never
 compared with an earlier head. It is approved only if ALL hold, else refused (and no model reviews it):
-a. Gate 1 without the security path: by the author app, risk class `none`, no reviewer requesting changes.
+a. Gate 1 without the security path: by the author app, risk class `none`, no reviewer requesting changes, and no
+   file under docs/design/ (a design file becomes trusted step issues; it never lands through a batch).
 b. Its body has exactly one line `Batch: #a@<sha7> #b@<sha7> ...` (2 to 8 members, each once).
 c. Every member is open, same repo, `agent/<N>-...`, on the same base, not `parked`, without a `risk:*` label, its head
-   starts with the recorded sha7, the approver app approved exactly that head and nobody requests changes.
+   starts with the recorded sha7, the approver app approved exactly that head and nobody requests changes. Its own
+   gates hold at that head: check run `risk` and commit status `security-review` are success (unreadable refuses).
 d. Per file (`diff --git` section): every section of every member diff is in the batch diff with the same patch-id,
    and every section of the batch diff belongs to exactly one member. Nothing is added, changed or left out.
 """
@@ -156,6 +158,17 @@ def sections(patch):
     return out
 
 
+def check_member_gates(run, repo, n, head):
+    """A member's own required gates at its head: every latest check run `risk` and the newest commit status
+    `security-review` are success. A batch of approved diffs must not carry a member its own PR would not land."""
+    runs = json.loads(run("api", f"repos/{repo}/commits/{head}/check-runs?check_name=risk")).get("check_runs") or []
+    statuses = json.loads(run("api", f"repos/{repo}/commits/{head}/statuses?per_page=100"))  # newest first
+    sec = next((s for s in statuses if s.get("context") == "security-review"), {})
+    if (not runs or any(c.get("name") != "risk" or c.get("conclusion") != "success" for c in runs)
+            or sec.get("state") != "success"):
+        raise Refuse(f"member #{n} has no green risk check and security-review status at the recorded head")
+
+
 def check_batch(pr, patch, repo, approver, author_bot, run, ident):
     """Batch mode b to d: the batch diff is exactly its members' approved diffs, file by file. Returns the members."""
     if not author_bot or not agent_guard.same_login((pr.get("user") or {}).get("login"), author_bot):
@@ -182,6 +195,7 @@ def check_batch(pr, patch, repo, approver, author_bot, run, ident):
             mine = left.pop(name, None)  # popped: a file claimed by two members refuses at the second
             if mine is None or ident(mine) != ident(part):
                 raise Refuse(f"a file of member #{n} is missing or changed in the batch")
+        check_member_gates(run, repo, n, head)
     if left:
         raise Refuse("a batch file belongs to no member")
     return members
@@ -199,6 +213,8 @@ def run_reapprove(pr_no, sha, env, run=gh, ident=patch_id):
         raise Refuse("a reviewer has requested changes")
     bhash = agent_guard.body_hash(pr.get("body"))
     if pr["head"]["ref"] == BATCH_BRANCH:
+        if any(p.startswith("docs/design/") for f in files for p in (f.get("filename"), f.get("previous_filename")) if p):
+            raise Refuse("a batch never carries a docs/design/ file")
         patch = run("api", f"repos/{repo}/compare/{(pr.get('base') or {}).get('ref', '')}...{sha}", "-H", PATCH_ACCEPT)
         check_patch(patch, len(files))
         members = check_batch(pr, patch, repo, approver, author_bot, run, ident)
