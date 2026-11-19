@@ -51,6 +51,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
           AUTHOR_BOT: ${{ vars.AUTHOR_BOT }}
           NUMBER: ${{ github.event.issue.number }}
+          OWNER: ${{ vars.OWNER || github.repository_owner }}
         run: echo "items=$(python3 tools/outside_intake.py list ${NUMBER:+"$NUMBER"})" >> "$GITHUB_OUTPUT"
   intake:
     needs: pick
@@ -72,6 +73,7 @@ jobs:
       NUMBER: ${{ matrix.number }}
       GH_REPO: ${{ github.repository }}
       AUTHOR_BOT: ${{ vars.AUTHOR_BOT }}
+      OWNER: ${{ vars.OWNER || github.repository_owner }}
     steps:
       # Read-only token: gate and fetch only.
       - id: reader

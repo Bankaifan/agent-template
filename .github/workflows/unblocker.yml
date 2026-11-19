@@ -27,6 +27,7 @@ jobs:
       GH_REPO: ${{ github.repository }}
       AUTHOR_BOT: ${{ vars.AUTHOR_BOT }}
       APPROVER_BOT: ${{ vars.APPROVER_BOT }}
+      OWNER: ${{ vars.OWNER || github.repository_owner }}
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
       - name: Fail if a required repo variable is unset

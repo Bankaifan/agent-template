@@ -31,3 +31,10 @@ def test_no_outside_text_reaches_an_expression_and_pull_requests_are_skipped():
 
 def test_all_intake_jobs_share_one_queue_so_a_burst_cannot_pass_the_daily_cap():
     assert "      group: intake\n      cancel-in-progress: false\n" in TEXT and "max-parallel: 1" in TEXT
+
+
+def test_workflows_whose_tools_compare_with_the_owner_pass_the_owner_of_this_repo():
+    for name in ("intake", "unblocker", "risk", "agent-review", "agent-security-review", "workflow-apply"):
+        text = (ROOT / ".github" / "workflows" / f"{name}.yml").read_text(encoding="utf-8")
+        assert "OWNER: ${{ vars.OWNER || github.repository_owner }}" in text, name
+    assert TEXT.count("OWNER: ${{ vars.OWNER") == 2  # the pick job and the intake job
