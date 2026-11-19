@@ -188,7 +188,8 @@ jobs:
             Act as the developer described in .agents/roles/developer.md and follow AGENTS.md.
             Task: GitHub issue #${{ env.ISSUE }} in ${{ github.repository }} (read it with gh issue view).
             Create branch agent/${{ env.ISSUE }}-<slug> from main, implement, run `make check` and the tests,
-            commit in small steps (about one file each, subject `V<VERSION>-<NAME>: <change>`, see the role; never squash),
+            commit in small steps (about one file each, subject `V<VERSION>-<NAME>: <change>`, see the role; never squash;
+            before the push run `python3 tools/commit_names.py <NAME>` once, it sets the prefix on every commit),
             push, and open a PR with `gh pr create` (title starts like the issue title, body max 5 lines, "Closes #${{ env.ISSUE }}").
             Changelog fragment language: ${{ vars.OWNER_LANG || 'German' }}. No comments while you work. A denied tool call is
             no reason to stop: do the task another way.
