@@ -253,10 +253,13 @@ def handover_done_today():
     return bool(prs)
 
 
-def first_failure(body):
+def first_failure(issue):
     """A `Failing workflow:` issue after ONE failed run (tools/failure_watch.py writes `Failures: 1`): often a blip such
-    as the API rate limit. It starts no developer; a second failure does, a green run closes it."""
-    return bool(re.search(r"^Failures: 1$", body or "", re.MULTILINE))
+    as the API rate limit. It starts no developer; a second failure does, a green run closes it. `prio:1` is exempt:
+    a red main or a rarely scheduled workflow may never get its second run."""
+    labels = {lab.get("name") for lab in issue.get("labels") or []}
+    return ((issue.get("title") or "").startswith("Failing workflow: ") and "prio:1" not in labels
+            and bool(re.search(r"^Failures: 1$", issue.get("body") or "", re.MULTILINE)))
 
 
 def start_state():
@@ -272,10 +275,10 @@ def start_state():
                                     count("pr", "list", "--state", "open"), w_prs)
     trusted = json.loads(os.environ.get("TRUSTED") or subprocess.run(
         [sys.executable, "tools/trusted_issues.py"], check=True, capture_output=True, text=True).stdout)
-    issues = json.loads(gh("issue", "list", "--state", "open", "--limit", "200", "--json", "number,body"))
+    issues = json.loads(gh("issue", "list", "--state", "open", "--limit", "200", "--json", "number,body,title,labels"))
     open_numbers = {i["number"] for i in issues}
     blocked = {i["number"] for i in issues if deps.blocked(i["number"], i.get("body"), open_numbers)}
-    blocked |= {i["number"] for i in issues if first_failure(i.get("body"))}
+    blocked |= {i["number"] for i in issues if first_failure(i)}
     return {"dev": dev, "stuck": stuck, "restart": restart, "waiting_prs": w_prs, "free_dev": free_dev, "free_prs": free_prs,
             "trusted": trusted, "blocked": blocked,
             "start": start_candidates(trusted, free_dev, free_prs, w_prs, blocked),
