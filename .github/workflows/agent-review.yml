@@ -65,7 +65,7 @@ jobs:
           num=$(jq -r .number <<<"$pr")
           labels=",$(jq -r '[.labels[].name] | join(",")' <<<"$pr"),"
           author=$(jq -r .user.login <<<"$pr")
-          # PRs by the author app or by the owner's account (own agent/* branch) and PRs labelled agent:review.
+          # PRs by the author app or by the owner's account (own agent/* branch); no label opts another PR in.
           if ! guard agent-pr "$author" "$labels"; then echo "Not an agent PR"; skip; fi
           # Key: SHA + PR body hash. validate also runs on `edited`, so a body edit gets a new review on the same SHA;
           # a second green run with nothing changed does not.
