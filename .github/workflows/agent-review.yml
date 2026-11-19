@@ -28,6 +28,7 @@ jobs:
       AUTHOR_BOT: ${{ vars.AUTHOR_BOT }}
       GH_REPO: ${{ github.repository }}
       APPROVER_BOT: ${{ vars.APPROVER_BOT }}
+      OWNER: ${{ vars.OWNER || github.repository_owner }}
     steps:
       - name: Fail if a required repo variable is unset
         env:
