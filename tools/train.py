@@ -230,6 +230,8 @@ def build_batch(remote, members, token="", base="main", avoid=frozenset()):
     `base` since its merge base (reapprove wants every file blob-exact as approved) is dropped. Returns the
     members kept; [] and no push when fewer than two are left or their numbers equal `avoid`; None on a git error.
     A result with the tree of the branch already there, on top of the current `base`, is not pushed again."""
+    if len(members) < 2 or {p["number"] for p in members} == set(avoid):
+        return []  # known before any clone: the set that just failed is not built again on every run
     env = git_env(token)
 
     def git(tmp, *args, check=True):
