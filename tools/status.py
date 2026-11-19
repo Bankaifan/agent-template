@@ -50,11 +50,19 @@ import restart
 import risk
 import ruleset
 import stalled_dev
-from agent_guard import PARK_MARK, add_labels, park, same_login, tail_text
+from agent_guard import (
+    PARK_MARK,
+    STATUS_TITLE,
+    add_labels,
+    park,
+    same_login,
+    status_issue,
+    tail_text,
+)
 from approval import effective_approval, security_verdict
 from restart import close_superseded, handle_limit, superseded
 
-TITLE = "Agent status"
+TITLE = STATUS_TITLE
 OWNER_DEFAULT = "Bankaifan"
 PARKED = "parked"  # set aside after failed approaches; retried later with fresh context, never handed to the owner
 ISSUE_ORPHAN_MIN = 30
@@ -534,11 +542,8 @@ def build_body(runs, prs, issues, ages, orchestrator, ideas, actions, now, owner
 
 
 def update_issue(body, run=gh, bot=""):
-    found = json.loads(run("issue", "list", "--state", "open", "--search", f'"{TITLE}" in:title',
-                           "--json", "number,title,author"))
-    found = [i for i in found if i["title"] == TITLE and own_issue(i, bot)]
-    if found:
-        number = str(found[0]["number"])
+    number = status_issue(run, bot)
+    if number:
         run("issue", "edit", number, "--body", body)
     else:
         number = run("issue", "create", "--title", TITLE, "--body", body).strip().rsplit("/", 1)[-1]

@@ -98,7 +98,6 @@ jobs:
           AUTHOR_BOT: ${{ vars.AUTHOR_BOT }}
           APPROVER_BOT: ${{ vars.APPROVER_BOT }}
           ORCHESTRATOR_EVENTS: ${{ vars.ORCHESTRATOR_EVENTS }}
-          STATUS_ISSUE: "57"
         run: |
           set -eu
           case "$EVENT" in
@@ -327,6 +326,5 @@ jobs:
           STARTED: ${{ steps.started.outputs.at }}
           STARTABLE: ${{ steps.pre.outputs.startable }}
           AUTHOR_BOT: ${{ vars.AUTHOR_BOT }}
-          STATUS_ISSUE: "57"
           GUARD_KEY: ${{ secrets.GUARD_KEY }}  # script step only, never a model step (tests/test_guard_mark.py)
         run: python3 "$RUNNER_TEMP/guard/tools/agent_guard.py" silent orchestrator - "$STARTED"

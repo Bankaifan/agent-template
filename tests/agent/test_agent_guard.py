@@ -23,7 +23,7 @@ def test_empty_and_different_logins_never_match():
 class Recorder:
     def __init__(self, fail_create=False, replies=None):
         self.calls, self.fail_create, self.replies = [], fail_create, replies or {}
-        self.posted, self.lossy = [], False
+        self.posted, self.lossy, self.status = [], False, True
 
     def __call__(self, *args):
         self.calls.append(args)
@@ -330,10 +330,12 @@ class OrchGh:
         self.data = {("issue", "list", "--state", "open"): list(open_issues),
                      ("pr", "list"): list(prs), ("issue", "list", "--state", "all"): list(issues)}
         self.events, self.comments = list(events), list(comments)
-        self.posted, self.lossy = [], False
+        self.posted, self.lossy, self.status = [], False, True
 
     def __call__(self, *a):
         self.calls.append(a)
+        if a[:2] == ("issue", "list") and f'"{g.STATUS_TITLE}" in:title' in a:  # the status issue is found by title
+            return json.dumps([{"number": 57, "title": g.STATUS_TITLE, "author": {"login": BOT}}] if self.status else [])
         if a[1:2] == ("comment",) and not self.lossy:
             self.posted.append({"body": a[a.index("--body") + 1]})
         if a[:2] == ("issue", "view") and "comments" in a:
@@ -362,8 +364,14 @@ def orch_env(tmp_path, monkeypatch):
     monkeypatch.setenv("GH_REPO", "o/r")
     monkeypatch.setenv("AUTHOR_BOT", BOT)
     monkeypatch.setenv("RUN_URL", "https://x/run/9")
-    monkeypatch.delenv("STATUS_ISSUE", raising=False)
     return setup
+
+
+def test_orchestrator_without_a_status_issue_comments_nowhere_and_still_fails(orch_env):
+    orch_env(denials=[DENIAL] * 3)
+    r = OrchGh()
+    r.status = False
+    assert g.silent_orchestrator(T0, r) == 1 and not r.made("issue", "comment") and not r.made("issue", "create")
 
 
 def test_orchestrator_denials_escalate(orch_env):

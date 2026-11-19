@@ -8,12 +8,12 @@ The event types (issues opened/edited/closed, issue_comment, pull_request(_targe
 4. no author-app event inside an orchestrator run window (self-loop rule G: run start .. run end + LOOP_GRACE),
 5. no newer pending orchestrator run (debounce rule E: a burst gives one run, on the last event),
 6. the brake: 3 runs in a row started by the author app, each at most BRAKE_GAP after the previous, refuse and
-   comment once in STATUS_ISSUE.
+   comment once in the status issue (found by its title, agent_guard.status_issue).
 Other events (schedule, workflow_dispatch, workflow_run) pass here; their own `if` in orchestrator.yml decides.
 Prints `true` or `false` on stdout, the reason on stderr.
 
 Needs the gh CLI (GH_TOKEN, GH_REPO). Environment: EVENT, EVENT_ACTION, SENDER, RUN_ID, OWNER (default
-Bankaifan), AUTHOR_BOT, APPROVER_BOT, NUMBER, COMMENT_ID, REVIEW_ID, EVENT_AT (ISO time), STATUS_ISSUE,
+Bankaifan), AUTHOR_BOT, APPROVER_BOT, NUMBER, COMMENT_ID, REVIEW_ID, EVENT_AT (ISO time),
 ORCHESTRATOR_EVENTS.
 """
 import json
@@ -24,7 +24,7 @@ from datetime import UTC, datetime
 from itertools import pairwise
 
 import budget
-from agent_guard import same_login
+from agent_guard import same_login, status_issue
 from ghcall import gh
 
 LOOP_GRACE = 60  # seconds after a run ended in which its own echo is still ignored
@@ -148,7 +148,7 @@ def main() -> int:
               "live": live_login(event, action, env)}
     run, reason = decide(event, env.get("SENDER", ""), env.get("OWNER", "Bankaifan"), run_id, runs, now, **kw)
     if reason.startswith("brake"):
-        announce_brake(env.get("STATUS_ISSUE", ""))
+        announce_brake(status_issue(gh, env.get("AUTHOR_BOT", "")))
     print(reason, file=sys.stderr)
     print("true" if run else "false")
     return 0
