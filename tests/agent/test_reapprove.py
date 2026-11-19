@@ -148,7 +148,7 @@ def test_no_earlier_approval_refuses():
 
 
 @pytest.mark.parametrize("kw", [
-    {"commits": 2}, {"state": "closed"}, {"labels": [{"name": "needs-human"}]},
+    {"commits": 2}, {"state": "closed"}, {"labels": [{"name": "parked"}]},
     {"head": {"sha": NEW, "ref": "feat/x", "repo": {"full_name": REPO}}},
     {"head": {"sha": NEW, "ref": "agent/1-x", "repo": {"full_name": "fork/r"}}},
     {"head": {"sha": "e" * 40, "ref": "agent/1-x", "repo": {"full_name": REPO}}},
