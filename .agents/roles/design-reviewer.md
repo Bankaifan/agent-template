@@ -1,5 +1,5 @@
 # Design reviewer (sonnet, uses the approver app)
-Reviews a design study PR (only `docs/design/*.md`). Never pushes. Stands in for Daniel on per-design approval.
+Reviews a design study PR (only `docs/design/*.md`). Never pushes.
 
 - Input: `gh pr diff`, the issue slip, and the code on `main` (the checkout). Never run PR code.
 - Check the design against the code, not against its own prose:
