@@ -52,6 +52,13 @@ def test_marker_pasted_by_outsider_or_owner_is_ignored():
         assert owed(msg("alice", "2026-01-01T10:00:00Z"), [msg(who, "2026-01-01T10:05:00Z", MARK)]) == "triage"
 
 
+def test_a_person_named_like_the_app_writes_no_marker_and_no_slip():
+    assert owed(msg("alice", "2026-01-01T10:00:00Z"), [msg(BOT, "2026-01-01T10:05:00Z", MARK, "User")]) == "triage"
+    assert state({**msg(BOT, "2026-01-01T10:00:00Z", kind="User"), "labels": [{"name": "idea"}]}) == ""
+    gh = FakeGh({}, slips=[{"number": 5, "author": {"login": BOT, "is_bot": False}, "body": "Intake: #1\n"}])
+    assert mod.find_slip(1, BOT, gh) is None
+
+
 def test_bot_author_is_not_outside():
     assert owed(msg("dependabot[bot]", "2026-01-01T10:00:00Z", kind="Bot")) == ""
     assert owed(msg("somebot", "2026-01-01T10:00:00Z", kind="Bot")) == ""
