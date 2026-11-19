@@ -3,6 +3,18 @@
 ## [Unreleased]
 - README (EN and DE) and `docs/decisions/0007-template-sync.md`: six-step setup for the template sync, version gate, reuse by other projects.
 
+## [1.102] - 2026-11-19
+- The actions watcher is no longer flagged overdue: every workflow_run delivery now ends as a successful run.
+- Pending workflow patches are staged in validate, so check_drift no longer fails workflow-patch PRs in projects with generators.
+- The rule keeper installs the CI tools and runs plain make check instead of failing on missing tools.
+- Fixed a test of install_tools.sh that failed at random (curl and tar log order).
+- Du gibst nur noch Releases frei: Es gibt genau einen Release-PR mit einer kurzen Liste der Änderungen, und die Version steigt pro Freigabe um genau einen Schritt.
+- Nichts wartet mehr auf dich: Was hängt, wird zurückgestellt und später automatisch neu versucht; Ungelöstes steht in einer Zeile im Release-PR.
+- Issues von Anwendern und Ideen werden automatisch gesichtet, beantwortet und umgesetzt, ohne Label von dir.
+- Projekte bekommen Template-Änderungen einmal pro Template-Release statt bei jeder Einzeländerung.
+- Ein Aufräum-Agent entfernt wöchentlich, was niemand mehr braucht.
+- commit and title names carry the version (V1.101-NAME), run reports go to the job summary
+
 ## [1.101] - 2026-11-14
 - The actions watcher skips with a warning when `GUARD_KEY` is unset instead of failing every scheduled run.
 
