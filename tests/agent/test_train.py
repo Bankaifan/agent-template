@@ -621,6 +621,9 @@ def test_what_the_train_builds_is_what_reapprove_accepts(tmp_path, monkeypatch):
             return posted.append(args) or ""
         if "/compare/" in path:
             return g(origin, "diff", "main..." + path.rsplit("...", 1)[1]) + "\n"
+        if "/commits/" in path:  # a member's own gates
+            return json.dumps({"check_runs": [{"name": "risk", "conclusion": "success"}]} if "check-runs" in path
+                              else [{"context": "security-review", "state": "success"}])
         n = int(path.split("/pulls/")[1].split("/")[0])
         if path.endswith("/reviews"):
             return json.dumps([[review(shas[n])] if n != 9 else []])
