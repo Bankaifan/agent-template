@@ -3,6 +3,16 @@
 ## [Unreleased]
 - README (EN and DE) and `docs/decisions/0007-template-sync.md`: six-step setup for the template sync, version gate, reuse by other projects.
 
+## [1.103] - 2026-11-19
+- claude-code-action 1.0.276
+- Bootstrap-Doku zu Dependabot und projekteigenen Workflows bei managed_guard
+- Projekte mit eigenen Test-Abhängigkeiten (z. B. ha-luxtronik-shi) bekommen Template-Änderungen wieder automatisch: Der Sync installiert jetzt ihre Test-Pakete.
+- Die KI-Schritte dürfen weiterhin nur die ausdrücklich erlaubten Werkzeuge benutzen, auch nach dem anstehenden Update der Claude-Action; Korrektur-Runden und Aufräum-Schritte laufen damit unverändert weiter.
+- Projekte können Template-Stände wieder sauber übernehmen: Prüfungen, die nur für das Template selbst gelten, laufen dort nicht mehr mit.
+- Ein falsch benannter Commit blockiert keinen PR mehr: Die Benennung wird vor dem Hochladen per Skript gesetzt.
+- Der Merge-Zug schlägt in Projekten ohne eigene Versionsdatei (z. B. ha-luxtronik-shi) nicht mehr bei jedem Lauf fehl.
+- Ein einzelner Aussetzer (z. B. das API-Limit von GitHub) löst keinen Reparatur-Auftrag mehr aus; erst der zweite Fehlschlag derselben Stelle tut das.
+
 ## [1.102] - 2026-11-19
 - The actions watcher is no longer flagged overdue: every workflow_run delivery now ends as a successful run.
 - Pending workflow patches are staged in validate, so check_drift no longer fails workflow-patch PRs in projects with generators.
