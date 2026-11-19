@@ -2,7 +2,7 @@
 
 Stages (minutes): dispatch (issue trusted -> agent:dev), develop (agent:dev -> PR opened), ci (PR opened -> first green
 validate run), review (green CI -> first review), fix (first review -> first approval), train (approval -> merge).
-Counts: fix rounds (CHANGES_REQUESTED reviews), model runs by workflow, restart:1, needs-human. A missing timestamp
+Counts: fix rounds (CHANGES_REQUESTED reviews), model runs by workflow, restart:1, parked. A missing timestamp
 leaves its stage empty. Open (carry item): train rebases, conflict fixes, denied calls, cost per PR, the two guard issues.
 
 CLI (env GH_REPO): flow.py [CSV_PATH]   print the "Flow, last 24 h" block, write one CSV row per merged PR to CSV_PATH
@@ -18,7 +18,7 @@ TRUSTED_LABELS = ("approved", "auto-ok")
 MODEL_WORKFLOWS = ("agent-dev", "agent-fix", "agent-review", "orchestrator", "scout", "rule-keeper")
 STAGES = ("dispatch", "develop", "ci", "review", "fix", "train")
 COLUMNS = ["pr", "issue", "merged_at", *(f"{s}_min" for s in STAGES), "lead_min", "fix_rounds", "model_runs",
-           "runs_by_workflow", "restarts", "needs_human"]
+           "runs_by_workflow", "restarts", "parked"]
 WINDOW_H = 24
 
 
@@ -78,7 +78,7 @@ def pr_row(pr, events, runs, issue_created=None):
            "lead_min": minutes(trusted, pr["mergedAt"]) if trusted else "",
            "fix_rounds": sum(r["state"] == "CHANGES_REQUESTED" for r in reviews), "model_runs": sum(by_wf.values()),
            "runs_by_workflow": ";".join(f"{k}:{v}" for k, v in sorted(by_wf.items())),
-           "restarts": int("restart:1" in labels), "needs_human": "yes" if "needs-human" in labels else "no"}
+           "restarts": int("restart:1" in labels), "parked": "yes" if "parked" in labels else "no"}
     row["lead_min"] = "" if row["lead_min"] is None else row["lead_min"]
     return row
 
@@ -117,8 +117,8 @@ def flow_block(rows, runs, now, hours=WINDOW_H):
         lines.append(f"- slowest stage: {slow} (median {med[slow]:.0f} min)")
     lines.append(f"- max parallel agent jobs (runs of these PRs): {max_parallel(runs)}")
     lines.append(f"- model runs per merged PR: {sum(r['model_runs'] for r in recent) / len(recent):.1f}")
-    owner = sum(r["needs_human"] == "yes" for r in recent)
-    lines.append(f"- needed the owner: {owner} of {len(recent)} ({100 * owner // len(recent)} %)")
+    parked = sum(r["parked"] == "yes" for r in recent)
+    lines.append(f"- were parked: {parked} of {len(recent)} ({100 * parked // len(recent)} %)")
     return lines
 
 

@@ -31,7 +31,7 @@ RUNS404 = [run("agent-dev", "success", "2026-11-12T09:05:00Z", "2026-11-12T09:19
 
 # ha-luxtronik-shi #135: no trusted label (owner's own issue), restart, needs the owner.
 PR135 = {"number": 135, "headRefName": "agent/135-heat", "createdAt": "2026-11-12T08:30:00Z",
-         "mergedAt": "2026-11-12T11:00:00Z", "labels": [{"name": "needs-human"}], "reviews": []}
+         "mergedAt": "2026-11-12T11:00:00Z", "labels": [{"name": "parked"}], "reviews": []}
 EV135 = [ev("agent:dev", "2026-11-12T08:00:00Z"), ev("restart:1", "2026-11-12T08:10:00Z")]
 
 
@@ -47,7 +47,7 @@ def test_row_stage_waits_and_counts():
     assert row["fix_rounds"] == 1
     assert row["model_runs"] == 3  # the skipped run does not count
     assert row["runs_by_workflow"] == "agent-dev:1;agent-fix:1;agent-review:1"
-    assert (row["restarts"], row["needs_human"]) == (0, "no")
+    assert (row["restarts"], row["parked"]) == (0, "no")
 
 
 def test_row_without_trusted_label_uses_issue_creation_and_leaves_gaps_empty():
@@ -55,7 +55,7 @@ def test_row_without_trusted_label_uses_issue_creation_and_leaves_gaps_empty():
     assert row["dispatch_min"] == 10.0 and row["develop_min"] == 30.0
     assert row["ci_min"] == row["review_min"] == row["fix_min"] == row["train_min"] == ""
     assert row["lead_min"] == 190.0
-    assert (row["restarts"], row["needs_human"]) == (1, "yes")
+    assert (row["restarts"], row["parked"]) == (1, "yes")
 
 
 def test_block_summarises_the_last_24_hours():
@@ -68,7 +68,7 @@ def test_block_summarises_the_last_24_hours():
     assert "slowest stage: develop (median 22 min)" in text
     assert "max parallel agent jobs (runs of these PRs): 1" in text
     assert "model runs per merged PR: 1.5" in text
-    assert "needed the owner: 1 of 2 (50 %)" in text
+    assert "were parked: 1 of 2 (50 %)" in text
 
 
 def test_block_without_merged_prs():
