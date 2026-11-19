@@ -381,64 +381,13 @@ def test_restart_needs_a_failed_recent_run_and_no_open_pr():
     assert "agent:dev again" in heal(f)[0]
 
 
-def approved(f, at="2026-11-10T11:30:00Z", actor="Bankaifan"):
-    n = f.issue("Do the thing", ["approved"], author="Bankaifan")
-    f.timeline = [{"event": "labeled", "label": {"name": "approved"}, "actor": {"login": actor}, "created_at": at}]
-    return n
-
-
-def test_unstarted_approved_issue_kicks_orchestrator_and_counts():
-    f = Heal()
-    approved(f)
-    f.listed["orchestrator.yml"] = []
-    assert "dispatched orchestrator.yml (Kicked: 1)" in heal(f)[0]
-    assert f.dispatches() == [("workflow", "run", "orchestrator.yml")]
-    k = next(i for i in f.issues.values() if i["title"] == aw.KICK_TITLE)
-    assert guard_mark.verify(k["title"], k["body"], KEY) and aw.kicked(k) == 1
-
-
-def test_kicked_two_gives_parked_with_marker_line():
-    f = Heal()
-    approved(f)
-    f.listed["orchestrator.yml"] = []
-    heal(f)
-    k = next(n for n, i in f.issues.items() if i["title"] == aw.KICK_TITLE)
-    f.issues[k]["author"] = {"login": BOT}
-    assert "Kicked: 2" in heal(f)[0]
-    assert aw.kicked(f.issues[k]) == 2 and "parked" in f.labels(k)
-    assert "<!-- parked -->" in f.comment_of(k)
-    assert len(f.dispatches()) == 2
-    assert "already kicked 2 times" in heal(f)[0]
-    assert len(f.dispatches()) == 2  # no third start
-
-
-def test_no_kick_when_label_is_young_run_followed_or_set_by_a_stranger():
-    f = Heal()
-    approved(f, at="2026-11-10T11:50:00Z")  # 10 min ago
-    f.listed["orchestrator.yml"] = []
-    assert heal(f) == []
-    g = Heal()
-    approved(g)
-    g.listed["orchestrator.yml"] = [{"conclusion": "success", "createdAt": "2026-11-10T11:45:00Z"}]
-    assert heal(g) == []
-    h = Heal()
-    approved(h, actor="mallory")
-    h.listed["orchestrator.yml"] = []
-    assert heal(h) == []
-    s = Heal()
-    approved(s)
-    s.listed["orchestrator.yml"] = [{"conclusion": "skipped", "createdAt": "2026-11-10T11:45:00Z"}]
-    assert "Kicked: 1" in heal(s)[0]  # a skipped run did not run the gate
-
-
 def test_dry_run_heal_writes_nothing(monkeypatch):
     monkeypatch.setenv("GUARD_KEY", KEY)
     f = Heal()
     f.issue(FAIL_TITLE)
-    approved(f)
     f.listed["orchestrator.yml"] = BAD_ORCH
     out = aw.main({"DRY_RUN": "1", **ENV}, f, NOW)
-    assert any("would set agent:dev" in line for line in out) and any("would dispatch" in line for line in out)
+    assert any("would set agent:dev" in line for line in out)
     assert not f.dispatches() and not f.creates()
     assert not [a for a in f.calls if a[:2] in {("issue", w) for w in aw.WRITES} or a[0] == "label"]
 

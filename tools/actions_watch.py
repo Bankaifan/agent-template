@@ -6,7 +6,7 @@ replaced pending run loses nothing. A startup failure, or a cancelled run whose 
 while run_attempt is 1, no state); anything else opens or updates the signed `Failing workflow:` issue through
 tools/failure_watch.py. Bodies are fixed script text. DRY_RUN=1 prints the actions and writes nothing.
 The sweep also self-heals (section 4.4): fallback `agent:dev` while the orchestrator is unhealthy and MAX_DEV has room,
-one restart of failed agent work, a `Kicked: n` counter for unstarted approved issues. It only touches issues signed
+one restart of failed agent work. It only touches issues signed
 with GUARD_KEY and authored by AUTHOR_BOT (env AUTHOR_BOT, OWNER, MAX_DEV).
 FAILURE_WATCH=off skips it. Needs the gh CLI (GH_TOKEN, GH_REPO) and GUARD_KEY (script step only).
 """
@@ -30,17 +30,13 @@ RERUN_CONCLUSIONS = ("startup_failure", "cancelled")
 WRITES = ("create", "edit", "comment", "close", "reopen", "rerun")  # gh subcommands that change state
 
 # Self-healing (design 0012 section 4.4), sweep only. Everything is bounded: one fallback label per issue,
-# stalled:1 then parked, Kicked: 2 then parked.
+# stalled:1 then parked.
 ORCHESTRATOR = "orchestrator.yml"
 UNHEALTHY = ("cancelled", "failure", "timed_out")  # conclusion of the newest orchestrator run in the last HEAL_HOURS
 HEAL_HOURS = 2
 FAILED_AGENT = ("failure", "timed_out", "cancelled")
 RESTART_HOURS = 4  # a failed agent run older than this is history, not a restart trigger
-UNSTARTED_MIN = 15
-KICK_TITLE = "Unstarted run: orchestrator"
-KICK_MAX = 2
 DEFAULT_MAX_DEV = 4
-_KICKED = re.compile(r"^Kicked: (\d+)$", re.MULTILINE)
 
 
 def readonly(run):
@@ -189,64 +185,11 @@ def restart_failed(now, trusted, closed, runs, dry, run):
     return out
 
 
-def kicked(issue):
-    m = _KICKED.search(guard_mark.split(issue["body"])[0])
-    return int(m.group(1)) if m else 0
-
-
-def kick_body(count):
-    return f"An approved issue got no orchestrator run, so the watcher started it.\nKicked: {count}"
-
-
-def unstarted(now, issues, owner, orch_runs, run):
-    """Open issues whose approved/auto-ok label (set by OWNER) is older than UNSTARTED_MIN and that no orchestrator
-    run followed (a skipped or cancelled run does not count)."""
-    out = []
-    for i in issues:
-        gated = stalled_dev.names(i) & set(trusted_issues.GATED)
-        if not gated or "parked" in stalled_dev.names(i):
-            continue
-        events = fw._api(f"repos/{{owner}}/{{repo}}/issues/{i['number']}/timeline?per_page=100", run)
-        times = [e["created_at"] for e in events if e.get("event") == "labeled"
-                 and (e.get("label") or {}).get("name") in gated
-                 and trusted_issues.label_set_by(events, e["label"]["name"], owner)]
-        if not times or (now - _at(max(times))).total_seconds() < UNSTARTED_MIN * 60:
-            continue
-        if not any(r["createdAt"] >= max(times) and r.get("conclusion") not in ("skipped", "cancelled")
-                   for r in orch_runs):
-            out.append(i["number"])
-    return out
-
-
-def kick(now, issues, trusted, key, owner, orch_runs, dry, run):
-    """Section 4.4.4: dispatch the orchestrator for unstarted approved issues, counted as `Kicked: n` in the signed
-    issue `Unstarted run: orchestrator`; at KICK_MAX the issue is parked."""
-    late = unstarted(now, issues, owner, orch_runs, run)
-    if not late:
-        return []
-    state = next((i for i in trusted if i["title"] == KICK_TITLE), None)
-    count = kicked(state) if state else 0
-    if count >= KICK_MAX:
-        return [f"kick: already kicked {count} times, parked (#{state['number']})"]
-    if dry:
-        return [f"kick: would dispatch {ORCHESTRATOR} (Kicked: {count + 1}) for #{late[0]}"]
-    run("workflow", "run", ORCHESTRATOR)
-    if state is None:
-        body = guard_mark.sign(KICK_TITLE, kick_body(1), key)
-        run("issue", "create", "--title", KICK_TITLE, "--label", liveness.OVERDUE_LABEL, "--body", body)
-        return [f"kick: dispatched {ORCHESTRATOR} (Kicked: 1) for #{late[0]}"]
-    fw._write(state, kick_body(count + 1), key, run)
-    if count + 1 >= KICK_MAX:
-        park("issue", state["number"], f"approved issues got no orchestrator run after {KICK_MAX} automatic starts", run)
-    return [f"kick: dispatched {ORCHESTRATOR} (Kicked: {count + 1}) for #{late[0]}"]
-
-
 def heal(now, key, env, dry=False, run=liveness.gh):
     """One self-healing tick. Only signed issues authored by AUTHOR_BOT are changed; without AUTHOR_BOT nothing is."""
     bot = (env.get("AUTHOR_BOT") or "").strip()
     if not bot:
         return ["self-healing: AUTHOR_BOT is not set, skipped"]
-    owner = (env.get("OWNER") or "Bankaifan").strip()
     issues = _jl(run, "issue", "list", "--state", "open", "--limit", "200", "--json", "number,title,body,labels,author")
     trusted = [i for i in issues if trusted_issues.is_guard_issue(i, bot, key)]
     closed = stalled_dev.closed_by(_jl(run, "pr", "list", "--state", "open", "--limit", "100", "--json", "number,body"))
@@ -257,8 +200,7 @@ def heal(now, key, env, dry=False, run=liveness.gh):
         listed = _jl(run, "run", "list", "--workflow", wf, "--limit", "20",
                      "--json", "displayTitle,conclusion,createdAt,databaseId")
         agent_runs += [{**r, "wf": wf} for r in listed]
-    out += restart_failed(now, trusted, closed, agent_runs, dry, run)
-    return out + kick(now, issues, trusted, key, owner, orch_runs, dry, run)
+    return out + restart_failed(now, trusted, closed, agent_runs, dry, run)
 
 
 def main(env=None, run=liveness.gh, now=None):
