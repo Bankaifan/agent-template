@@ -27,3 +27,7 @@ def test_no_outside_text_reaches_an_expression_and_pull_requests_are_skipped():
         assert f"github.event.issue.{field}" not in TEXT and f"github.event.{field}" not in TEXT
     assert "!github.event.issue.pull_request" in TEXT
     assert "ref:" not in TEXT  # the default branch, never anything an event names
+
+
+def test_all_intake_jobs_share_one_queue_so_a_burst_cannot_pass_the_daily_cap():
+    assert "      group: intake\n      cancel-in-progress: false\n" in TEXT and "max-parallel: 1" in TEXT

@@ -57,11 +57,14 @@ jobs:
     if: needs.pick.outputs.items != '' && needs.pick.outputs.items != '[]'
     strategy:
       fail-fast: false
-      max-parallel: 2
+      max-parallel: 1
       matrix:
         number: ${{ fromJSON(needs.pick.outputs.items) }}
+    # ONE group for the whole repo: the gate below counts the marker comments of finished runs, so runs must not
+    # overlap or a burst of issues passes the daily cap. A waiting job that a newer one replaces is picked up by the
+    # schedule.
     concurrency:
-      group: intake-${{ matrix.number }}
+      group: intake
       cancel-in-progress: false
     runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 15
