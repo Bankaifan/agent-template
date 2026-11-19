@@ -25,6 +25,11 @@ Sonst wird niemand gefragt, erwähnt oder zugewiesen, und kein Mensch setzt ein 
   `V<version>-<NAME>: <was er tut>`. Viele kleine Commits, kein Squash.
 - Der Reviewer läuft nur bei grüner CI und führt nie PR-Code aus. Fix-Runden starten automatisch bei `CHANGES_REQUESTED`
   oder roter CI (max. 2), danach startet die Aufgabe einmal neu.
+- Der Merge-Train (`tools/train.py`) bringt freigegebene PRs nach `main`. Weil `main` einen aktuellen Branch verlangt,
+  landen zwei oder mehr fertige PRs mit verschiedenen Dateien zusammen als ein PR `Batch: #a, #b` auf `agent/batch`:
+  ein Skript baut ihn, `tools/reapprove.py` gibt ihn nur frei, wenn jede Datei genau dem entspricht, was der Approver
+  in einem der PRs freigegeben hat. Ein Modell ist nicht beteiligt. Scheitert der Batch, wird er geschlossen und die
+  PRs landen einzeln (`docs/decisions/0018-batch-train.md`, `TRAIN_BATCH=off` schaltet das ab).
 - Was festhängt, bekommt per Skript `parked`: keine Notiz, keine Erwähnung. Der Entsperrer (`unblocker.yml`,
   `UNBLOCKER=off` schaltet ihn ab) schaut zuerst darauf: eine falsche Annahme bekommt eine Korrektur und einen Neustart,
   ein Fehler in der Agenten-Infrastruktur ein `prio:1`-Issue. `tools/status.py` startet jedes geparkte Element nach einer
