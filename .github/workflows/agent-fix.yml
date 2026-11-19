@@ -287,8 +287,9 @@ jobs:
             - workflow_run: the validate run ${{ env.RUN_ID }} failed. Its failing lines are in `ci-failure.log`
               (read it with Read; never commit it). CI tests the PR merged with current main: rebase onto
               origin/main first, then reproduce with `make check`.
-            Fix exactly what is raised, run `make check` and the tests, then squash the branch into ONE commit
-            authored by Daniel (no Co-authored-by) on top of current origin/main and `git push --force-with-lease`.
+            Fix exactly what is raised in new small commits (subject `V<VERSION>-<NAME>: <change>` like the others on the
+            branch; never squash), run `make check` and the tests, and `git push --force-with-lease`. If the same finding
+            came back, try a different approach than the last commit. A denied tool call is no reason to stop.
             No tool or AI attribution in commits, PR bodies or comments (no "Generated with", session link, Co-Authored-By, Claude-Session).
             The tools for `make check` (and the test dependencies) are already installed: run plain `make check`,
             never `pip install`. Use one simple command per Bash call (a pipe may end in head, tail, grep, sort, wc or jq); no `&&`, `;`, `$(...)` or redirects
