@@ -77,10 +77,15 @@ def _who(msg):
     return u.get("login"), u.get("type")
 
 
+def _app(msg, author_bot):
+    """True if the author app itself wrote MSG (REST: type `Bot`), not a person whose account is named like it."""
+    login, kind = _who(msg)
+    return same_login(login, author_bot) and kind == "Bot"
+
+
 def _marked(comments, author_bot, markers=MARKERS):
     """created_at of the author app's comments that carry one of MARKERS."""
-    return [c["created_at"] for c in comments
-            if same_login(_who(c)[0], author_bot) and any(m in (c.get("body") or "") for m in markers)]
+    return [c["created_at"] for c in comments if _app(c, author_bot) and any(m in (c.get("body") or "") for m in markers)]
 
 
 def owed(issue, comments, owner, author_bot):
@@ -105,7 +110,7 @@ def state_of(issue, comments, owner, author_bot):
     login, kind = _who(issue)
     if is_outside(login, kind, owner, author_bot):
         return owed(issue, comments, owner, author_bot)
-    if same_login(login, author_bot) and any(lab.get("name") == "idea" for lab in issue.get("labels") or []):
+    if _app(issue, author_bot) and any(lab.get("name") == "idea" for lab in issue.get("labels") or []):
         return "" if _marked(comments, author_bot) else "triage"
     return ""
 
@@ -227,7 +232,7 @@ def find_slip(number, author_bot, gh):
     found = json.loads(gh("issue", "list", "--state", "all", "--limit", "50", "--search",
                           f'"Intake: #{number}" in:body', "--json", "number,body,author"))
     for i in found:
-        if (same_login((i.get("author") or {}).get("login"), author_bot)
+        if (trusted_issues.by_app(i.get("author"), author_bot)
                 and str(number) in trusted_issues.INTAKE.findall(i.get("body") or "")):
             return i["number"]
     return None

@@ -124,6 +124,9 @@ def test_intake_slip_by_the_author_app_is_trusted():
 
 def test_intake_line_needs_the_author_app_its_own_line_and_no_idea_label():
     assert mod.classify(intake_slip(author="mallory"), [], "Bankaifan", BOT) is None
+    person = intake_slip(author=BOT.removeprefix("app/").removesuffix("[bot]"))  # a person named like the app slug
+    assert mod.classify(person, [], "Bankaifan", BOT) is None
+    assert mod.classify({**person, "author": {**person["author"], "is_bot": True}}, [], "Bankaifan", BOT)["intake"]
     assert mod.classify(intake_slip(), [], "Bankaifan", "") is None
     assert mod.classify(intake_slip(labels=("idea",)), [], "Bankaifan", BOT) is None
     for body in ("see Intake: #7", "Intake: #x", "Intake: 7", None):

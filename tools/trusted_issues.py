@@ -68,9 +68,18 @@ def is_guard_issue(issue, author_bot, key):
 INTAKE = re.compile(r"^Intake: #(\d+)\s*$", re.MULTILINE)
 
 
+def by_app(author, author_bot):
+    """True if a gh `author` object is the author app itself: `is_bot`, or a login form no person can have
+    (`app/<slug>`, `<slug>[bot]`). A person whose account is named like the app slug is not the app (`same_login`
+    alone cannot tell them apart)."""
+    login = (author or {}).get("login") or ""
+    return same_login(login, author_bot) and (
+        (author or {}).get("is_bot") is True or login.startswith("app/") or login.endswith("[bot]"))
+
+
 def is_intake_slip(issue, author_bot):
     """True for a slip the intake script wrote: author app, a line `Intake: #N`, not an idea."""
-    if not same_login((issue.get("author") or {}).get("login"), author_bot):
+    if not by_app(issue.get("author"), author_bot):
         return False
     if any(lab["name"] == "idea" for lab in issue.get("labels", [])):
         return False
