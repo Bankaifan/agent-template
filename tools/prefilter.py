@@ -253,6 +253,12 @@ def handover_done_today():
     return bool(prs)
 
 
+def first_failure(body):
+    """A `Failing workflow:` issue after ONE failed run (tools/failure_watch.py writes `Failures: 1`): often a blip such
+    as the API rate limit. It starts no developer; a second failure does, a green run closes it."""
+    return bool(re.search(r"^Failures: 1$", body or "", re.MULTILINE))
+
+
 def start_state():
     """Slots and start list, read live (one definition for prefilter and dispatch): a dict with dev, stuck, waiting_prs,
     free_dev, free_prs, trusted (JSON of trusted_issues.py), blocked, restart ({issue: closed blocker} of parked
@@ -269,6 +275,7 @@ def start_state():
     issues = json.loads(gh("issue", "list", "--state", "open", "--limit", "200", "--json", "number,body"))
     open_numbers = {i["number"] for i in issues}
     blocked = {i["number"] for i in issues if deps.blocked(i["number"], i.get("body"), open_numbers)}
+    blocked |= {i["number"] for i in issues if first_failure(i.get("body"))}
     return {"dev": dev, "stuck": stuck, "restart": restart, "waiting_prs": w_prs, "free_dev": free_dev, "free_prs": free_prs,
             "trusted": trusted, "blocked": blocked,
             "start": start_candidates(trusted, free_dev, free_prs, w_prs, blocked),
