@@ -14,17 +14,15 @@ import datetime
 import json
 import os
 import re
-import subprocess
 import sys
 
 import budget
-import decision
 import failure_watch as fw
 import guard_mark
 import liveness
 import stalled_dev
 import trusted_issues
-from agent_guard import add_labels
+from agent_guard import add_labels, park
 
 SELF_WF = "watch.yml"  # the watcher never watches its own runs (no loop)
 SWEEP_HOURS = 2
@@ -32,7 +30,7 @@ RERUN_CONCLUSIONS = ("startup_failure", "cancelled")
 WRITES = ("create", "edit", "comment", "close", "reopen", "rerun")  # gh subcommands that change state
 
 # Self-healing (design 0012 section 4.4), sweep only. Everything is bounded: one fallback label per issue,
-# stalled:1 then needs-human, Kicked: 2 then needs-human.
+# stalled:1 then parked, Kicked: 2 then parked.
 ORCHESTRATOR = "orchestrator.yml"
 UNHEALTHY = ("cancelled", "failure", "timed_out")  # conclusion of the newest orchestrator run in the last HEAL_HOURS
 HEAL_HOURS = 2
@@ -43,18 +41,6 @@ KICK_TITLE = "Unstarted run: orchestrator"
 KICK_MAX = 2
 DEFAULT_MAX_DEV = 4
 _KICKED = re.compile(r"^Kicked: (\d+)$", re.MULTILINE)
-NOTE_FAILED = (
-    "Hallo Daniel, @Bankaifan, die Aufgabe in diesem Issue ist nach dem einen automatischen Neustart (stalled:1) "
-    "wieder fehlgeschlagen und es gibt keinen offenen PR dazu. Schlimmster Fall: die Aufgabe bleibt liegen, "
-    "sonst passiert nichts. Frage: Soll die Aufgabe noch einmal gestartet werden (ja) oder das Issue "
-    "geschlossen werden (nein)?\n" + decision.build(yes="restart-issue", no="close-issue")
-)
-NOTE_KICKED = (
-    "Hallo Daniel, @Bankaifan, freigegebene Issues bekamen keinen Orchestrator-Lauf, auch nicht nach zwei "
-    "automatischen Starts (Kicked: 2). Schlimmster Fall: freigegebene Aufgaben bleiben liegen, sonst passiert "
-    "nichts. Frage: Soll der Orchestrator noch einmal gestartet werden (ja) oder soll dieses Issue "
-    "geschlossen werden (nein)?\n" + decision.build(yes="restart-issue", no="close-issue")
-)
 
 
 def readonly(run):
@@ -143,26 +129,16 @@ def orchestrator_unhealthy(now, orch_runs):
     return bool(recent) and recent[0].get("conclusion") in UNHEALTHY
 
 
-def _park(number, note, owner, run):
-    """needs-human, owner as assignee (issues get no review request), the German note as the last comment."""
-    add_labels("issue", number, ["needs-human"], run)
-    try:
-        run("issue", "edit", str(number), "--add-assignee", owner)
-    except subprocess.CalledProcessError:
-        print(f"assignee {owner} on issue #{number} failed")
-    liveness.post_comment("issue", number, note, run)
-
-
 def fallback(trusted, issues, closed, unhealthy, cap, dry, run):
     """Section 4.4.2: set agent:dev on open signed watch issues, only while the orchestrator is unhealthy and
     fewer than MAX_DEV issues carry agent:dev. A healthy orchestrator decides itself: nothing happens."""
     if not unhealthy:
         return []
-    dev = sum("agent:dev" in stalled_dev.names(i) and "needs-human" not in stalled_dev.names(i) for i in issues)
+    dev = sum("agent:dev" in stalled_dev.names(i) and "parked" not in stalled_dev.names(i) for i in issues)
     out = []
     for i in sorted(trusted, key=lambda x: x["number"]):
         labels = stalled_dev.names(i)
-        if not i["title"].startswith(fw.TITLE_PREFIX) or labels & {"agent:dev", "needs-human"} or i["number"] in closed:
+        if not i["title"].startswith(fw.TITLE_PREFIX) or labels & {"agent:dev", "parked"} or i["number"] in closed:
             continue
         if dev >= cap:
             out.append(f"fallback: MAX_DEV {cap} reached, #{i['number']} waits")
@@ -188,14 +164,14 @@ def after_mark(issue, run_obj, run):
     return bool(marks) and _at(run_obj["createdAt"]) > max(marks)
 
 
-def restart_failed(now, trusted, closed, runs, owner, dry, run):
+def restart_failed(now, trusted, closed, runs, dry, run):
     """Section 4.4.3: the newest agent run of an agent:dev issue without a closing PR failed -> agent:dev again
-    once (stalled:1, the restart of stalled_dev); failed again -> needs-human with the German note. A failed run
+    once (stalled:1, the restart of stalled_dev); failed again -> parked. A failed run
     older than the stalled:1 mark is the one that caused the restart: the issue waits for the restart's run."""
     out = []
     for i in trusted:
         n, labels = i["number"], stalled_dev.names(i)
-        if "agent:dev" not in labels or "needs-human" in labels or n in closed:
+        if "agent:dev" not in labels or "parked" in labels or n in closed:
             continue
         mine = sorted((r for r in runs if _covers(r, i)), key=lambda r: r["createdAt"], reverse=True)
         if not mine or mine[0].get("conclusion") not in FAILED_AGENT or _age_h(mine[0]["createdAt"], now) > RESTART_HOURS:
@@ -206,7 +182,7 @@ def restart_failed(now, trusted, closed, runs, owner, dry, run):
         if parked and not after_mark(i, mine[0], run):
             continue
         if parked and not dry:
-            _park(n, NOTE_FAILED, owner, run)
+            park("issue", n, "the task failed again after the one restart (stalled:1) and no open PR closes it", run)
         elif not dry:
             stalled_dev.restart(i, run)
         out.append(f"restart: {'would ' if dry else ''}{'park #' if parked else 'agent:dev again on #'}{n}")
@@ -228,7 +204,7 @@ def unstarted(now, issues, owner, orch_runs, run):
     out = []
     for i in issues:
         gated = stalled_dev.names(i) & set(trusted_issues.GATED)
-        if not gated or "needs-human" in stalled_dev.names(i):
+        if not gated or "parked" in stalled_dev.names(i):
             continue
         events = fw._api(f"repos/{{owner}}/{{repo}}/issues/{i['number']}/timeline?per_page=100", run)
         times = [e["created_at"] for e in events if e.get("event") == "labeled"
@@ -244,14 +220,14 @@ def unstarted(now, issues, owner, orch_runs, run):
 
 def kick(now, issues, trusted, key, owner, orch_runs, dry, run):
     """Section 4.4.4: dispatch the orchestrator for unstarted approved issues, counted as `Kicked: n` in the signed
-    issue `Unstarted run: orchestrator`; at KICK_MAX the issue gets needs-human and the German note."""
+    issue `Unstarted run: orchestrator`; at KICK_MAX the issue is parked."""
     late = unstarted(now, issues, owner, orch_runs, run)
     if not late:
         return []
     state = next((i for i in trusted if i["title"] == KICK_TITLE), None)
     count = kicked(state) if state else 0
     if count >= KICK_MAX:
-        return [f"kick: already kicked {count} times, waiting for Daniel (#{state['number']})"]
+        return [f"kick: already kicked {count} times, parked (#{state['number']})"]
     if dry:
         return [f"kick: would dispatch {ORCHESTRATOR} (Kicked: {count + 1}) for #{late[0]}"]
     run("workflow", "run", ORCHESTRATOR)
@@ -261,7 +237,7 @@ def kick(now, issues, trusted, key, owner, orch_runs, dry, run):
         return [f"kick: dispatched {ORCHESTRATOR} (Kicked: 1) for #{late[0]}"]
     fw._write(state, kick_body(count + 1), key, run)
     if count + 1 >= KICK_MAX:
-        _park(state["number"], NOTE_KICKED, owner, run)
+        park("issue", state["number"], f"approved issues got no orchestrator run after {KICK_MAX} automatic starts", run)
     return [f"kick: dispatched {ORCHESTRATOR} (Kicked: {count + 1}) for #{late[0]}"]
 
 
@@ -281,7 +257,7 @@ def heal(now, key, env, dry=False, run=liveness.gh):
         listed = _jl(run, "run", "list", "--workflow", wf, "--limit", "20",
                      "--json", "displayTitle,conclusion,createdAt,databaseId")
         agent_runs += [{**r, "wf": wf} for r in listed]
-    out += restart_failed(now, trusted, closed, agent_runs, owner, dry, run)
+    out += restart_failed(now, trusted, closed, agent_runs, dry, run)
     return out + kick(now, issues, trusted, key, owner, orch_runs, dry, run)
 
 

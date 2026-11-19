@@ -270,13 +270,13 @@ def test_fallback_respects_max_dev():
     assert aw.max_dev("junk") == 4 and aw.max_dev("0") == 4 and aw.max_dev("7") == 7
 
 
-def test_fallback_skips_issues_with_a_closing_pr_or_needs_human_or_agent_dev():
+def test_fallback_skips_issues_with_a_closing_pr_or_parked_or_agent_dev():
     f = Heal()
-    pr, human, dev = f.issue(FAIL_TITLE), f.issue(FAIL_TITLE + " 2", ["needs-human"]), f.issue(FAIL_TITLE + " 3", ["agent:dev"])
+    pr, human, dev = f.issue(FAIL_TITLE), f.issue(FAIL_TITLE + " 2", ["parked"]), f.issue(FAIL_TITLE + " 3", ["agent:dev"])
     f.prs = [{"number": 9, "body": f"Closes #{pr}"}]
     f.listed["orchestrator.yml"] = BAD_ORCH
     assert heal(f) == []
-    assert f.labels(pr) == set() and f.labels(human) == {"needs-human"} and f.labels(dev) == {"agent:dev"}
+    assert f.labels(pr) == set() and f.labels(human) == {"parked"} and f.labels(dev) == {"agent:dev"}
 
 
 def test_unsigned_and_foreign_author_issues_are_never_touched():
@@ -309,20 +309,20 @@ def stalled_mark(at):
     return [{"event": "labeled", "label": {"name": "stalled:1"}, "created_at": at}]
 
 
-def test_failed_agent_work_restarts_once_then_needs_human_with_marker():
+def test_failed_agent_work_restarts_once_then_parked_with_marker():
     f = Heal()
     n = f.issue(FAIL_TITLE, ["agent:dev"])
     f.listed["agent-dev.yml"] = [failed_run(FAIL_TITLE)]
     assert "agent:dev again on #1" in heal(f)[0]
     assert "stalled:1" in f.labels(n) and "agent:dev" in f.labels(n)
-    assert "needs-human" not in f.labels(n)
+    assert "parked" not in f.labels(n)
     assert "Restarting once" in f.comment_of(n)
     f.timeline = stalled_mark("2026-11-10T11:45:00Z")  # the mark is set after the failed run that caused the restart
     assert heal(f) == []  # that run predates the mark: wait for the restart's own run
     f.listed["agent-dev.yml"] = [failed_run(FAIL_TITLE, at="2026-11-10T11:50:00Z")]
     assert "park #1" in heal(f)[0]
-    assert "needs-human" in f.labels(n)
-    assert "<!-- decision: yes=restart-issue no=close-issue -->" in f.comment_of(n)
+    assert "parked" in f.labels(n)
+    assert "<!-- parked -->" in f.comment_of(n)
     assert heal(f) == []  # parked: nothing more happens
 
 
@@ -332,7 +332,7 @@ def test_older_failed_run_does_not_park_a_restarted_issue():
     f.timeline = stalled_mark("2026-11-10T11:45:00Z")
     f.listed["agent-dev.yml"] = [failed_run(FAIL_TITLE, at="2026-11-10T11:30:00Z")]
     assert heal(f) == []  # the restart's run is not listed yet: nothing parks
-    assert "needs-human" not in f.labels(n) and n not in f.comments
+    assert "parked" not in f.labels(n) and n not in f.comments
 
 
 def test_turn_capped_agent_run_is_not_restarted_or_parked():
@@ -345,7 +345,7 @@ def test_turn_capped_agent_run_is_not_restarted_or_parked():
     f.timeline = stalled_mark("2026-11-10T11:45:00Z")
     f.listed["agent-dev.yml"] = [{**failed_run(FAIL_TITLE, at="2026-11-10T11:50:00Z"), "databaseId": 78}]
     f.logs[78] = f.logs[77]
-    assert heal(f) == [] and "needs-human" not in f.labels(n)
+    assert heal(f) == [] and "parked" not in f.labels(n)
 
 
 def test_failed_run_after_the_mark_parks():
@@ -354,14 +354,14 @@ def test_failed_run_after_the_mark_parks():
     f.timeline = stalled_mark("2026-11-10T11:45:00Z")
     f.listed["agent-dev.yml"] = [failed_run(FAIL_TITLE, at="2026-11-10T11:50:00Z")]
     assert "park #1" in heal(f)[0]
-    assert "needs-human" in f.labels(n)
+    assert "parked" in f.labels(n)
 
 
 def test_stalled_mark_without_timeline_event_waits():
     f = Heal()
     n = f.issue(FAIL_TITLE, ["agent:dev", "stalled:1"])
     f.listed["agent-dev.yml"] = [failed_run(FAIL_TITLE)]
-    assert heal(f) == [] and "needs-human" not in f.labels(n)  # no known mark time: never park on a guess
+    assert heal(f) == [] and "parked" not in f.labels(n)  # no known mark time: never park on a guess
 
 
 def test_restart_needs_a_failed_recent_run_and_no_open_pr():
@@ -397,7 +397,7 @@ def test_unstarted_approved_issue_kicks_orchestrator_and_counts():
     assert guard_mark.verify(k["title"], k["body"], KEY) and aw.kicked(k) == 1
 
 
-def test_kicked_two_gives_needs_human_with_marker_line():
+def test_kicked_two_gives_parked_with_marker_line():
     f = Heal()
     approved(f)
     f.listed["orchestrator.yml"] = []
@@ -405,8 +405,8 @@ def test_kicked_two_gives_needs_human_with_marker_line():
     k = next(n for n, i in f.issues.items() if i["title"] == aw.KICK_TITLE)
     f.issues[k]["author"] = {"login": BOT}
     assert "Kicked: 2" in heal(f)[0]
-    assert aw.kicked(f.issues[k]) == 2 and "needs-human" in f.labels(k)
-    assert "<!-- decision: yes=restart-issue no=close-issue -->" in f.comment_of(k)
+    assert aw.kicked(f.issues[k]) == 2 and "parked" in f.labels(k)
+    assert "<!-- parked -->" in f.comment_of(k)
     assert len(f.dispatches()) == 2
     assert "already kicked 2 times" in heal(f)[0]
     assert len(f.dispatches()) == 2  # no third start
