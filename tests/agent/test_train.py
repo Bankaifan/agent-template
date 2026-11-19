@@ -450,6 +450,7 @@ def batch_pr(members, number=50, state="OPEN", merge="BLOCKED", checks=(), base=
     title, body = train.batch_text(members)
     return {"number": number, "state": state, "title": title, "body": body, "headRefName": train.BATCH_BRANCH,
             "baseRefName": base, "author": {"login": author},
+            "approved": train.agent_guard.body_hash(body),  # not a gh field: the body hash tools/reapprove.py vouched for
             "headRefOid": "b" * 40, "isCrossRepository": False, "mergeStateStatus": merge,
             "statusCheckRollup": list(checks), "labels": []}
 
@@ -461,7 +462,7 @@ class BatchGh(Gh):
         super().__init__(prs, approved(*prs), **kw)
         self.batches, self.built, self.builds, self.state_now = list(batches), built, [], "OPEN"
         for b in self.batches:  # what tools/reapprove.py left on the batch it approved
-            self.reviews[b["number"]] = [{**review(b["headRefOid"]), "body": f"ok\n\nbody-hash: {train.agent_guard.body_hash(b['body'])}"}]
+            self.reviews[b["number"]] = [{**review(b["headRefOid"]), "body": f"ok\n\nbody-hash: {b['approved']}"}]
 
     def __call__(self, *args):
         if args[:2] == ("pr", "list") and train.BATCH_BRANCH in args:
@@ -538,9 +539,8 @@ def test_members_are_closed_once_their_batch_is_merged():
 def test_a_merged_batch_closes_only_what_the_approval_of_its_body_vouches_for():
     edited = batch_pr([ready(1), ready(2)], state="MERGED")  # approved as #1 #2, the body rewritten afterwards
     prs = [{**ready(7), "headRefName": "feature/owner-work"}, ready(8), ready(9)]
-    run = BatchGh(prs, [edited])
     edited["body"] = f"Batch: #7@{'7' * 7} #8@{'8' * 7}"
-    assert not any(c[:2] == ("pr", "close") for c in run.go())
+    assert not any(c[:2] == ("pr", "close") for c in BatchGh(prs, [edited]).go())
     honest = batch_pr([prs[0], ready(8)], state="MERGED")  # even a vouched line closes agent/<N>- PRs only
     assert [c for c in BatchGh(prs, [honest]).go() if c[:2] == ("pr", "close")] == [("pr", "close", "8", "--comment", "Merged with #50.")]
     for bad in ({"state": "COMMENTED"}, {"commit_id": "c" * 40}, {"user": {"login": "app/author"}}, {"body": "ok"}):
