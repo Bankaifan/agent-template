@@ -119,6 +119,7 @@ jobs:
             --max-turns 15
             --setting-sources user
             --settings .github/claude-judge-settings.json
+            --permission-mode default
             --allowedTools "Read,Glob,Grep,Edit(verdict.json)"
       # The model step may have written anywhere in the checkout: keep only the verdict, restore everything else.
       - name: Keep the verdict, restore a clean checkout
