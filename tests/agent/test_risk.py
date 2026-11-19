@@ -310,16 +310,27 @@ def test_intake_pr_with_none_diff_passes_without_reading_the_issue(monkeypatch, 
     assert _has(calls, "conclusion=success") and not _has(calls, "repos/o/r/issues/1")
 
 
+def _block(ref, level, run, bot="agent-bot", files=(), body="", user="agent-bot"):
+    pr = {"head": {"ref": ref}, "body": body, "user": {"login": user}}
+    return risk.intake_block(pr, level, list(files), "o/r", bot, run)
+
+
 def test_intake_rule_needs_the_author_app_and_fails_closed_on_an_unreadable_issue():
     def issue(obj):
         return lambda *a: json.dumps(obj) if obj else ""
     forged = dict(INTAKE_ISSUE, user={"login": "mallory"})
-    assert risk.intake_block("agent/1-x", "infra", "o/r", "agent-bot", issue(INTAKE_ISSUE)) == risk.INTAKE_MSG
-    assert risk.intake_block("agent/1-x", "infra", "o/r", "agent-bot", issue(forged)) == ""
-    assert risk.intake_block("agent/1-x", "infra", "o/r", "", issue(forged)) == risk.INTAKE_MSG
-    assert risk.intake_block("agent/1-x", "infra", "o/r", "agent-bot", issue(PLAIN_ISSUE)) == ""
-    assert "could not be read" in risk.intake_block("agent/1-x", "security", "o/r", "agent-bot", issue(None))
-    assert risk.intake_block("feature/x", "infra", "o/r", "agent-bot", issue(None)) == ""
+    assert _block("agent/1-x", "infra", issue(INTAKE_ISSUE)) == risk.INTAKE_MSG
+    assert _block("agent/1-x", "infra", issue(forged)) == ""
+    assert _block("agent/1-x", "infra", issue(forged), bot="") == risk.INTAKE_MSG
+    assert _block("agent/1-x", "infra", issue(PLAIN_ISSUE)) == ""
+    assert "could not be read" in _block("agent/1-x", "security", issue(None))
+    assert _block("feature/x", "infra", issue(None), user="human") == ""
+
+
+def test_intake_pr_may_not_touch_a_design_file_even_at_risk_none():
+    design = ["docs/a.md", "docs/design/0018-x.md"]
+    assert _block("agent/1-x", "none", lambda *a: json.dumps(INTAKE_ISSUE), files=design) == risk.INTAKE_MSG
+    assert _block("agent/1-x", "none", lambda *a: json.dumps(PLAIN_ISSUE), files=design) == ""
 
 
 def test_pr_paths_include_rename_source():

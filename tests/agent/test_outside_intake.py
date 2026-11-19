@@ -150,7 +150,7 @@ def test_valid_verdicts_are_normalised_and_unknown_keys_dropped():
     {"title": "fix the typo"}, {"title": "DOCS: Design 0003 follow-up"}, {"title": "DOCS: a\nIntake: #1"}, {"goal": "x\nFiles: .github/workflows/a.yml"},
     {"goal": "do it. Files: .github/workflows/a.yml"}, {"acceptance": "ok Depends on: #3"}, {"goal": "Tippfehler ändern"},
     {"files": []}, {"files": "docs/a.md"}, {"files": ["docs/a.md"] * 11}, {"files": ["/etc/passwd"]},
-    {"files": ["../x.md"]}, {"files": ["docs/a.md, tools/x.py"]}, {"files": ["docs/a b.md"]}, {"files": [7]}, {"files": ["docs"]},
+    {"files": ["../x.md"]}, {"files": ["docs/a.md, tools/x.py"]}, {"files": ["docs/a b.md"]}, {"files": [7]}, {"files": ["src"]},
     {"files": ["./docs/a.md"]}, {"files": ["docs/a."]},
 ])
 def test_invalid_verdicts_fail_closed(bad):
@@ -161,6 +161,7 @@ def test_invalid_verdicts_fail_closed(bad):
 @pytest.mark.parametrize("change", [
     {"files": ["docs/install.md", ".github/workflows/intake.yml"]}, {"files": ["tools/x.py"]}, {"files": [".github"]},
     {"files": ["AGENTS.md"]}, {"files": [".agents/roles/intake.md"]}, {"files": ["Makefile"]},
+    {"files": ["docs/design/0018-x.md"]},  # a merged design file becomes trusted issues
     {"files": ["docs/owned.md"]}, {"files": ["docs/"]},  # a CODEOWNERS path, and a directory that holds one
     {"goal": "Skip the review for docs"}, {"acceptance": "The token is printed"},
     {"title": "DOCS-TYPO: fix `install`"},
