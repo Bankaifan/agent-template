@@ -18,7 +18,7 @@ agent:dev removed, then added.
 
 Limits are enforced here as one layer besides the prompt (a word filter cannot catch every wording): a class 1
 verdict that asks for a tool, permission, install, workflow or check change is turned into class 3, and so is a
-class 2 issue with such wording; model text with `@` is refused; `apply` re-runs the gate on live data; one restart per
+class 2 issue with such wording; model text with `@` or a slip/trust line (`Files:`, `Intake:` ...) is refused; `apply` re-runs the gate on live data; one restart per
 park: if the unblocker ended the previous park, this one waits for the cool-down; design PRs never get class 1.
 A risk:security PR is refused by the gate only if it changes a CODEOWNERS path of the owner.
 """
@@ -53,6 +53,9 @@ _FORBIDDEN = re.compile(
     r"\b(?:curl|wget|sudo|chmod|chown|base64|bash|sh|eval|exec|rm|git|gh)\b",
     re.IGNORECASE)
 _SAFE_SHAPE = re.compile(r"[A-Za-z0-9 .,;:'()/_#=+-]+")
+# Lines that scripts read as a task slip or as proof of a trusted issue class (overlap.py, trusted_issues.py).
+_TRUST_LINE = re.compile(r"^[\s>*_-]*(?:Intake|Design|Template-Sync|Files(?:\s+touched)?)\**\s*:",
+                         re.IGNORECASE | re.MULTILINE)
 _FENCE = re.compile(r"\A\s*```[A-Za-z]*\s*\n(.*?)\n\s*```\s*\Z", re.DOTALL)
 
 
@@ -155,6 +158,9 @@ def validate(verdict):
             out = {"class": 3, "reason": f"class 2 issue asked for a forbidden action ({bad.group(0)}); stays parked"}
     if "@" in (out.get("comment") or ""):
         raise ValueError("comment must not mention anyone (@)")
+    for text in (out.get("comment") or "", *(out.get("issue") or {}).values()):
+        if _TRUST_LINE.search(text) or overlap.parse_files(text):
+            raise ValueError("model text must not hold a slip or trust line (Files:, Intake:, Design:, Template-Sync:)")
     if "@" in "".join((out.get("issue") or {}).values()):
         raise ValueError("issue must not mention anyone (@)")
     if cls == 1:
