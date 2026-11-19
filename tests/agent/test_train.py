@@ -595,6 +595,7 @@ def test_build_batch_picks_disjoint_members_onto_main_and_drops_a_conflicting_on
     assert train.build_batch(str(origin), [one, {**two, "headRefOid": "0" * 40}]) == []  # a head that moved is dropped
     assert train.build_batch(str(origin), [one, two, clash], avoid={1, 2}) == []  # the set that just failed
     assert train.build_batch(str(tmp_path / "missing.git"), [one, two]) is None
+    assert train.build_batch(str(tmp_path / "missing.git"), [one, two], avoid={1, 2}) == []  # decided before any clone
     assert g(origin, "rev-parse", "agent/batch") == second and g(origin, "rev-parse", "main") != second
 
 
