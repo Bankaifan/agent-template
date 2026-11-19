@@ -90,7 +90,7 @@ jobs:
           limit() {
             # First limit of an issue: restart the task once (restart:1) and close this PR. Second: the PR is parked,
             # see tools/restart.py. Never silent: if the hand-over fails, the PR is still parked.
-            python3 tools/restart.py limit "$pr" || guard label pr "$pr" parked
+            python3 tools/restart.py limit "$pr" || guard park pr "$pr" "review limit reached, the hand-over failed"
             echo "fix=false" >> "$GITHUB_OUTPUT"
           }
           if [ "$EVENT" = pull_request_review ]; then
