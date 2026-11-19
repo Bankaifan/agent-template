@@ -14,7 +14,8 @@ Model-free. The workflow (a later PR) runs it on push to main, on a schedule and
    (changelog.d/<issue>.md) become ONE next version through tools/release_fragments.py, one commit force-pushed to
    `release/next` and released through one PR `Release <version>` (never a push to main; nothing to release closes it).
    That PR is the owner's only task: it carries a review request to OWNER, and its body is the fragments' user-facing
-   lines plus one line naming the open `parked` items (what the agents could not solve yet).
+   lines (safe_note: no mention, no closing keyword, no HTML comment) plus one line naming the open `parked` issues
+   and PRs (what the agents could not solve yet). A release that fails ends the run with exit 1 after the train steps.
 5. A PR waiting only for the owner (waiting_for_owner) is skipped: it never counts as in flight, so the next ready PR
    lands. When main moves it is still rebased (BEHIND, even without auto-merge) or sent to agent-fix (DIRTY), so the
    owner approves the current head; the push re-runs the agent reviews. After his approval it is a normal candidate.
@@ -34,6 +35,9 @@ from pathlib import Path
 
 import agent_guard
 import status
+
+sys.path.insert(0, str(Path(__file__).resolve().parent / "check"))
+import check_pr_form
 
 RELEASE = Path(__file__).resolve().parent / "release_fragments.py"  # always main's copy
 RELEASE_PATHS = {"VERSION", "CHANGELOG.md"}  # plus changelog.d/: the only paths of the release commit
@@ -164,6 +168,15 @@ def release_main(remote, token="", base="main", notes=None):
 WORDS = {"German": ("Nur interne Änderungen.", "Noch ungelöst"), "English": ("Internal changes only.", "Not solved yet")}
 
 
+def safe_note(line):
+    """A changelog line as plain text for the PR the owner merges: it mentions nobody, closes no issue and hides
+    nothing (fragments are written by developer models, also for intake work)."""
+    line = line.replace("@", "")
+    while check_pr_form.CLOSING.search(line):
+        line = check_pr_form.CLOSING.sub(lambda m: m.group(0).split()[0], line)  # the keyword stays, its target goes
+    return line.replace("<!--", "&lt;!--")
+
+
 def release_pr(run, version, notes, owner, lang="German"):
     """One open release PR at most: open or update it for `version`, or close it when there is nothing to release.
     Returns a short report line."""
@@ -175,10 +188,11 @@ def release_pr(run, version, notes, owner, lang="German"):
         run("pr", "close", str(number))
         return f"closed release PR #{number}: nothing to release"
     internal, unsolved = WORDS.get(lang, WORDS["English"])
-    parked = jlist(run, "issue", "list", "--state", "open", "--label", status.PARKED, "--json", "number")
-    body = "\n".join(notes) or internal
+    parked = sorted({i["number"] for kind in ("issue", "pr")
+                     for i in jlist(run, kind, "list", "--state", "open", "--label", status.PARKED, "--json", "number")})
+    body = "\n".join(map(safe_note, notes)) or internal
     if parked:
-        body += f"\n\n{unsolved}: " + ", ".join(f"#{i['number']}" for i in sorted(parked, key=lambda i: i["number"]))
+        body += f"\n\n{unsolved}: " + ", ".join(f"#{n}" for n in parked)
     title = f"Release {version}"
     if number is None:
         run("pr", "create", "--base", "main", "--head", RELEASE_BRANCH, "--title", title, "--body", body, "--reviewer", owner)
@@ -222,7 +236,7 @@ def run_train(env, run=status.gh, releaser=None):
         busy, rebase, conflict = plan(cands, fix_busy, waiting, required)
         if busy:
             print(f"waiting: PR #{busy['number']} is about to merge; the train runs again after its push")
-            return 0
+            return int(released is None)
         if rebase:
             run("api", "-X", "PUT", f"repos/{repo}/pulls/{rebase['number']}/update-branch", "-f", "update_method=rebase")
             print(f"rebased PR #{rebase['number']} onto main")
@@ -233,7 +247,7 @@ def run_train(env, run=status.gh, releaser=None):
     except subprocess.CalledProcessError as e:
         print(f"train stopped: a gh call exited {e.returncode}; this run changed no labels")
         return 1
-    return 0
+    return int(released is None)  # a release that failed is a red run, but only after the train did its work
 
 
 def main(argv):
