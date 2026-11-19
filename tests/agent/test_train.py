@@ -446,9 +446,10 @@ def ready(n, files=None, **kw):
     return {**p, "headRefOid": str(n) * 40, "body": f"Does it.\n\nCloses #{n + 100}"}
 
 
-def batch_pr(members, number=50, state="OPEN", merge="BLOCKED", checks=()):
+def batch_pr(members, number=50, state="OPEN", merge="BLOCKED", checks=(), base="main", author="app/author"):
     title, body = train.batch_text(members)
     return {"number": number, "state": state, "title": title, "body": body, "headRefName": train.BATCH_BRANCH,
+            "baseRefName": base, "author": {"login": author},
             "headRefOid": "b" * 40, "isCrossRepository": False, "mergeStateStatus": merge,
             "statusCheckRollup": list(checks), "labels": []}
 
@@ -552,6 +553,17 @@ def test_the_body_of_a_batch_that_is_no_longer_open_is_never_edited(capsys):
     run = BatchGh([ready(1), {**ready(2), "headRefOid": "c" * 40}, ready(3)], [batch_pr([ready(1), ready(2)])])
     run.state_now = "MERGED"  # merged while the train built it again
     assert run.go() == [] and "merged or closed meanwhile" in capsys.readouterr().out
+
+
+def test_a_pr_from_the_batch_branch_into_another_base_or_by_another_author_is_not_the_batch():
+    prs = [ready(1), ready(2)]
+    for other in (batch_pr(prs, number=60, base="dev"), batch_pr(prs, number=60, author="someone")):
+        run = BatchGh(prs, [other, batch_pr(prs, checks=RUNNING)])  # the newer one would shadow the real batch
+        assert run.go({**ENV, "AUTHOR_BOT": "app/author"}) == [] and run.builds == [([1, 2], set())]
+        (listing,) = [c for c in run.calls if c[:2] == ("pr", "list") and "agent/batch" in c]
+        assert listing[listing.index("--base") + 1] == "main"
+        (create,) = BatchGh(prs, [{**other, "state": "MERGED"}]).go({**ENV, "AUTHOR_BOT": "app/author"})
+        assert create[:2] == ("pr", "create")  # nothing is closed as landed with it
 
 
 def test_an_open_batch_with_ready_members_holds_the_train(capsys):
