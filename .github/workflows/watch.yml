@@ -25,6 +25,7 @@ on:
       - dependabot-automerge
       - design-split
       - dispatch
+      - intake
       - nightly
       - orchestrator
       - risk
