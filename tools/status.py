@@ -431,13 +431,12 @@ def fresh_start(kind, item, run=gh):
     issue = item
     if kind == "pr":
         refs = restart.own_issues(item.get("body"))
-        if refs:
-            liveness.post_comment("issue", refs[0], f"Fresh start: PR #{item['number']} was parked and is closed. Start on "
-                                  f"a new branch from main with a different approach.\n{PARK_MARK}", run)
-        clear_labels("pr", item, run)
+        clear_labels("pr", item, run)  # first: a later failure must not leave the PR parked and due again every tick
         if not refs:
             return
         run("pr", "close", str(item["number"]))
+        liveness.post_comment("issue", refs[0], f"Fresh start: PR #{item['number']} was parked and is closed. Start on "
+                              f"a new branch from main with a different approach.\n{PARK_MARK}", run)
         issue = {"number": refs[0], **jlist(run, "issue", "view", str(refs[0]), "--json", "labels")}
     clear_labels("issue", issue, run)
     if "agent:dev" in names(issue):
@@ -450,9 +449,11 @@ def un_park(prs, repo, bots, now, run=gh):
     A PR also counts the park comments on its issue. Returns the actions; one failing item never stops the others."""
     issues = jlist(run, "issue", "list", "--state", "open", "--label", PARKED, "--limit", "50", "--json",
                    "number,labels,comments")
-    out = []
-    for kind, item in [("issue", i) for i in issues] + [("pr", p) for p in prs if is_agent_pr(p) and PARKED in names(p)]:
+    out, started = [], set()
+    for kind, item in [("pr", p) for p in prs if is_agent_pr(p) and PARKED in names(p)] + [("issue", i) for i in issues]:
         n = item["number"]
+        if kind == "issue" and n in started:  # its parked PR just restarted it
+            continue
         try:
             count = park_count(item.get("comments"), bots)
             for ref in restart.own_issues(item.get("body"))[:1] if kind == "pr" else []:
@@ -463,6 +464,7 @@ def un_park(prs, repo, bots, now, run=gh):
             if minutes_since(since, now) < cool_down_hours(count) * 60:
                 continue
             fresh_start(kind, item, run)
+            started.update(restart.own_issues(item.get("body"))[:1] if kind == "pr" else ())
             out.append(f"un-parked {kind} #{n}: fresh start after {cool_down_hours(count)} h")
         except (subprocess.CalledProcessError, OSError, ValueError, KeyError, TypeError, liveness.ReadbackError) as e:
             out.append(f"un-park of {kind} #{n} failed ({type(e).__name__})")

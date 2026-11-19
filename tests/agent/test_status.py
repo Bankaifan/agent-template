@@ -659,7 +659,7 @@ def test_un_park_gives_issue_and_pr_a_fresh_start_after_the_cool_down():
                    comments=[])
     run = ParkGh(hours=25)
     out = st.un_park([parked_pr, pr(2)], "o/r", ["app/author"], NOW, run)
-    assert out == ["un-parked issue #4: fresh start after 24 h", "un-parked pr #9: fresh start after 24 h"]
+    assert out == ["un-parked pr #9: fresh start after 24 h", "un-parked issue #4: fresh start after 24 h"]
     calls = run.calls
     assert ("issue", "edit", "4", "--remove-label", "parked", "--remove-label", "stalled:1") in calls  # prio:1 stays
     assert calls.index(("issue", "edit", "4", "--remove-label", "agent:dev")) < calls.index(
@@ -670,3 +670,19 @@ def test_un_park_gives_issue_and_pr_a_fresh_start_after_the_cool_down():
     assert ("issue", "edit", "8", "--add-label", "agent:dev") in calls
     assert st.PARK_MARK in run.comments[0]["body"]  # the issue keeps the park count for the next PR
     assert st.un_park([parked_pr], "o/r", ["app/author"], NOW, ParkGh(hours=23)) == []
+
+
+def test_un_park_that_keeps_failing_on_the_pr_does_not_comment_on_the_issue_every_tick():
+    """A PR whose label edit fails stays parked; the park comment on its issue must not be repeated tick after tick."""
+    class Failing(ParkGh):
+        def __call__(self, *args):
+            if args[:2] == ("pr", "edit"):
+                raise subprocess.CalledProcessError(1, "gh", stderr="boom")
+            return super().__call__(*args)
+
+    parked_pr = pr(9, "agent/8-x", labels=["parked", "review:3"], body="Closes #8", comments=[])
+    run = Failing(hours=8 * 24)  # past the longest cool-down: every tick is due
+    for _ in range(3):
+        st.un_park([parked_pr], "o/r", ["app/author"], NOW, run)
+    assert len([c for c in run.calls if c[:3] == ("issue", "comment", "8")]) <= 1
+    assert all("reviewer" not in a and "assignee" not in a and "@" not in a for c in run.calls for a in c)
