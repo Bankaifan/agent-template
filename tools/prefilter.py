@@ -96,8 +96,11 @@ def orchestrator_work(candidates, stale, needs_slip=None):
 
 def event_reason(event, action, f):
     """(work, reason) for one event, per design 0007 section 4.3; None for events without a row (schedule, dispatch,
-    validate on main): those keep the count rule. F is a dict of facts, see `event_facts`. No row fits -> (False, "no-match")."""
+    validate on main): those keep the count rule. F is a dict of facts, see `event_facts`. No row fits -> (False, "no-match").
+    The train's batch (decision 0018) is script work: its PR until it merges, and a member closed as landed, wake nobody."""
     row = (event, action)
+    if f.get("batched") and not f["merged"]:
+        return False, "batch"
     if event == "issues" and action in ("opened", "edited", "labeled"):
         if f["startable"]:
             return True, "startable-issue"
@@ -138,7 +141,8 @@ def event_facts(event, number, free_prs, trusted_numbers, owner, approver, start
     if not number:
         return f
     if event.startswith("pull_request"):
-        pr = json.loads(gh("pr", "view", str(number), "--json", "labels,body,title,headRefName"))
+        pr = json.loads(gh("pr", "view", str(number), "--json", "labels,body,title,headRefName,comments"))
+        f["batched"] = pr["headRefName"] == train.BATCH_BRANCH or batched(pr.get("comments"))
         names = {lab["name"] for lab in pr["labels"]}
         f["agent_pr"] = pr["headRefName"].startswith("agent/")
         f["design_pr"] = "design" in names or pr["title"].lower().startswith("design")
@@ -189,6 +193,13 @@ def waiting_blocker(comments, authors=overlap.DEFAULT_TRUSTED):
     mine = [c for c in comments or [] if (c.get("author") or {}).get("login") in authors]
     m = re.match(r"Waiting for #(\d+)\b", (mine[-1].get("body") or "") if mine else "")
     return int(m.group(1)) if m else None
+
+
+def batched(comments, authors=overlap.DEFAULT_TRUSTED):
+    """True when the last comment by a trusted author is the train's `Merged with #N.` (tools/train.py, decision 0018):
+    the PR was closed because its change landed in a batch PR."""
+    mine = [c for c in comments or [] if (c.get("author") or {}).get("login") in authors]
+    return bool(mine) and bool(re.fullmatch(r"Merged with #\d+\.", (mine[-1].get("body") or "").strip()))
 
 
 def parked_waiting(dev, gh=gh):
