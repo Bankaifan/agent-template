@@ -15,7 +15,7 @@ CLI (needs the gh CLI with GH_TOKEN and GH_REPO):
   agent_guard.py silent review PR SHA [BODYHASH]
                                              after agent-review: no approver review for SHA (and BODYHASH) -> escalate
   agent_guard.py silent orchestrator - SINCE after the orchestrator model step: denials, or STARTABLE=true and no visible action
-                                             by AUTHOR_BOT since SINCE -> comment on STATUS_ISSUE (default 57), exit 1; 2nd in 24 h -> prio:1 issue
+                                             by AUTHOR_BOT since SINCE -> comment on the status issue (found by its title), exit 1; 2nd in 24 h -> prio:1 issue
   agent_guard.py park pr|issue N REASON      set the item aside: label `parked` and one short comment (no mention, no request)
 `silent` ignores extra trailing arguments (the guard runs from main, the workflow from the PR branch: no version drift).
 A usage error or exception in `silent` escalates with reason "guard error" and exits 1; it never fails quietly.
@@ -267,8 +267,22 @@ def recent_failures(comments, author_bot, since):
                and _after(c.get("created_at"), since) and ORCH_MARK in (c.get("body") or ""))
 
 
+STATUS_TITLE = "Agent status"  # the issue tools/status.py rewrites; found by title, its number differs per project
+
+
+def status_issue(run=gh, bot=""):
+    """Number (string) of the open status issue: titled STATUS_TITLE and written by BOT (no BOT: any author), else ""."""
+    found = json.loads(run("issue", "list", "--state", "open", "--search", f'"{STATUS_TITLE}" in:title',
+                           "--json", "number,title,author"))
+    return next((str(i["number"]) for i in found if i["title"] == STATUS_TITLE
+                 and (not bot or same_login((i.get("author") or {}).get("login"), bot))), "")
+
+
 def escalate_orchestrator(why, status_issue, repo, author_bot, run=gh, now=None):
-    """Comment on the status issue (run URL, denied calls). Second failure within 24 h: one prio:1 issue, no duplicates."""
+    """Comment on the status issue (run URL, denied calls). Second failure within 24 h: one prio:1 issue, no duplicates.
+    No status issue yet (""): nothing is written, the failed run is the signal."""
+    if not status_issue:
+        return
     now = now or dt.datetime.now(dt.UTC)
     day_ago = (now - dt.timedelta(hours=24)).strftime("%Y-%m-%dT%H:%M:%SZ")
     pages = json.loads(run("api", "--paginate", "--slurp",
@@ -302,7 +316,7 @@ def silent_orchestrator(since, run=gh):
     why = orchestrator_silent(denials, startable, acted)
     if not why:
         return 0
-    escalate_orchestrator(why, os.environ.get("STATUS_ISSUE", "57"), repo, bot, run)
+    escalate_orchestrator(why, status_issue(run, bot), repo, bot, run)
     return 1
 
 
@@ -582,8 +596,8 @@ def silent_guarded(args, owner, check=silent_check):
         why = f"guard error ({detail})"
         try:
             if kind == "orchestrator" or not number.isdigit():
-                escalate_orchestrator(why, os.environ.get("STATUS_ISSUE", "57"), os.environ.get("GH_REPO", ""),
-                                      os.environ.get("AUTHOR_BOT", ""))
+                bot = os.environ.get("AUTHOR_BOT", "")
+                escalate_orchestrator(why, status_issue(bot=bot), os.environ.get("GH_REPO", ""), bot)
             else:
                 escalate(kind if kind in ("dev", "fix", "review") else "guard", number, kind != "dev", why, owner)
         except Exception as exc2:  # noqa: BLE001
