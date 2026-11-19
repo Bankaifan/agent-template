@@ -291,7 +291,8 @@ jobs:
               (read it with Read; never commit it). CI tests the PR merged with current main: rebase onto
               origin/main first, then reproduce with `make check`.
             Fix exactly what is raised in new small commits (subject `V<VERSION>-<NAME>: <change>` like the others on the
-            branch; never squash), run `make check` and the tests, and `git push --force-with-lease`. If the same finding
+            branch; never squash), run `make check` and the tests, run `python3 tools/commit_names.py <NAME>` once (it sets the
+            subject prefix on every commit, also on wrong older ones) and `git push --force-with-lease`. If the same finding
             came back, try a different approach than the last commit. A denied tool call is no reason to stop.
             No tool or AI attribution in commits, PR bodies or comments (no "Generated with", session link, Co-Authored-By, Claude-Session).
             The tools for `make check` (and the test dependencies) are already installed: run plain `make check`,
