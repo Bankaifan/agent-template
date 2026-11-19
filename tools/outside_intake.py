@@ -55,8 +55,8 @@ FAILED_TEXT = "Automatic triage did not finish for this issue. It is tried again
 SLIP = "Goal: {goal}\nFiles: {files}\nAcceptance: {acceptance}\nIntake: #{n}\n"
 # Nothing we post may notify, link, embed or start a line a script reads (slip fields, trust lines).
 _UNSAFE = re.compile(r"@|://|www\.|mailto:|xmpp:|\]\(|\]\[|\]:|<[A-Za-z!/]|[\w.-]/[\w.-]+#\d", re.IGNORECASE)
-_FIELD = re.compile(r"\b(?:Files(?:\s+touched)?|Intake|Design|Template-Sync|Depends on|Model|Goal|Acceptance)\**\s*:",
-                    re.IGNORECASE)
+_FIELD = re.compile(r"\b(?:Files(?:\s+touched)?|Intake|Design|Template-Sync|Depends on|Model|Goal|Acceptance)\**\s*:"
+                    r"|\bDesign \d{4}\b", re.IGNORECASE)
 _PATH = re.compile(r"[A-Za-z0-9._][A-Za-z0-9._/-]*")
 
 
@@ -163,7 +163,7 @@ def _text(verdict, key, limit, lines=False):
     if not isinstance(val, str) or not val.strip() or len(val) > limit:
         raise ValueError(f"{key} must be non-empty text up to {limit} chars")
     val = val.strip()
-    if _UNSAFE.search(val) or _FIELD.search(val):
+    if _UNSAFE.search(val) or _FIELD.search(val) or overlap.parse_files(val):
         raise ValueError(f"{key} must not mention anyone, link anywhere or hold a slip field")
     if not all(ch.isprintable() or (lines and ch == "\n") for ch in val) or not (lines or val.isascii()):
         raise ValueError(f"{key} holds characters that are not allowed")

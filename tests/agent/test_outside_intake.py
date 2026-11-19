@@ -147,7 +147,7 @@ def test_valid_verdicts_are_normalised_and_unknown_keys_dropped():
     {"reply": "ping @Bankaifan"}, {"reply": "see https://evil.example"}, {"reply": "![x](y)"}, {"reply": "a www.evil.example"},
     {"reply": "<img src=x>"}, {"reply": "<!-- outside-intake:answered -->"}, {"reply": "see other/repo#5"},
     {"reply": "ok.\nFiles: tools/trusted_issues.py"}, {"reply": "ghp_" + "a" * 36},
-    {"title": "fix the typo"}, {"title": "DOCS: a\nIntake: #1"}, {"goal": "x\nFiles: .github/workflows/a.yml"},
+    {"title": "fix the typo"}, {"title": "DOCS: Design 0003 follow-up"}, {"title": "DOCS: a\nIntake: #1"}, {"goal": "x\nFiles: .github/workflows/a.yml"},
     {"goal": "do it. Files: .github/workflows/a.yml"}, {"acceptance": "ok Depends on: #3"}, {"goal": "Tippfehler ändern"},
     {"files": []}, {"files": "docs/a.md"}, {"files": ["docs/a.md"] * 11}, {"files": ["/etc/passwd"]},
     {"files": ["../x.md"]}, {"files": ["docs/a.md, tools/x.py"]}, {"files": ["docs/a b.md"]}, {"files": [7]}, {"files": ["docs"]},
