@@ -10,8 +10,8 @@ CLI:
                                  `risk` (the job exits 0 either way; only the check run carries the gate). Only a PR that changes a file owned by OWNER in CODEOWNERS (the outsider boundary)
                                  waits for him: then `risk` fails until OWNER approved the head SHA. Every other `security`
                                  PR is gated by the AI security reviewer (status `security-review`) alone.
-                                 Hard rule (decision 0017, rule 5): the PR of an intake slip (branch `agent/<N>-...`,
-                                 issue #N by the author app with a line `Intake: #M`) must be `none` and outside
+                                 Hard rule (decision 0017, rule 5): the PR of an intake slip (branch `agent/<N>-...` or
+                                 `Closes/Refs #N`, issue #N by the author app with a line `Intake: #M`) must be `none` and outside
                                  docs/design/, else `risk` fails.
                                  Also starts the status `security-review` (pending for agent PRs that need that review).
   risk.py wait NUMBER SHA        (env GH_TOKEN, GH_REPO, APPROVER_BOT) called by agent-review and agent-security-review; acts only
@@ -27,6 +27,8 @@ import subprocess
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "check"))
+import check_pr_form
 import trusted_issues
 
 SECURITY_FILES = (".github/rulesets/", ".github/CODEOWNERS", "tools/trusted_issues.py", "tools/agent_guard.py",
@@ -166,22 +168,36 @@ INTAKE_MSG = "intake work may not change protected paths"
 DESIGN_DIR = "docs/design/"  # a merged design file becomes trusted step issues (design-split): never intake work
 
 
+# Author-app PRs that a script opens without an issue. Every other author-app PR that is not plain `none` names one.
+NO_ISSUE_BRANCHES = ("agent/rule-keeper-", "agent/cleaner-", "agent/metrics-", "agent/orchestrator-handover-",
+                     "release/next", "template-sync/")
+
+
 def intake_block(pr, level, files, repo, author_bot, run=None):
-    """Failure text for the PR of an intake slip that is not risk `none` or changes a design file, else "". Branch
-    `agent/<N>-...` names the issue; it is an intake slip when the author app wrote it and it has a line
-    `Intake: #M` (without AUTHOR_BOT the line alone counts). A `none` diff outside docs/design/ needs no lookup; for
-    any other diff an unreadable issue fails closed. PR: the REST pull request; FILES: `pr_paths`."""
-    m = re.match(r"agent/(\d+)-", pr["head"]["ref"] or "")
-    if (level == "none" and not any(f.startswith(DESIGN_DIR) for f in files)) or not m:
+    """Failure text for intake work that is not risk `none` or changes a design file, else "". The issues of a PR are
+    its branch number (`agent/<N>-`) and the `Closes/Refs #N` of its body; one is an intake slip when the author app
+    wrote it and it has a line `Intake: #M` (without AUTHOR_BOT the line alone counts). A `none` diff outside
+    docs/design/ needs no lookup. Any other diff fails closed: an unreadable issue blocks, and so does an author-app
+    PR that names no issue at all (NO_ISSUE_BRANCHES excepted). PR: the REST pull request; FILES: `pr_paths`.
+    shortcut: the slip is read as it is now; whoever can edit the issue body can remove the `Intake:` line."""
+    ref = pr["head"]["ref"] or ""
+    if (level == "none" and not any(f.startswith(DESIGN_DIR) for f in files)) or ref.startswith(NO_ISSUE_BRANCHES):
         return ""
-    try:
-        issue = json.loads((run or gh)("api", f"repos/{repo}/issues/{m.group(1)}"))
-        body, author = issue.get("body") or "", (issue.get("user") or {}).get("login")
-    except (subprocess.CalledProcessError, OSError, ValueError, AttributeError):
-        return f"{INTAKE_MSG}: issue #{m.group(1)} could not be read"
-    if trusted_issues.INTAKE.search(body) and (not author_bot or norm(author) == norm(author_bot)):
-        return INTAKE_MSG
-    return ""
+    by_app = bool(author_bot) and norm((pr.get("user") or {}).get("login")) == norm(author_bot)
+    branch = check_pr_form.AGENT_BRANCH.match(ref)
+    named = 0
+    for n in check_pr_form.linked_issues(pr.get("body") or "", ref):
+        try:
+            issue = json.loads((run or gh)("api", f"repos/{repo}/issues/{n}"))
+            body, author = issue.get("body") or "", (issue.get("user") or {}).get("login")
+        except (subprocess.CalledProcessError, OSError, ValueError, AttributeError):
+            if by_app or (branch and branch.group(1) == n):
+                return f"{INTAKE_MSG}: issue #{n} could not be read"
+            continue  # e.g. `fixes #N` of another project quoted in a dependabot body
+        if trusted_issues.INTAKE.search(body) and (not author_bot or norm(author) == norm(author_bot)):
+            return INTAKE_MSG
+        named += 1
+    return f"{INTAKE_MSG}: the PR names no issue" if by_app and not named else ""
 
 
 def waits_for_owner(level, files, codeowners, owner):
