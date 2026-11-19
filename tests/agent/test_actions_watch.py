@@ -240,7 +240,7 @@ class Heal(Gh):
 
 @pytest.fixture(autouse=True)
 def _no_repo(monkeypatch):
-    monkeypatch.delenv("GH_REPO", raising=False)  # owner_hold then fails open, no event lookup
+    monkeypatch.delenv("GH_REPO", raising=False)
 
 
 def heal(f, env=ENV, dry=False):

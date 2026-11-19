@@ -19,7 +19,6 @@ on:
       - agent-fix
       - agent-review
       - agent-security-review
-      - answer-receiver
       - automerge
       - branch-cleanup
       - canary
@@ -87,7 +86,7 @@ jobs:
           RUN_ID: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.id || '' }}
           DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && '1' || '' }}
           FAILURE_WATCH: ${{ vars.FAILURE_WATCH }}
-          OWNER: Bankaifan
+          OWNER: ${{ vars.OWNER || github.repository_owner }}
           AUTHOR_BOT: ${{ vars.AUTHOR_BOT }}
           MAX_DEV: ${{ vars.MAX_DEV || '4' }}
           GUARD_KEY: ${{ secrets.GUARD_KEY }}  # signs the failure issues; script step only, never a model step
