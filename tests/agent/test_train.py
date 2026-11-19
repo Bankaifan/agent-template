@@ -598,5 +598,44 @@ def test_build_batch_picks_disjoint_members_onto_main_and_drops_a_conflicting_on
     assert g(origin, "rev-parse", "agent/batch") == second and g(origin, "rev-parse", "main") != second
 
 
+def test_what_the_train_builds_is_what_reapprove_accepts(tmp_path, monkeypatch):
+    """The two halves of decision 0018 agree on real git output, also when main moved in a member's file."""
+    origin, work = origin_repo(tmp_path)
+    (work / "a.txt").write_text("".join(f"line {i}\n" for i in range(40)))
+    g(work, "add", "-A")
+    g(work, "commit", "-q", "-m", "a")
+    g(work, "push", "-q", "origin", "main")
+    text = (work / "a.txt").read_text()
+    one = pr_branch(work, origin, 1, "a.txt", text.replace("line 30\n", "line 30 changed\n"))
+    two = pr_branch(work, origin, 2, "b.txt", "b\n")
+    g(work, "checkout", "-q", "main")
+    (work / "a.txt").write_text("top\n" + text)
+    g(work, "commit", "-q", "-am", "main moves in a.txt")
+    g(work, "push", "-q", "origin", "main")
+    assert train.build_batch(str(origin), [one, two]) == [one, two]
+    shas = {9: g(origin, "rev-parse", "agent/batch"), 1: one["headRefOid"], 2: two["headRefOid"]}
+
+    def gh(*args):
+        path = args[-1] if "--slurp" in args else args[1]
+        if "-X" in args:
+            return posted.append(args) or ""
+        if "/compare/" in path:
+            return g(origin, "diff", "main..." + path.rsplit("...", 1)[1]) + "\n"
+        n = int(path.split("/pulls/")[1].split("/")[0])
+        if path.endswith("/reviews"):
+            return json.dumps([[review(shas[n])] if n != 9 else []])
+        if path.endswith("/files"):
+            return json.dumps([[{"filename": "a.txt"}, {"filename": "b.txt"}]])
+        return json.dumps({"state": "open", "labels": [], "changed_files": 2 if n == 9 else 1, "base": {"ref": "main"},
+                           "user": {"login": "app/author"}, "body": train.batch_text([one, two])[1],
+                           "head": {"sha": shas[n], "ref": "agent/batch" if n == 9 else f"agent/{n}-x",
+                                    "repo": {"full_name": "o/r"}}})
+
+    monkeypatch.chdir(tmp_path)  # no CODEOWNERS, no AGENTS.md of the real checkout
+    posted = []
+    assert train.reapprove.run_reapprove("9", shas[9], {**ENV, "AUTHOR_BOT": "app/author"}, gh) == 0
+    assert f"commit_id={shas[9]}" in posted[0] and "event=APPROVE" in posted[0]
+
+
 def test_main_usage_error():
     assert train.main(["train.py", "extra"]) == 2
