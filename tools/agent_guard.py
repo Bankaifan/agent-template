@@ -193,8 +193,8 @@ def is_stale_head(number, sha, run=gh):
 
 
 def is_agent_pr(author, labels, author_bot, owner):
-    """Own-branch PRs by the author app or by the owner's account are reviewed; others only with agent:review."""
-    return same_login(author, author_bot) or same_login(author, owner) or "agent:review" in labels
+    """PRs by the author app or by the owner's account are reviewed; nobody else's, and no label changes that."""
+    return same_login(author, author_bot) or same_login(author, owner)
 
 
 _BODY_HASH_LINE = re.compile(r"^\s*body-hash:\s*([0-9a-f]{8,64})\s*$", re.IGNORECASE | re.MULTILINE)

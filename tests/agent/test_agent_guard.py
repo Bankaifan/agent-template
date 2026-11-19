@@ -78,7 +78,7 @@ def test_review_missing_for_head_sha():
 def test_agent_pr_by_author_app_owner_or_label():
     assert g.is_agent_pr("app/my-author", [""], "my-author[bot]", "Bankaifan")
     assert g.is_agent_pr("Bankaifan", [""], "my-author[bot]", "Bankaifan")
-    assert g.is_agent_pr("someone", ["agent:review"], "my-author[bot]", "Bankaifan")
+    assert not g.is_agent_pr("someone", ["agent:review"], "my-author[bot]", "Bankaifan")
     assert not g.is_agent_pr("someone", [""], "my-author[bot]", "Bankaifan")
 
 
@@ -166,14 +166,14 @@ def test_cli_same_exit_codes():
 def test_cli_agent_pr_exit_codes(monkeypatch):
     monkeypatch.setenv("AUTHOR_BOT", "my-author[bot]")
     assert g.main(["g", "agent-pr", "app/my-author"]) == 0
-    assert g.main(["g", "agent-pr", "someone", "x,agent:review"]) == 0
+    assert g.main(["g", "agent-pr", "someone", "x,agent:review"]) == 1
     assert g.main(["g", "agent-pr", "someone", "x"]) == 1
     assert g.main(["g", "agent-pr", "someone"]) == 1
 
 
 def test_cli_label_creates_then_adds(stub_gh):
-    assert g.main(["g", "label", "pr", "7", "agent:review"]) == 0
-    assert stub_gh() == ["label create agent:review --force", "pr edit 7 --add-label agent:review"]
+    assert g.main(["g", "label", "pr", "7", "parked"]) == 0
+    assert stub_gh() == ["label create parked --force", "pr edit 7 --add-label parked"]
 
 
 def test_cli_unknown_command_fails():
