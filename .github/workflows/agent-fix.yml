@@ -277,6 +277,9 @@ jobs:
           bot_id: "476059"
           bot_name: "Bankaifan"
           allowed_bots: ${{ vars.AUTHOR_BOT }},${{ vars.APPROVER_BOT }}
+          # The PR is the author app's own agent/* branch of this repo (job `prepare`): its author is a bot, which the
+          # action >= 1.0.273 counts as untrusted and would deny make, pytest and python3 on review events.
+          restrict_untrusted_prs: "false"
           prompt: |
             Act as the developer described in .agents/roles/developer.md and follow AGENTS.md.
             PR #${{ env.PR }} in ${{ github.repository }} (branch ${{ env.BRANCH }}, already checked out) needs a fix.
@@ -309,6 +312,7 @@ jobs:
             --max-turns 60
             --setting-sources user
             --settings .github/claude-judge-settings.json
+            --permission-mode default
             --allowedTools "Read,Edit,Write,Glob,Grep,${{ vars.DEV_SHELL == 'free' && 'Bash' || 'Bash(git:*),Bash(cp:*),Bash(mkdir:*),Bash(diff:*),Bash(cmp:*),Bash(wc:*),Bash(head:*),Bash(tail:*),Bash(grep:*),Bash(sort:*),Bash(jq:*),Bash(ls:*),Bash(make:*),Bash(bash tools/check/check_drift.sh),Bash(python3:*),Bash(pytest:*),Bash(ruff:*),Bash(actionlint:*),Bash(zizmor:*),Bash(gh issue view:*),Bash(gh pr view:*),Bash(gh run view:*),Bash(gh release view:*),Bash(gh release list:*)' }}"
       # Deterministic, fixed flags: the agent only writes the file, it never runs `gh pr edit`.
       # Only after a successful agent run. The file must be a regular file (no symlink) and pass the checks below.
@@ -348,6 +352,9 @@ jobs:
       - name: Fetch guard tools (no key)
         if: ${{ always() && steps.open.outputs.open == 'true' }}
         env:
+          # claude-code-action >= 1.0.273 leaves origin on a credential helper that answers only with GH_TOKEN
+          # (no token in .git/config when bots are allowed): the read-only job token is enough for this fetch.
+          GH_TOKEN: ${{ github.token }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           # The agent may edit the checkout: run the helpers as they are on the default branch.
