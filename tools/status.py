@@ -53,6 +53,7 @@ from restart import close_superseded, handle_limit, superseded
 
 TITLE = "Agent status"
 OWNER_DEFAULT = "Bankaifan"
+PARKED = "parked"  # set aside after failed approaches; retried later with fresh context, never handed to the owner
 ISSUE_ORPHAN_MIN = 30
 PR_ORPHAN_MIN = 10
 LIMIT_IDLE_MIN = 30
