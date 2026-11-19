@@ -2,8 +2,6 @@ import importlib.util
 import json
 import pathlib
 
-import pytest
-
 _path = pathlib.Path(__file__).parent.parent.parent / "tools" / "ci" / "risk.py"
 _spec = importlib.util.spec_from_file_location("risk", _path)
 risk = importlib.util.module_from_spec(_spec)
@@ -99,7 +97,8 @@ GREEN_RUNS = [{"name": n, "status": "completed", "conclusion": "success"} for n 
 SEC_OK = [{"context": "security-review", "state": "success"}]
 
 
-def _stub(calls, reviews, files, comments, diff_text, runs=GREEN_RUNS, statuses=SEC_OK, user="agent-bot", lossy=False):
+def _stub(calls, reviews, files, comments, diff_text, runs=GREEN_RUNS, statuses=SEC_OK, user="agent-bot", lossy=False,
+          requested=()):
     posted = []
 
     def run(*a):
@@ -119,7 +118,8 @@ def _stub(calls, reviews, files, comments, diff_text, runs=GREEN_RUNS, statuses=
         if a[0] == "api" and a[-1].endswith("/statuses"):
             return json.dumps(statuses)
         if a[0] == "api" and "/pulls/" in a[-1]:
-            return json.dumps({"head": {"sha": "abc"}, "user": {"login": user}, "body": "Adds a gate.\nCloses #65"})
+            return json.dumps({"head": {"sha": "abc"}, "user": {"login": user}, "body": "Adds a gate.\nCloses #65",
+                               "requested_reviewers": [{"login": x} for x in requested]})
         if a[:2] == ("pr", "diff"):
             return diff_text
         return ""
@@ -138,25 +138,16 @@ def _wait_env(monkeypatch, tmp_path):
 REV = [{"user": {"login": "appr[bot]"}, "state": "APPROVED", "commit_id": "abc", "body": "Looks right."}]
 
 
-def test_run_wait_all_green_labels_and_comments_once(monkeypatch, tmp_path):
+def test_run_wait_all_green_requests_the_owner_once_without_label_or_note(monkeypatch, tmp_path):
     _wait_env(monkeypatch, tmp_path)
-    calls = []
-    run = _stub(calls, REV, ["AGENTS.md"], [], diff("AGENTS.md", "+x"))
-    assert risk.run_wait("5", "abc", run) == 0
-    assert ("pr", "edit", "5", "--add-label", "needs-human") in calls
-    notes = [c[-1] for c in calls if c[:3] == ("pr", "comment", "5")]
-    assert len(notes) == 1 and "Hallo Daniel" in notes[0] and "Adds a gate." in notes[0] and "abc" in notes[0]
-    calls.clear()
-    run = _stub(calls, REV, ["AGENTS.md"], [{"body": notes[0]}], diff("AGENTS.md", "+x"))
-    risk.run_wait("5", "abc", run)
-    assert not any(c[:2] == ("pr", "comment") or "--add-label" in c for c in calls)
-
-
-def test_run_wait_fails_loudly_when_note_missing(monkeypatch, tmp_path):
-    _wait_env(monkeypatch, tmp_path)
-    run = _stub([], REV, ["AGENTS.md"], [], diff("AGENTS.md", "+x"), lossy=True)
-    with pytest.raises(risk.liveness.ReadbackError):
-        risk.run_wait("5", "abc", run)
+    asked, calls = [], []
+    monkeypatch.setattr(risk.subprocess, "run", lambda cmd, **k: asked.append(cmd))
+    assert risk.run_wait("5", "abc", _stub(calls, REV, ["AGENTS.md"], [], diff("AGENTS.md", "+x"))) == 0
+    assert asked == [["gh", "pr", "edit", "5", "--add-reviewer", "Bankaifan"]]
+    assert not any(c[:2] in (("pr", "edit"), ("pr", "comment")) for c in calls)
+    asked.clear()
+    risk.run_wait("5", "abc", _stub(calls, REV, ["AGENTS.md"], [], diff("AGENTS.md", "+x"), requested=["Bankaifan"]))
+    assert asked == []
 
 
 def test_run_wait_security_review_pending_or_failed_sets_nothing(monkeypatch, tmp_path):
@@ -265,11 +256,10 @@ def test_run_pr_non_agent_or_none_is_success_and_status_not_overwritten(monkeypa
     assert not _has(calls, "context=security-review")
 
 
-def test_run_pr_closed_removes_needs_human(monkeypatch, tmp_path):
+def test_run_pr_closed_publishes_nothing(monkeypatch, tmp_path):
     calls = []
-    _setup_pr(monkeypatch, tmp_path, _pr_stub(calls, _pr(["needs-human"], state="closed")))
+    _setup_pr(monkeypatch, tmp_path, _pr_stub(calls, _pr(state="closed")))
     assert risk.run_pr("5") == 0
-    assert ("pr", "edit", "5", "--remove-label", "needs-human") in calls
     assert not _has(calls, "name=risk")
 
 
