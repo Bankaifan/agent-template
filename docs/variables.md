@@ -17,6 +17,7 @@ Unknown facts are marked "open".
 | `PYTHON_VERSION` | `3.x` | `validate.yml`, `agent-dev.yml`, `agent-fix.yml`, `orchestrator.yml`; `setup.yml` (shown) | Python version for `setup-python` in those jobs | a version string accepted by `setup-python`. Open: exact accepted set |
 | `EXTRA_INSTALL` | not set | `validate.yml`, `agent-dev.yml`, `agent-fix.yml`, `orchestrator.yml`; `tools/ci/install_tools.sh` | shell command run once after the common tools; read only from the repo variable, never from a file on a PR branch. A file hook exists too: `.agents/install.sh`, run once from the base branch (`origin/main`) version only | any bash command |
 | `TRAIN` | `on` | `train.yml` (job `if`) | `off` disables the merge train (rebases the oldest approved agent PR that is behind `main`) | `on` / `off`; only `off` disables |
+| `CLEANER` | `on` | `cleaner.yml` | weekly cleaner run (`.agents/roles/cleaner.md`) | `off` disables it |
 | `ANSWER_RECEIVER` | `on` | `answer-receiver.yml` (job `if`); `setup.yml` (shown) | `off` disables the answer receiver for replies to `needs-human` items (`docs/decisions/0011-answer-receiver.md`) | `on` / `off`; only `off` disables |
 | `UNBLOCKER` | `on` | `unblocker.yml` (job `if`); `setup.yml` (shown) | `off` disables the unblocker for `needs-human` items (`docs/decisions/0010-unblocker.md`) | `on` / `off`; only `off` disables |
 | `TEMPLATE_SYNC` | `on` | `template-sync.yml` (job `if`) | `off` turns the daily template-sync poll off | `on` / `off`; only `off` disables |
