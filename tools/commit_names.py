@@ -9,6 +9,7 @@ when a subject is wrong: a wrong subject cannot be repaired by adding commits.
 """
 import os
 import re
+import shlex
 import subprocess
 import sys
 
@@ -26,13 +27,15 @@ def main(argv):
     if len(argv) == 4 and argv[1] == "--filter":  # git filter-branch --msg-filter: message on stdin
         sys.stdout.write(renamed(sys.stdin.read(), argv[2], argv[3]))
         return 0
-    if len(argv) not in (2, 3) or not NAME.fullmatch(argv[1]):
+    if len(argv) not in (2, 3) or not NAME.fullmatch(argv[1]) or argv[-1].startswith("-"):
         print(__doc__, file=sys.stderr)
         return 2
     name, base = argv[1], argv[2] if len(argv) == 3 else "origin/main"
     shown = subprocess.run(["git", "show", f"{base}:VERSION"], capture_output=True, text=True, check=False)
-    version = shown.stdout.strip() if shown.returncode == 0 and re.fullmatch(r"\d+(?:\.\d+)*", shown.stdout.strip()) else "0.0"
-    cmd = f'"{sys.executable}" "{os.path.abspath(__file__)}" --filter {version} {name}'
+    version = shown.stdout.strip() if shown.returncode == 0 else ""
+    if not re.fullmatch(r"\d+(?:\.\d+)+", version):  # no VERSION file, or no dot: the form check wants `V<x.y>-`
+        version = f"{version}.0" if version.isdigit() else "0.0"
+    cmd = " ".join(shlex.quote(a) for a in (sys.executable, os.path.abspath(__file__), "--filter", version, name))
     done = subprocess.run(["git", "filter-branch", "-f", "--msg-filter", cmd, f"{base}..HEAD"], check=False,
                           env={**os.environ, "FILTER_BRANCH_SQUELCH_WARNING": "1"})
     return done.returncode
