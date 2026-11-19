@@ -19,6 +19,7 @@ Unknown facts are marked "open".
 | `TRAIN` | `on` | `train.yml` (job `if`) | `off` disables the merge train (rebases the oldest approved agent PR that is behind `main`) | `on` / `off`; only `off` disables |
 | `CLEANER` | `on` | `cleaner.yml` | weekly cleaner run (`.agents/roles/cleaner.md`) | `off` disables it |
 | `UNBLOCKER` | `on` | `unblocker.yml` (job `if`); `setup.yml` (shown) | `off` disables the unblocker for `parked` items (`docs/decisions/0010-unblocker.md`) | `on` / `off`; only `off` disables |
+| `INTAKE` | `on` | `intake.yml` (job `if`); `setup.yml` (shown) | `off` disables intake of outside issues and scout ideas (`docs/decisions/0017-hpo-flow.md`) | `on` / `off`; only `off` disables |
 | `TEMPLATE_SYNC` | `on` | `template-sync.yml` (job `if`) | `off` turns the daily template-sync poll off | `on` / `off`; only `off` disables |
 | `TEMPLATE_SYNC_MODE` | `version` | `template-sync.yml` (env `SYNC_ALL`) | `version`: one sync PR per template release (the template's `VERSION` is greater than `synced_version`); `all`: a sync for every template commit | `version` / `all`; only `all` skips the gate |
 | `TEMPLATE_SYNC_APPLY` | `on` | `template-sync.yml` (job `if` of `build` and `report`) | `on` ports the managed changes by script in one PR, a model runs only for conflicts (`docs/design/0014-template-sync-by-script.md`); `off` returns to the issue-only report | `on` / `off`; only `off` disables |
