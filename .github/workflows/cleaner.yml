@@ -81,4 +81,5 @@ jobs:
             --max-turns 200
             --setting-sources user
             --settings .github/claude-judge-settings.json
+            --permission-mode default
             --allowedTools "Read,Glob,Grep,Edit,Write,Bash(git rm:*),Bash(git add:*),Bash(git commit:*),Bash(git push origin HEAD),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git restore:*),Bash(gh pr create:*),Bash(make check),Bash(graphify affected:*),Bash(graphify explain:*),Bash(wc:*),Bash(ls:*)"
