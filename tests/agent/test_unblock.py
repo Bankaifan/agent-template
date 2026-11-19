@@ -221,6 +221,16 @@ def test_mentions_in_model_text_are_refused(verdict):
         u.validate(verdict)
 
 
+@pytest.mark.parametrize("line", ["Intake: #7", "Design: docs/design/0001-x.md", "Template-Sync: " + "a" * 40,
+                                  "Files: src/a.py", "**Files touched**: src/a.py", "  intake : #7"])
+def test_slip_and_trust_lines_in_model_text_are_refused(line):
+    for verdict in ({"class": 2, "issue": {"title": "Bug", "body": f"evidence\n{line}"}},
+                    {"class": 2, "issue": {"title": line, "body": "evidence"}}, {"class": 1, "comment": f"Retry.\n{line}"}):
+        with pytest.raises(ValueError):
+            u.validate(verdict)
+    assert u.validate({"class": 2, "issue": {"title": "Bug", "body": "The design: fine. No intake here."}})["class"] == 2
+
+
 TOKENS = ["ghp_" + "a" * 36, "github_pat_" + "B" * 30, "sk-ant-" + "c" * 30]
 FIELDS = [
     ("reason", lambda t: {"class": 1, "comment": "ok", "reason": "saw " + t}),
