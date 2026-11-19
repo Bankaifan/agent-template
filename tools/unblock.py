@@ -9,7 +9,7 @@ CLI (gh CLI with GH_TOKEN and GH_REPO; the model step is not here, the verdict i
   unblock.py apply KIND NUMBER FILE  apply the verdict in FILE ({"class": 1|2|3, "reason", "comment", "issue"})
 Environment: OWNER (default Bankaifan), AUTHOR_BOT, APPROVER_BOT, RUN_URL.
 
-Classes: 1 wrong assumption (comment, drop `parked`, restart), 2 infrastructure bug (one prio:1 issue, stays parked),
+Classes: 1 wrong assumption (comment, drop `parked`, restart), 2 infrastructure bug (one prio:1 `idea` issue for the intake, stays parked),
 3 nothing the unblocker may do (stays parked, no comment). Nobody is asked: status.py un-parks after the cool-down.
 
 How agent-fix starts for a red CI without a new commit: the unblocker dispatches `agent-fix.yml` with input `pr=N`
@@ -212,9 +212,10 @@ def apply(kind, number, verdict, owner, run=gh, author_bot=""):
         title = v["issue"]["title"]
         found = json.loads(run("issue", "list", "--state", "open", "--search", f'"{title}" in:title', "--json", "title,url"))
         dup = next((i for i in found if i.get("title") == title), None)
-        if not dup:
+        if not dup:  # `idea`: the issue holds model text, so it is never trusted; intake triages it like a scout idea
             ensure_label("prio:1", run)
-        url = dup["url"] if dup else run("issue", "create", "--title", title, "--label", "prio:1", "--body",
+            ensure_label("idea", run)
+        url = dup["url"] if dup else run("issue", "create", "--title", title, "--label", "prio:1,idea", "--body",
                                          f"{v['issue']['body']}\n\nRun: {os.environ.get('RUN_URL', '(unknown)')}\n"
                                          f"Found while unblocking {kind} #{number}.").strip()
         _comment(run, kind, number, f"{MARK}\nAgent infrastructure problem, tracked in {url}. Stays parked.")

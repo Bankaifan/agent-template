@@ -221,6 +221,15 @@ def test_answer_comments_and_decline_closes_as_not_planned():
     assert gh.calls[-1] == ("issue", "close", "1", "--reason", "not planned")
 
 
+def test_an_answered_idea_is_closed_but_one_that_needs_a_maintainer_stays_open():
+    idea = {**msg(BOT, "2026-01-01T10:00:00Z", kind="Bot"), "state": "open", "labels": [{"name": "idea"}]}
+    gh = FakeGh({1: idea})
+    assert apply(gh, {"action": "answer", "reply": "Not needed."}) == "decline"
+    assert gh.bodies == [f"{mod.DECLINED}\nNot needed."] and gh.calls[-1] == ("issue", "close", "1", "--reason", "not planned")
+    gh = FakeGh({1: idea})
+    assert apply(gh, {**BUILD, "files": ["tools/unblock.py"]}) == "answer" and gh.writes() == [("issue", "comment")]
+
+
 def test_protected_build_only_answers_and_leaves_the_issue_open():
     gh = FakeGh({1: issue("alice")})
     assert apply(gh, {**BUILD, "files": ["tools/trusted_issues.py"]}) == "answer"

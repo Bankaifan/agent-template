@@ -18,7 +18,8 @@ the issue gets the fixed answer NEEDS_MAINTAINER and stays open.
   outside_intake.py fetch N DIR     write the issue text as masked, capped files to DIR/untrusted/ (unblock.fetch)
   outside_intake.py validate FILE   check a verdict file without acting; exit 0 = valid
   outside_intake.py apply N FILE    answer (comment), decline (comment, close as not planned) or build (one slip issue
-                                    from the fixed template with `Intake: #N`, comment, close N); idempotent
+                                    from the fixed template with `Intake: #N`, comment, close N); idempotent. An
+                                    `idea` is never left answered: answer counts as decline (NEEDS_MAINTAINER stays open)
   outside_intake.py failed N        mark a run that applied nothing, so it counts against the caps; the third such
                                     run on a thread declines it (fixed text, closed as not planned)
 
@@ -245,6 +246,9 @@ def apply(number, verdict, repo, owner, author_bot, gh=None, codeowners="", vers
     if int(number) not in scan([int(number)], repo, owner, author_bot, gh):
         return "skip"
     n = str(number)
+    labels = json.loads(gh("api", f"repos/{repo}/issues/{n}")).get("labels") or []
+    if v["action"] == "answer" and v["reply"] != NEEDS_MAINTAINER and any(lab.get("name") == "idea" for lab in labels):
+        v["action"] = "decline"  # nobody replies to an idea: an answered one would stay open for ever
     if v["action"] == "build":
         slip = find_slip(number, author_bot, gh)
         if slip is None:

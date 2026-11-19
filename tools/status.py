@@ -445,13 +445,16 @@ def fresh_start(kind, item, run=gh):
 
 
 def un_park(prs, repo, bots, now, run=gh):
-    """Fresh start for every open issue and agent PR whose newest `parked` label event is older than its cool-down.
+    """Fresh start for every open issue and agent PR whose newest `parked` label event is older than its cool-down;
+    a parked PR of this repo on another branch (template-sync/x.y) only loses its labels, nothing is closed.
     A PR also counts the park comments on its issue. Returns the actions; one failing item never stops the others."""
     issues = jlist(run, "issue", "list", "--state", "open", "--label", PARKED, "--limit", "50", "--json",
                    "number,labels,comments")
     out, started = [], set()
-    for kind, item in [("pr", p) for p in prs if is_agent_pr(p) and PARKED in names(p)] + [("issue", i) for i in issues]:
+    parked = [("pr", p) for p in prs if PARKED in names(p) and not p.get("isCrossRepository")]
+    for kind, item in parked + [("issue", i) for i in issues]:
         n = item["number"]
+        agent = kind == "issue" or is_agent_pr(item)  # any other PR (template-sync/x.y) only loses the labels
         if kind == "issue" and n in started:  # its parked PR just restarted it
             continue
         try:
@@ -462,6 +465,10 @@ def un_park(prs, repo, bots, now, run=gh):
             since = max(e["created_at"] for page in pages for e in page
                         if e.get("event") == "labeled" and (e.get("label") or {}).get("name") == PARKED)
             if minutes_since(since, now) < cool_down_hours(count) * 60:
+                continue
+            if not agent:
+                clear_labels("pr", item, run)
+                out.append(f"un-parked pr #{n}: labels cleared after {cool_down_hours(count)} h")
                 continue
             fresh_start(kind, item, run)
             started.update(restart.own_issues(item.get("body"))[:1] if kind == "pr" else ())
