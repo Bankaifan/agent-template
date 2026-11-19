@@ -141,8 +141,8 @@ def event_facts(event, number, free_prs, trusted_numbers, owner, approver, start
     if not number:
         return f
     if event.startswith("pull_request"):
-        pr = json.loads(gh("pr", "view", str(number), "--json", "labels,body,title,headRefName,comments"))
-        f["batched"] = pr["headRefName"] == train.BATCH_BRANCH or batched(pr.get("comments"))
+        pr = json.loads(gh("pr", "view", str(number), "--json", "labels,body,title,headRefName,comments,state,isCrossRepository"))
+        f["batched"] = (pr["headRefName"] == train.BATCH_BRANCH and not pr.get("isCrossRepository")) or landed_in_batch(pr)
         names = {lab["name"] for lab in pr["labels"]}
         f["agent_pr"] = pr["headRefName"].startswith("agent/")
         f["design_pr"] = "design" in names or pr["title"].lower().startswith("design")
@@ -196,10 +196,22 @@ def waiting_blocker(comments, authors=overlap.DEFAULT_TRUSTED):
 
 
 def batched(comments, authors=overlap.DEFAULT_TRUSTED):
-    """True when the last comment by a trusted author is the train's `Merged with #N.` (tools/train.py, decision 0018):
-    the PR was closed because its change landed in a batch PR."""
+    """N when the last comment by a trusted author is the train's `Merged with #N.` (tools/train.py, decision 0018),
+    else None. The developer model posts as the same app, so the text alone proves nothing: see `landed_in_batch`."""
     mine = [c for c in comments or [] if (c.get("author") or {}).get("login") in authors]
-    return bool(mine) and bool(re.fullmatch(r"Merged with #\d+\.", (mine[-1].get("body") or "").strip()))
+    m = re.fullmatch(r"Merged with #(\d+)\.", (mine[-1].get("body") or "").strip()) if mine else None
+    return int(m.group(1)) if m else None
+
+
+def landed_in_batch(pr, gh=gh):
+    """True when PR (state, comments) was closed because its change landed in a batch: it is closed, its last trusted
+    comment is `Merged with #N.` and #N really is a merged same-repo PR from the batch branch."""
+    n = batched(pr.get("comments")) if pr.get("state") == "CLOSED" else None
+    if not n:
+        return False
+    batch = json.loads(gh("pr", "view", str(n), "--json", "state,headRefName,isCrossRepository"))
+    return (batch.get("state") == "MERGED" and batch.get("headRefName") == train.BATCH_BRANCH
+            and not batch.get("isCrossRepository"))
 
 
 def parked_waiting(dev, gh=gh):

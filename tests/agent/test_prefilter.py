@@ -2,6 +2,8 @@ import importlib.util
 import json
 import pathlib
 
+import pytest
+
 _path = pathlib.Path(__file__).parent.parent.parent / "tools" / "prefilter.py"
 _spec = importlib.util.spec_from_file_location("prefilter", _path)
 mod = importlib.util.module_from_spec(_spec)
@@ -238,6 +240,22 @@ def test_the_batch_pr_and_a_member_closed_as_landed_wake_nobody():
     assert mod.batched([{"author": {"login": "stranger"}, "body": "x"}, train_note, {"author": {"login": "stranger"}, "body": "y"}])
     assert not mod.batched([{**train_note, "author": {"login": "stranger"}}])
     assert not mod.batched([train_note, {**train_note, "body": "Superseded by #50"}])
+
+
+@pytest.mark.parametrize("state, batch, landed", [
+    ("CLOSED", {"state": "MERGED", "headRefName": "agent/batch", "isCrossRepository": False}, True),
+    ("OPEN", {"state": "MERGED", "headRefName": "agent/batch", "isCrossRepository": False}, False),
+    ("CLOSED", {"state": "CLOSED", "headRefName": "agent/batch", "isCrossRepository": False}, False),
+    ("CLOSED", {"state": "MERGED", "headRefName": "agent/7-x", "isCrossRepository": False}, False),
+    ("CLOSED", {"state": "MERGED", "headRefName": "agent/batch", "isCrossRepository": True}, False),
+])
+def test_the_train_note_counts_only_on_a_closed_pr_and_for_a_merged_batch(state, batch, landed):
+    """The developer model posts as the author app too: `Merged with #N.` alone must not silence the orchestrator."""
+    note = {"author": {"login": "bankaifan-agent-author"}, "body": "Merged with #50."}
+    calls = []
+    got = mod.landed_in_batch({"state": state, "comments": [note]}, lambda *a: calls.append(a) or json.dumps(batch))
+    assert got is landed and [c[:3] for c in calls] == ([("pr", "view", "50")] if state == "CLOSED" else [])
+    assert not mod.landed_in_batch({"state": "CLOSED", "comments": []}, lambda *a: pytest.fail("no lookup without the note"))
 
 
 def test_event_review_submitted():
