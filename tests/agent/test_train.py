@@ -70,7 +70,7 @@ def test_design_pr_is_only_docs_design_files():
 
 
 def test_candidates_need_approval_on_current_head_from_approver():
-    prs = [pr(1), pr(2), pr(3, branch="dependabot/x"), pr(4, labels=["needs-human"]),
+    prs = [pr(1), pr(2), pr(3, branch="dependabot/x"), pr(4, labels=["parked"]),
            pr(5, files=("docs/design/0009-x.md",)), pr(6, cross=True), pr(7), pr(8)]
     reviews = {
         1: [review("sha1")],
@@ -191,7 +191,7 @@ def test_waiting_for_owner_needs_everything_but_owner_approval():
     assert train.waiting_for_owner(p, ok, "app/approver", "Bankaifan")
     assert not train.waiting_for_owner(p, [review("old")], "app/approver", "Bankaifan")
     assert not train.waiting_for_owner(pr(1, labels=["risk:security"]), ok, "app/approver", "Bankaifan")
-    assert not train.waiting_for_owner(dict(p, labels=[{"name": "risk:security"}, {"name": "needs-human"}]),
+    assert not train.waiting_for_owner(dict(p, labels=[{"name": "risk:security"}, {"name": "parked"}]),
                                        ok, "app/approver", "Bankaifan")
     assert not train.waiting_for_owner(dict(p, statusCheckRollup=RUNNING), ok, "app/approver", "Bankaifan")
 
