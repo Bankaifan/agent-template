@@ -13,11 +13,12 @@ When two or more approved agent PRs are ready, the train lands them as ONE pull 
    not `parked`, without a `risk:*` label, not waiting for the owner, and whose changed files are pairwise disjoint
    (oldest first, at most 8). Fewer than two: the serial path as before.
 2. **Build.** No model. The train cherry-picks every member (merge base to head) onto current `main` in a scratch
-   clone, drops a member whose pick conflicts, and force-pushes the result to the one branch `agent/batch`. The PR is
+   clone, drops a member whose pick conflicts or whose files changed on `main` since it branched, and force-pushes the result to the one branch `agent/batch`. The PR is
    titled `Batch: #a, #b`; its body has the line `Batch: #a@<sha7> #b@<sha7>` and the closing keywords of its members.
 3. **Approval.** Nothing new is trusted. `tools/reapprove.py` (approver app, after green CI, as for every agent PR)
    approves the batch without a model only if every member is still open and approved at the recorded head, and every
-   file of the batch diff belongs to exactly one member with the same per-file patch id as in that member's own diff.
+   file of the batch diff belongs to exactly one member with the same blob line and patch id as in that member's own diff,
+   and every member's own `risk` check and `security-review` status are green. No `docs/design/` file, no merge commit.
    The batch diff must be risk `none` and touch no CODEOWNERS path. Anything else refuses; a refused batch is not
    reviewed by a model, the train closes it and the members take the serial path.
 4. **Landing.** The batch merges like any approved agent PR (auto-merge, rebase). The next train run closes the
