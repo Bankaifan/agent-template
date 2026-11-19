@@ -201,7 +201,7 @@ def test_fix_round_mirrors_agent_fix():
 def test_conflict_dispatches_one_fix_per_head_and_counts_no_round():
     run = Recorder()
     dirty = pr(9, labels=["review:2"], mergeStateStatus="DIRTY")
-    assert st.handle_conflict(dirty, run) == "fix dispatched"
+    assert st.handle_conflict(dirty, "Bankaifan", run) == "fix dispatched"
     assert ("workflow", "run", "agent-fix.yml", "-f", "pr=9") in run.calls
     assert ("pr", "edit", "9", "--add-label", "conflict:sha9") in run.calls
     assert not any("review:3" in c or "parked" in c for c in run.calls)

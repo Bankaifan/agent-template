@@ -371,7 +371,7 @@ def clear_retrigger(kind, item, run=gh):
         safe(run, "pr" if kind == "pr" else "issue", "edit", str(item["number"]), "--remove-label", RETRIGGER)
 
 
-def handle_conflict(pr, run=gh):
+def handle_conflict(pr, owner, run=gh):
     """A conflict with main is no finding: no review round. One fix run per head (marker conflict:<sha7>); a run that
     pushes nothing is parked by agent-fix itself."""
     safe_labels("pr", pr["number"], [conflict_mark(pr)], run)
@@ -683,7 +683,7 @@ def run_status(env, now, run=gh):
     actions += safe(un_park, prs, repo, [b for b in (bot, env.get("APPROVER_BOT", "")) if b], now, run) or []
     if not any(r["workflowName"] == "agent-fix" for r in runs):  # one fix job at a time
         for p in conflict_prs(prs)[:1]:
-            actions.append(f"conflict PR #{p['number']}: {handle_conflict(p, run)}")
+            actions.append(f"conflict PR #{p['number']}: {handle_conflict(p, owner, run)}")
     actions += safe(design_parents.close_done_parents, run, owner, bot) or []
     actions += stalled_dev.check(issues, labeled_at, now, run, {i["number"] for i in stuck_i})
     ages = {i["number"]: age(labeled_at(i), now) for i in issues}
