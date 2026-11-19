@@ -26,7 +26,8 @@ b. Its body has exactly one line `Batch: #a@<sha7> #b@<sha7> ...` (2 to 8 member
 c. Every member is open, same repo, `agent/<N>-...`, on the same base, not `parked`, without a `risk:*` label, its head
    starts with the recorded sha7, the approver app approved exactly that head and nobody requests changes. Its own
    gates hold at that head: check run `risk` and commit status `security-review` are success (unreadable refuses).
-d. Per file (`diff --git` section): every section of every member diff is in the batch diff with the same patch-id,
+d. Per file (`diff --git` section): every section of every member diff is in the batch diff with the same patch-id
+   and the same `index <old>..<new>` line (same blob before and after: a patch-id ignores where a hunk applies),
    and every section of the batch diff belongs to exactly one member. Nothing is added, changed or left out.
 """
 import json
@@ -46,6 +47,7 @@ SHA_RE = re.compile(r"[0-9a-f]{40}")
 PATCH_ACCEPT = "Accept: application/vnd.github.diff"  # one diff per file, whatever the number of commits
 MODE_LINE = re.compile(r"^(old|new) mode ", re.MULTILINE)
 BATCH_BRANCH = risk.check_pr_form.BATCH_BRANCH
+INDEX_LINE = re.compile(r"^index [0-9a-f]+\.\.[0-9a-f]+(?: \d+)?$", re.MULTILINE)
 BATCH_LINE = re.compile(r"Batch:(?: #[1-9]\d*@[0-9a-f]{7}){2,8}")
 
 
@@ -158,6 +160,14 @@ def sections(patch):
     return out
 
 
+def blobs(part):
+    """The `index <old>..<new>` line of a file section: the blobs before and after. None (a pure rename or copy) refuses."""
+    m = INDEX_LINE.search(part.split("\n@@ ", 1)[0])
+    if not m:
+        raise Refuse("a file section names no blobs")
+    return m.group(0)
+
+
 def check_member_gates(run, repo, n, head):
     """A member's own required gates at its head: every latest check run `risk` and the newest commit status
     `security-review` are success. A batch of approved diffs must not carry a member its own PR would not land."""
@@ -193,7 +203,7 @@ def check_batch(pr, patch, repo, approver, author_bot, run, ident):
         check_patch(own, m.get("changed_files"))
         for name, part in sections(own).items():
             mine = left.pop(name, None)  # popped: a file claimed by two members refuses at the second
-            if mine is None or ident(mine) != ident(part):
+            if mine is None or blobs(mine) != blobs(part) or ident(mine) != ident(part):
                 raise Refuse(f"a file of member #{n} is missing or changed in the batch")
         check_member_gates(run, repo, n, head)
     if left:

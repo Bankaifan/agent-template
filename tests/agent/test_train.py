@@ -599,7 +599,7 @@ def test_build_batch_picks_disjoint_members_onto_main_and_drops_a_conflicting_on
 
 
 def test_what_the_train_builds_is_what_reapprove_accepts(tmp_path, monkeypatch):
-    """The two halves of decision 0018 agree on real git output, also when main moved in a member's file."""
+    """The two halves of decision 0018 agree on real git output, also when main moved (not in a member's file)."""
     origin, work = origin_repo(tmp_path)
     (work / "a.txt").write_text("".join(f"line {i}\n" for i in range(40)))
     g(work, "add", "-A")
@@ -609,8 +609,19 @@ def test_what_the_train_builds_is_what_reapprove_accepts(tmp_path, monkeypatch):
     one = pr_branch(work, origin, 1, "a.txt", text.replace("line 30\n", "line 30 changed\n"))
     two = pr_branch(work, origin, 2, "b.txt", "b\n")
     g(work, "checkout", "-q", "main")
-    (work / "a.txt").write_text("top\n" + text)
+    three = pr_branch(work, origin, 3, "c.txt", "c\n")
+    g(work, "checkout", "-q", "main")
+    (work / "VERSION").write_text("1.5\n")
+    g(work, "commit", "-q", "-am", "main moves")
+    g(work, "push", "-q", "origin", "main")
+    assert train.build_batch(str(origin), [one, two]) == [one, two]
+    first = g(origin, "rev-parse", "agent/batch")
+    (work / "a.txt").write_text("top\n" + text)  # picks cleanly, but reapprove would refuse the moved hunk
     g(work, "commit", "-q", "-am", "main moves in a.txt")
+    g(work, "push", "-q", "origin", "main")
+    assert train.build_batch(str(origin), [one, two]) == [] and g(origin, "rev-parse", "agent/batch") == first
+    assert train.build_batch(str(origin), [one, two, three]) == [two, three]
+    g(work, "revert", "--no-edit", "HEAD")
     g(work, "push", "-q", "origin", "main")
     assert train.build_batch(str(origin), [one, two]) == [one, two]
     shas = {9: g(origin, "rev-parse", "agent/batch"), 1: one["headRefOid"], 2: two["headRefOid"]}
