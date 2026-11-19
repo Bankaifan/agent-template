@@ -54,7 +54,7 @@ def free_slots(dev, waiting, stuck, open_prs, waiting_prs):
 
 
 def startable(trusted, free_dev, waiting_prs=0, blocked=()):
-    """Trusted issues the orchestrator could start, in list order: no agent:dev yet, ideas only when approved/auto-ok,
+    """Trusted issues the orchestrator could start, in list order: no agent:dev yet, never an `idea` (intake turns it into a slip),
     not in BLOCKED (an open `Depends on:` issue). At MAX_WAITING waiting PRs (`waiting_prs`) new risk:security slips wait."""
     if free_dev <= 0:
         return []
@@ -65,7 +65,7 @@ def startable(trusted, free_dev, waiting_prs=0, blocked=()):
         labels = set(item["labels"])
         if "agent:dev" in labels or "parked" in labels or item["number"] in blocked:
             continue
-        if "idea" in labels and not (item["approved"] or item["auto_ok"]):
+        if "idea" in labels:
             continue
         out.append(item["number"])
     return out

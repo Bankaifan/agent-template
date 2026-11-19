@@ -8,12 +8,12 @@ mod = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(mod)
 
 
-def item(number, labels=(), approved=False, auto_ok=False):
-    return {"number": number, "labels": list(labels), "approved": approved, "auto_ok": auto_ok}
+def item(number, labels=()):
+    return {"number": number, "labels": list(labels)}
 
 
-def test_startable_skips_started_and_unapproved_ideas():
-    trusted = [item(1), item(2, ["agent:dev"]), item(3, ["idea"]), item(4, ["idea"], approved=True)]
+def test_startable_skips_started_issues_and_ideas():
+    trusted = [item(1), item(2, ["agent:dev"]), item(3, ["idea"]), item(4)]
     assert mod.startable(trusted, 4) == [1, 4]
 
 
