@@ -78,7 +78,7 @@ jobs:
           prompt: |
             You are the rule keeper of ${{ github.repository }}. Read AGENTS.md, .agents/roles/*.md, tools/check/,
             the last 30 merged PRs with reviews and comments (gh pr list --state merged --limit 30; gh pr view --comments)
-            and all PRs labeled needs-human. Look for:
+            and all PRs labeled parked. Look for:
             1. rules a script could check (propose the script in tools/check/, remove the rule text),
             2. rules that never mattered (propose removal),
             3. repeated failures where a rule was missing,
