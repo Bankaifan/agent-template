@@ -11,7 +11,7 @@ The model step (intake.yml) has no token and no shell. It reads untrusted/*.txt 
 `title`, `goal`, `files`, `acceptance` only for build. reply: at most 1500 chars, no `@`, no links, no HTML.
 title (task ID form of tools/task_ids.py), goal and acceptance: one line of plain English words, no code, quotes or
 backticks. files: 1 to 10 plain repo-relative paths. A build that names a protected path (workflows, tools, agent
-rules, CODEOWNERS paths: tools/ci/risk.py) or asks for a forbidden action in words (unblock.forbidden) is not built:
+rules, CODEOWNERS paths, docs/design/: tools/ci/risk.py) or asks for a forbidden action in words (unblock.forbidden) is not built:
 the issue gets the fixed answer NEEDS_MAINTAINER and stays open.
 
   outside_intake.py list [N]        JSON list of the owed issue numbers the caps still allow (N: only that issue)
@@ -150,11 +150,12 @@ def allowed(found, counted):
 
 
 def protected(path, codeowners=""):
-    """True if PATH is, lies in or contains a path that risk.py classes as infra or security, or a CODEOWNERS path."""
+    """True if PATH is, lies in or contains a path that risk.py classes as infra or security, a CODEOWNERS path or
+    a design file (design-split turns a merged design into trusted issues)."""
     if risk.classify(f"diff --git a/{path} b/{path}\n") != "none":
         return True
     owned = [line.split()[0][1:] for line in codeowners.splitlines() if line.startswith("/")]
-    return any(overlap.overlaps(path, p) for p in (*risk.INFRA_PATHS, *risk.SECURITY_FILES, *owned))
+    return any(overlap.overlaps(path, p) for p in (*risk.INFRA_PATHS, *risk.SECURITY_FILES, risk.DESIGN_DIR, *owned))
 
 
 def _text(verdict, key, limit, lines=False):
