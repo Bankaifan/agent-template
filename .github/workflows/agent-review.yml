@@ -75,12 +75,18 @@ jobs:
           case "$labels" in
             *,parked,*) skip ;;
           esac
-          # One round per head SHA (marker label round:<sha7>), shared with the security reviewer.
-          case "$(guard round "$num" "$SHA")" in
-            limit)
-              guard park pr "$num" "review limit reached (3 reviews, 2 fix rounds)"
-              skip ;;
-          esac
+          # One round per head SHA (marker label round:<sha7>), shared with the security reviewer. The train's batch PR
+          # (exactly agent/batch, by the author app; decision 0018) is a script product: no round is counted, so a
+          # refused head is never a lost round and the batch is never parked.
+          if [ "$BRANCH" = agent/batch ] && guard same "$author" "$AUTHOR_BOT"; then
+            echo "Batch PR: no review round"
+          else
+            case "$(guard round "$num" "$SHA")" in
+              limit)
+                guard park pr "$num" "review limit reached (3 reviews, 2 fix rounds)"
+                skip ;;
+            esac
+          fi
           echo "pr=$num" >> "$GITHUB_OUTPUT"; echo "bhash=$bhash" >> "$GITHUB_OUTPUT"
       # Rebased head with the patch a model already approved: script approval (tools/reapprove.py, from main). Any refusal
       # or error leaves approved unset and the model reviews as before. The train's batch PR (agent/batch, decision

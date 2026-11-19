@@ -24,6 +24,13 @@ def test_a_refused_batch_is_never_reviewed_by_the_model():
     assert after.count("&& env.BRANCH != 'agent/batch'\n") == after.count("\n        if: ") - 1 == 3
 
 
+def test_the_batch_pr_counts_no_review_round_and_is_never_parked():
+    block = TEXT[step_index("id: round"):step_index("id: reapprove")]
+    gate = block.index('if [ "$BRANCH" = agent/batch ] && guard same "$author" "$AUTHOR_BOT"; then')
+    assert gate < block.index("else", gate) < block.index("guard round") < block.index("guard park") < block.index("\n          fi\n", gate)
+    assert block.count("guard round") == block.count("guard park") == 1
+
+
 def test_reapprove_never_fails_the_job_and_gets_sha_from_env():
     block = TEXT[step_index("id: reapprove"):step_index("id: claude")]
     assert 'if python3 tools/reapprove.py "$PR" "$SHA"; then' in block
