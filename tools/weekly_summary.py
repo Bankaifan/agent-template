@@ -1,6 +1,6 @@
 """Create or update the issue "Weekly summary" without a model.
 
-Sections: merged PRs of the last 7 days, PRs labelled needs-human, rule-keeper PRs,
+Sections: merged PRs of the last 7 days, parked PRs, rule-keeper PRs,
 ideas without `approved`, failure watch (open, closed and reopened failure issues, design 0008).
 Also appends one row per week to docs/metrics.csv (the workflow opens a PR for it). Needs the gh CLI
 (GH_TOKEN, GH_REPO).
@@ -53,9 +53,9 @@ def failure_section(watch):
     return "\n".join(parts)
 
 
-def build_body(merged, needs_human, rule_keeper, ideas, today, status_stale=False, failures=None, capacity=None):
+def build_body(merged, parked, rule_keeper, ideas, today, status_stale=False, failures=None, capacity=None):
     parts = [f"Updated {today}.", section("Merged in the last 7 days", merged),
-             section("PRs labelled needs-human", needs_human),
+             section("Parked PRs", parked),
              section("Rule-keeper PRs", rule_keeper),
              section("Ideas waiting for approval", ideas),
              failure_section(failures)]
@@ -260,17 +260,17 @@ def roles_section(results, review_rounds, restarts):
 
 def queue_numbers(issues, prs, max_dev, max_prs, now):
     """Approved issues waiting for a slot, free agent:dev and agent PR slots (an approximation of prefilter.py),
-    and the median days since the last update of needs-human items (label times are not read: open)."""
+    and the median days since the last update of parked items (label times are not read: open)."""
     def names(item):
         return {lab["name"] for lab in item.get("labels", [])}
     dev = [i for i in issues if "agent:dev" in names(i)]
     waiting = [i for i in issues if "approved" in names(i) and "agent:dev" not in names(i)]
-    agent_prs = [p for p in prs if p["headRefName"].startswith("agent/") and "needs-human" not in names(p)]
-    human = [x for x in issues + prs if "needs-human" in names(x)]
+    agent_prs = [p for p in prs if p["headRefName"].startswith("agent/") and "parked" not in names(p)]
+    human = [x for x in issues + prs if "parked" in names(x)]
     ages = [(now - datetime.datetime.fromisoformat(x["updatedAt"])).days for x in human]
     return {"waiting": len(waiting), "free_dev": max(0, max_dev - len(dev)),
             "free_prs": max(0, max_prs - len(agent_prs)), "max_dev": max_dev, "max_prs": max_prs,
-            "needs_human": len(human), "human_median_days": statistics.median(ages) if ages else None}
+            "parked": len(human), "human_median_days": statistics.median(ages) if ages else None}
 
 
 def queue_section(q):
@@ -279,7 +279,7 @@ def queue_section(q):
         "## Queue",
         f"- approved issues waiting for a slot: {q['waiting']}",
         f"- free slots: agent:dev {q['free_dev']} of {q['max_dev']}, agent PRs {q['free_prs']} of {q['max_prs']}",
-        f"- needs-human items: {q['needs_human']}, median days since last update: {median} (approximation)"])
+        f"- parked items: {q['parked']}, median days since last update: {median} (approximation)"])
 
 
 def capacity_sections(today, run=gh, max_dev=2, max_prs=3, now=None):
@@ -368,7 +368,7 @@ def main() -> int:
     since = (today - datetime.timedelta(days=7)).isoformat()
     merged = json.loads(gh("pr", "list", "--state", "merged", "--limit", "100",
                            "--search", f"merged:>={since}", "--json", "number,title"))
-    human = json.loads(gh("pr", "list", "--state", "open", "--label", "needs-human", "--json", "number,title"))
+    human = json.loads(gh("pr", "list", "--state", "open", "--label", "parked", "--json", "number,title"))
     prs = json.loads(gh("pr", "list", "--state", "open", "--limit", "100", "--json", "number,title,headRefName"))
     keeper = [p for p in prs if p["headRefName"].startswith("agent/rule-keeper-")]
     ideas = [i for i in json.loads(gh("issue", "list", "--state", "open", "--label", "idea", "--limit", "100",

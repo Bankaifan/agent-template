@@ -106,18 +106,18 @@ def test_queue_numbers_counts_slots_waiting_and_human_age():
         {"number": 1, "labels": [{"name": "agent:dev"}]},
         {"number": 2, "labels": [{"name": "approved"}]},
         {"number": 3, "labels": [{"name": "approved"}, {"name": "agent:dev"}]},
-        {"number": 4, "labels": [{"name": "needs-human"}], "updatedAt": "2026-11-05T12:00:00Z"},
+        {"number": 4, "labels": [{"name": "parked"}], "updatedAt": "2026-11-05T12:00:00Z"},
     ]
     prs = [
         {"number": 9, "headRefName": "agent/1-x", "labels": []},
-        {"number": 10, "headRefName": "agent/2-y", "labels": [{"name": "needs-human"}],
+        {"number": 10, "headRefName": "agent/2-y", "labels": [{"name": "parked"}],
          "updatedAt": "2026-11-05T12:00:00Z"},
         {"number": 11, "headRefName": "feature/z", "labels": []},
     ]
     q = mod.queue_numbers(issues, prs, max_dev=4, max_prs=5, now=NOW)
     assert q["waiting"] == 1
     assert (q["free_dev"], q["free_prs"]) == (2, 4)
-    assert q["needs_human"] == 2 and q["human_median_days"] == 4.0
+    assert q["parked"] == 2 and q["human_median_days"] == 4.0
 
 
 def test_limit_failure_opens_one_proposal(monkeypatch):
