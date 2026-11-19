@@ -333,6 +333,23 @@ def test_intake_pr_may_not_touch_a_design_file_even_at_risk_none():
     assert _block("agent/1-x", "none", lambda *a: json.dumps(PLAIN_ISSUE), files=design) == ""
 
 
+def test_intake_rule_reads_every_linked_issue_and_an_author_app_pr_must_name_one():
+    issues = {"1": INTAKE_ISSUE, "3": PLAIN_ISSUE}
+
+    def run(*a):
+        return json.dumps(issues[a[1].rsplit("/", 1)[-1]])  # KeyError is not caught: only known issues are read
+    assert _block("agent/3-x", "infra", run, body="Closes #3\nRefs #1") == risk.INTAKE_MSG  # another issue's number
+    assert _block("agent/3-x", "infra", run, body="Closes #3") == ""
+    assert "names no issue" in _block("fix/x", "infra", run)  # a branch without a number
+    assert "names no issue" in _block("fix/x", "none", run, files=["docs/design/0018-x.md"])
+    assert _block("fix/x", "infra", run, user="Bankaifan") == ""  # the owner's own PR needs no issue
+    for ref in risk.NO_ISSUE_BRANCHES:
+        assert _block(f"{ref}2026-01-01", "security", run) == ""
+    unreadable = lambda *a: ""
+    assert _block("dependabot/x", "infra", unreadable, body="fixes #99", user="dependabot[bot]") == ""
+    assert "could not be read" in _block("fix/x", "infra", unreadable, body="Refs #99")
+
+
 def test_pr_paths_include_rename_source():
     pages = [[{"filename": "tools/x.py", "previous_filename": "tools/trusted_issues.py"}], [{"filename": "a b.py"}]]
     assert risk.pr_paths(pages) == ["a b.py", "tools/trusted_issues.py", "tools/x.py"]
