@@ -39,8 +39,9 @@ def dismissal(prior="approved", message=None, actor="app/author", rid=7):
 
 
 class Gh:
-    def __init__(self, pr=None, files=None, reviews=None, timeline=(), patches=None, moved_head=None, comments=()):
-        self.comments = list(comments)
+    def __init__(self, pr=None, files=None, reviews=None, timeline=(), patches=None, moved_head=None, comments=(),
+                 commits=None):
+        self.comments, self.commits = list(comments), commits if commits is not None else [{"parents": [{"sha": OLD}]}]
         self.pr = pr or pr_obj()
         self.files = files if files is not None else [{"filename": "src/app.py"}]
         self.reviews = reviews if reviews is not None else [approval()]
@@ -61,6 +62,8 @@ class Gh:
             return json.dumps([self.comments])
         if path.endswith("/timeline"):
             return json.dumps([self.timeline])
+        if path.endswith("/commits"):
+            return json.dumps([self.commits])
         if "/compare/" in path:
             return self.patches[path.rsplit("...", 1)[1]]
         self.pr_reads += 1
@@ -229,6 +232,15 @@ def test_truncated_binary_or_mode_patch_refuses(extra):
     assert "patch" in go(Gh(patches={NEW: patch(NEW, at=9) + extra, OLD: patch(OLD)}))
 
 
+@pytest.mark.parametrize("commits", [
+    [{"parents": [{"sha": OLD}, {"sha": "e" * 40}]}],  # a merge commit: its content is not in the three-dot diff
+    [{"parents": [{"sha": OLD}]}, {"parents": [{"sha": NEW}]}], [], [{}],  # not the PR's commit count, or unreadable
+])
+def test_merge_commit_or_incomplete_commit_list_refuses(commits):
+    gh = Gh(commits=commits)
+    assert "merge commit" in go(gh) and not gh.posts()
+
+
 def test_head_moved_before_posting_refuses():
     gh = Gh(moved_head="f" * 40)
     assert "not open at this head" in go(gh) and not gh.posts()
@@ -257,6 +269,7 @@ class BatchGh:
         self.reviews = {9: [], 1: [approval(sha=M1)], 2: [approval(sha=M2)]}
         self.files = [{"filename": "src/a.py"}, {"filename": "src/b.py"}]
         self.patches = {BATCH: part("src/a.py", at=9) + part("src/b.py"), M1: part("src/a.py"), M2: part("src/b.py")}
+        self.prs[9]["commits"], self.commits, self.body_then = 2, [{"parents": [{"sha": OLD}]}] * 2, None
         self.risk = {M1: "success", M2: "success"}  # each member's own check run `risk`
         self.sec = {M1: "success", M2: "success"}  # and its commit status `security-review`
         self.calls = []
@@ -276,7 +289,10 @@ class BatchGh:
             return json.dumps([{"context": "validate", "state": "success"}]
                               + [{"context": "security-review", "state": s} for s in ([self.sec[sha], "success"] if self.sec.get(sha) else [])])
         number, _, rest = path.split("/pulls/")[1].partition("/")
-        return json.dumps({"": self.prs[int(number)], "files": [self.files], "reviews": [self.reviews[int(number)]]}[rest])
+        if rest == "" and number == "9" and self.body_then and sum(c[1] == path for c in self.calls) > 1:
+            return json.dumps({**self.prs[9], "body": self.body_then})  # edited after the first read
+        return json.dumps({"": self.prs[int(number)], "files": [self.files], "reviews": [self.reviews[int(number)]],
+                           "commits": [self.commits]}[rest])
 
     def posts(self):
         return [c for c in self.calls if "-X" in c]
@@ -318,6 +334,22 @@ def design_file(gh):  # the member is approved, but its own risk check is red (i
     gh.files[0] = {"filename": "docs/design/0099-x.md"}
 
 
+def renamed(gh):  # a pure rename has no blobs to compare; the old name counts as a path of the batch
+    move = "diff --git a/src/a.py b/src/c.py\nsimilarity index 100%\nrename from src/a.py\nrename to src/c.py\n"
+    gh.patches.update({BATCH: move + part("src/b.py"), M1: move})
+    gh.files[0] = {"filename": "src/c.py", "previous_filename": "src/a.py"}
+
+
+def renamed_design(gh):
+    renamed(gh)
+    gh.files[0]["previous_filename"] = "docs/design/0001-x.md"
+
+
+def many_files(gh):
+    gh.files[:] = [{"filename": f"src/f{i}.py"} for i in range(reapprove.MAX_FILES)]
+    gh.prs[9]["changed_files"] = reapprove.MAX_FILES
+
+
 def risky(gh):
     gh.patches.update({BATCH: part("tools/a.py") + part("src/b.py"), M1: part("tools/a.py")})
     gh.files[0] = {"filename": "tools/a.py"}
@@ -343,6 +375,18 @@ def risky(gh):
     (lambda gh: gh.prs[2]["head"].update(repo={"full_name": "fork/r"}), "same-repo"),
     (risky, "risk class"),
     (design_file, "docs/design/"),
+    (renamed, "names no blobs"),
+    (renamed_design, "docs/design/"),
+    (lambda gh: gh.patches.update({BATCH: gh.patches[BATCH] + "GIT binary patch\nliteral 3\n"}), "large or binary"),
+    (lambda gh: gh.patches.update({M2: part("src/b.py") + "Binary files a/x and b/x differ\n"}), "large or binary"),
+    (lambda gh: gh.patches.update({BATCH: gh.patches[BATCH] + "old mode 100644\nnew mode 100755\n"}), "file mode"),
+    (lambda gh: gh.patches.update({M1: part("src/a.py").replace("index", "old mode 100644\nnew mode 100755\nindex")}), "file mode"),
+    (lambda gh: gh.prs[2].update(base={"ref": "release/next"}), "not a plain agent/<N>- PR on main"),
+    (lambda gh: gh.__setattr__("body_then", BATCH_BODY.replace("#2@2222222", "#3@3333333")), "body changed"),
+    (many_files, "capped or incomplete"),
+    (lambda gh: gh.prs[9].update(changed_files=3), "capped or incomplete"),
+    (lambda gh: gh.prs[2].update(changed_files=2), "does not cover"),
+    (lambda gh: gh.commits.append({"parents": [{"sha": M1}, {"sha": M2}]}), "merge commit"),
     (lambda gh: gh.risk.update({M1: "failure"}), "no green risk check"),
     (lambda gh: gh.risk.update({M2: None}), "no green risk check"),  # not there (yet): fail closed
     (lambda gh: gh.sec.update({M2: "pending"}), "no green risk check"),
