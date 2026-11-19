@@ -230,6 +230,16 @@ def test_event_pr_closed():
     assert reason("pull_request", "closed") == (False, "no-match")
 
 
+def test_the_batch_pr_and_a_member_closed_as_landed_wake_nobody():
+    assert reason("pull_request", "closed", closing={5}, batched=True) == (False, "batch")
+    assert reason("pull_request", "opened", agent_pr=True, free_prs=0, batched=True) == (False, "batch")
+    assert reason("pull_request", "closed", merged=True, closing_agent_dev=True, batched=True) == (True, "merged-pr")
+    train_note = {"author": {"login": "bankaifan-agent-author"}, "body": "Merged with #50."}
+    assert mod.batched([{"author": {"login": "stranger"}, "body": "x"}, train_note, {"author": {"login": "stranger"}, "body": "y"}])
+    assert not mod.batched([{**train_note, "author": {"login": "stranger"}}])
+    assert not mod.batched([train_note, {**train_note, "body": "Superseded by #50"}])
+
+
 def test_event_review_submitted():
     ok = {"agent_pr": True, "reviewer_ok": True}
     assert reason("pull_request_review", "submitted", review_state="APPROVED", **ok) == (True, "review")
