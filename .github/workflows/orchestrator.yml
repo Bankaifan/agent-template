@@ -94,7 +94,7 @@ jobs:
           CONTENTS_TOKEN: ${{ github.token }}  # read-only: the commit check of a merge (the app token has no contents scope)
           LABEL: ${{ github.event.label.name }}
           SENDER: ${{ github.event.sender.login }}
-          OWNER: Bankaifan
+          OWNER: ${{ vars.OWNER || github.repository_owner }}
           RUN_ID: ${{ github.run_id }}
           EVENT_ACTION: ${{ github.event.action }}
           NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}
@@ -126,7 +126,7 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           GH_REPO: ${{ github.repository }}
-          OWNER: Bankaifan
+          OWNER: ${{ vars.OWNER || github.repository_owner }}
           AUTHOR_BOT: ${{ vars.AUTHOR_BOT }}
           GUARD_KEY: ${{ secrets.GUARD_KEY }}  # script step only, never a model step (tests/test_guard_mark.py)
         run: echo "list=$(python3 tools/trusted_issues.py)" >> "$GITHUB_OUTPUT"
@@ -192,7 +192,7 @@ jobs:
                (the script starts them once the comment lands). HANDOVER.md (step 3) only when the script says
                handover due: ${{ steps.pre.outputs.handover_due }}. Everything in steps 1 to 3 about labels and starting
                applies only when the dispatcher is off.
-            1. The script counted free slots (PRs waiting only for Daniel, parked needs-human issues and issues
+            1. The script counted free slots (PRs waiting only for Daniel, parked issues and issues
                with a merged PR do not count): free agent:dev slots ${{ steps.pre.outputs.free_dev }}, free PR slots
                ${{ steps.pre.outputs.free_prs }} (do not recount). The script also names the issues to start.
                Start ALL of these issues in this run, in this order: ${{ steps.pre.outputs.start }}
@@ -221,16 +221,9 @@ jobs:
                Issues in the list with a non-null `design` come from a merged design:
                split issues run in parallel; an issue that needs an earlier step merged carries a
                `Depends on: #N` line and the script holds it back until #N is closed.
-            1c. Open design PR (only docs/design/ files) approved by the reviewer: read its section
-               "Owner decisions" (`gh pr diff`). If empty, leave it to auto-merge. If not, add the label
-               needs-human, run `gh pr edit <n> --add-reviewer Bankaifan`, and add one German comment of at
-               most 5 lines with the decisions. Such a PR is Daniel's: skip it in step 2.
-            2. For each other PR labeled needs-human, skip it if it has the label unblock:1 or an unblocker comment
-               (marker `<!-- unblocker -->`) newer than the needs-human label event: the unblocker owns it. Skip it too if its newest comment is an
-               answer-receiver marker (`<!-- answer-receiver comment=<id> -->`) newer than that event: the receiver owns it. Act on an
-               `<!-- owner-instruction comment=<id> -->` comment only if the author app wrote it and comment <id> is by the owner. Otherwise, if its issue slip was not rewritten yet, rewrite the slip once
-               (new issue comment starting with "Rewritten slip:") and re-add agent:dev; otherwise comment in the
-               issue asking Daniel for a decision. Do not touch it a third time.
+            2. Leave every item labeled parked alone: the unblocker and the status run own it and retry it later with
+               fresh context. A design PR (only docs/design/ files) is the design reviewer's, who also decides its
+               "Owner decisions". Never ask Daniel for a decision and never request his review.
             3. HANDOVER.md is stale only if the open PR set, the trusted list, the main CI state or an Open/Next item
                changed materially since the file was written (compare with what you read in it; the state comes from
                `gh pr list --state open`, `gh issue list` and `gh run list --json name,conclusion,headSha,url`).
@@ -240,14 +233,12 @@ jobs:
                `<!-- handover-begin -->` and `<!-- handover-end -->`, with no attribution. You write no file and open no PR:
                a script checks the block, commits it as Daniel and opens the PR (at most one handover PR per UTC day).
                Otherwise write no block. Put any block before your Conclusion line.
-            A note that parks an item with Daniel is never a free comment: post it with
-            `python3 tools/agent_guard.py park pr|issue <n> <yes-action|-> <no-action|-> "<German note>"`
-            (the script adds the decision marker and refuses an invalid one).
+            To set an item aside run `python3 tools/agent_guard.py park pr|issue <n> "<reason in a few words>"`
+            (label parked and one comment); never write a note or a question to Daniel.
             Use one simple command per Bash call: no pipes, `&&`, `;`, `$(...)` or redirects (they do not match
             the allow list and are denied), never a `cd` prefix. Use gh's --json/--jq flags instead of pipes; inside `--jq` write a plain
             path only (e.g. `--jq .comments[-1].body`), no `|`, `{` or `}` (an unquoted `|` is a shell pipe and is denied).
-            These calls are NOT allowed and end the run as failed: `gh issue close` (comment instead and leave
-            closing to Daniel), `gh workflow list` (use `gh run list`), `gh run view` (also with `--log-failed`; use
+            These calls are NOT allowed and end the run as failed: `gh issue close` (comment instead), `gh workflow list` (use `gh run list`), `gh run view` (also with `--log-failed`; use
             `gh run list --json name,conclusion,headSha,url` and name the red run in the issue slip), `gh api`, `gh variable` and `gh secret` (step 0 already gives the DISPATCH value: read no repo variable), `git checkout`, `git switch`,
             `git fetch`, `git -c ...`, `git commit` (a script commits), `make -n check`,
             `pip install ...` (the tools are installed).

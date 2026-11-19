@@ -14,9 +14,12 @@ def reasons():
     return set(re.findall(r'return True, "([a-z-]+)"', PREFILTER))
 
 
+GONE = {"owner-reply", "owner-answer"}  # in the ADR (history), removed by decision 0017: nothing waits for the owner
+
+
 def test_every_prefilter_reason_is_documented_in_role_and_adr():
     found = reasons()
-    assert len(found) == 11, found
+    assert len(found) == 9, found
     for name in found:
         assert f"`{name}`" in ROLE, name
         assert f"`{name}`" in ADR, name
@@ -24,8 +27,8 @@ def test_every_prefilter_reason_is_documented_in_role_and_adr():
 
 def test_adr_table_lists_the_same_reasons_as_the_code():
     table = ADR.split("| Event (action)", 1)[1].split("Any other combination", 1)[0]
-    # Reason names are the backticked words followed by a colon (`startable-issue`: ...); `needs-human` is not one.
-    assert set(re.findall(r"`([a-z-]+)`:", table)) == reasons()
+    # Reason names are the backticked words followed by a colon (`startable-issue`: ...).
+    assert set(re.findall(r"`([a-z-]+)`:", table)) == reasons() | GONE
 
 
 def test_adr_names_the_triggers_that_exist_in_the_workflow():
