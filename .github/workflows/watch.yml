@@ -30,6 +30,7 @@ on:
       - orchestrator
       - risk
       - rule-keeper
+      - cleaner
       - scout
       - setup
       - status
