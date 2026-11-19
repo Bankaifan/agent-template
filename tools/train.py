@@ -1,7 +1,7 @@
 """Merge train core (docs/design/0003-merge-train.md, sections 4.3 and 5): lets approved agent PRs land one after another.
 
 Model-free. The workflow (a later PR) runs it on push to main, on a schedule and on dispatch. One run:
-1. Candidates: open same-repo agent PRs (status.is_agent_pr), not needs-human, not design PRs (only docs/design/ files),
+1. Candidates: open same-repo agent PRs (status.is_agent_pr), not parked, not design PRs (only docs/design/ files),
    with an APPROVED review of the approver app on their current head (agent_guard.has_review).
    Oldest PR number first. A CHANGES_REQUESTED or dismissed review does not count.
 2. One in flight: if a candidate is CLEAN, UNSTABLE or HAS_HOOKS, or BLOCKED with a required check running, it is about
@@ -66,8 +66,8 @@ MAX_WAITING = 5  # waiting-for-owner PRs at once; beyond that new security slips
 
 def waiting_for_owner(pr, reviews, approver, owner, required=None):
     """Agent PR with every agent review approved at its head, green CI (security-review included) and only the
-    owner's approval missing: risk:security, a review request to the owner, no needs-human, not a design PR."""
-    return (status.is_agent_pr(pr) and "risk:security" in status.names(pr) and "needs-human" not in status.names(pr)
+    owner's approval missing: risk:security, a review request to the owner, not parked, not a design PR."""
+    return (status.is_agent_pr(pr) and "risk:security" in status.names(pr) and "parked" not in status.names(pr)
             and not is_design_pr(pr) and status.ci_state(pr.get("statusCheckRollup"), required) == "green"
             and any(status.same_login(r.get("login"), owner) for r in pr.get("reviewRequests") or [])
             and approved_on_head(pr, reviews, approver))
@@ -77,7 +77,7 @@ def candidates(prs, reviews_of, approver):
     """Approved agent PRs, oldest first. reviews_of(number) is called only for PRs that pass the cheap filters."""
     out = []
     for p in prs:
-        if not status.is_agent_pr(p) or "needs-human" in status.names(p) or is_design_pr(p):
+        if not status.is_agent_pr(p) or "parked" in status.names(p) or is_design_pr(p):
             continue
         if approved_on_head(p, reviews_of(p["number"]), approver):
             out.append(p)
