@@ -70,7 +70,8 @@ BATCH_BRANCH = check_pr_form.BATCH_BRANCH  # force-updated, at most one open bat
 BATCH_MAX = 8
 BATCH_WAIT_MIN = 30  # an open batch older than this (head commit) was refused or is stuck
 EVIDENCE = "Test evidence exempt: every member passed this check in its own PR."
-BATCH_FIELDS = "number,state,body,headRefName,headRefOid,isCrossRepository,mergeStateStatus,statusCheckRollup"
+BATCH_FIELDS = ("number,state,body,headRefName,baseRefName,author,headRefOid,isCrossRepository,mergeStateStatus,"
+                "statusCheckRollup")
 
 
 def jlist(run, *args):
@@ -281,11 +282,15 @@ def vouched(pr, reviews, approver):
     return bool(approver) and agent_guard.has_review(mine, approver, pr["headRefOid"], agent_guard.body_hash(pr.get("body")))
 
 
-def batch_step(run, repo, prs, cands, reviews_of, required, now, builder, enabled=True, idle=True, approver=""):
-    """Step 7 of the module text. Returns (numbers of PRs closed as landed, text when a batch holds the train or "")."""
-    known = [p for p in jlist(run, "pr", "list", "--state", "all", "--head", BATCH_BRANCH, "--limit", "5",
-                              "--json", BATCH_FIELDS)
-             if p.get("headRefName") == BATCH_BRANCH and not p.get("isCrossRepository")]  # newest first
+def batch_step(run, repo, prs, cands, reviews_of, required, now, builder, enabled=True, idle=True, approver="",
+               author=""):
+    """Step 7 of the module text. Returns (numbers of PRs closed as landed, text when a batch holds the train or "").
+    The batch PR is the one from BATCH_BRANCH into main (by the author app, when its name is known): a PR from that
+    branch into another base is not it and hides nothing."""
+    known = [p for p in jlist(run, "pr", "list", "--state", "all", "--head", BATCH_BRANCH, "--base", "main",
+                              "--limit", "5", "--json", BATCH_FIELDS)
+             if p.get("headRefName") == BATCH_BRANCH and p.get("baseRefName") == "main" and not p.get("isCrossRepository")
+             and (not author or status.same_login((p.get("author") or {}).get("login"), author))]  # newest first
     opened = next((p for p in known if p.get("state") == "OPEN"), None)
     last = next((p for p in known if p.get("state") in ("MERGED", "CLOSED")), None)
     landed = set()
@@ -406,7 +411,8 @@ def run_train(env, run=status.gh, releaser=None, now=None, builder=None):
         fix_busy = any(r.get("status") in ACTIVE_RUN for r in fix_runs)
         landed, hold = batch_step(run, repo, prs, cands, reviews_of, required, now or datetime.datetime.now(datetime.UTC),
                                   builder, env.get("TRAIN_BATCH") != "off",
-                                  idle=not plan(cands, fix_busy, waiting, required)[0], approver=approver)
+                                  idle=not plan(cands, fix_busy, waiting, required)[0], approver=approver,
+                                  author=env.get("AUTHOR_BOT", ""))
         if hold:
             print(hold)
             return int(released is None)
