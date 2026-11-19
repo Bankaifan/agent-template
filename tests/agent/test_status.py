@@ -243,7 +243,7 @@ def test_stuck_limit_hands_over_or_escalates(monkeypatch):
 
 def test_workflows_never_ignore_limit_or_dev_on_pr():
     root = pathlib.Path(__file__).parent.parent.parent / ".github" / "workflows"
-    assert "|| guard label pr" in (root / "agent-fix.yml").read_text()
+    assert "|| guard park pr" in (root / "agent-fix.yml").read_text()
     dev = (root / "agent-dev.yml").read_text()
     assert "dev-on-pr:" in dev and "github.event.issue.pull_request &&" in dev
 
