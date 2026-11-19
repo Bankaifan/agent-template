@@ -15,3 +15,16 @@ Three points get it through. Do them in the same PR, after the setup in the READ
    on any PR that touches `.github/workflows/`, `.github/actions/` or `tools/ci/`.
 
 `check_pr_form` also requires an English printable ASCII title and a non-empty body.
+
+## Dependabot and project-only workflows
+
+`managed_guard` fails in a project for two cases that are not real changes to protected files:
+
+- **Dependabot bumps template workflows.** Its `github-actions` updates change the pins of template-managed workflows,
+  and the guard fails the PR. Remove the `github-actions` entry from the project's own (overridden)
+  `.github/dependabot.yml`. The template's workflow pins arrive with the template sync; the template's own Dependabot keeps them current.
+- **A project-only workflow under a managed prefix**, such as `.github/workflows/release.yml`, is not in the template and
+  fails the guard. Give it a one-line override entry in `.agents/template.json` and state the reason there.
+
+Open: with this setup, project-only workflows get no automatic pin bumps; their actions are updated by hand.
+`tools/managed_guard.py` is not relaxed for this.
