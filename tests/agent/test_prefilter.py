@@ -134,7 +134,7 @@ def run_main(monkeypatch, tmp_path, dev, bodies, trusted, merged=(), waiting=(),
         if args[:2] == ("issue", "list") and "agent:dev" in args:
             return json.dumps([{"number": n, "labels": [{"name": x} for x in labs]} for n, labs in dev.items()])
         if args[:2] == ("issue", "list"):
-            assert args[-1] == "number,body"
+            assert args[-1] == "number,body,title,labels"
             return json.dumps([{"number": n, "body": b} for n, b in bodies.items()])
         if "merged" in args:
             n = int(args[args.index("--search") + 1].split()[0][1:])
@@ -282,6 +282,10 @@ def test_handover_done_today(monkeypatch):
 
 
 def test_a_failure_issue_waits_for_its_second_failure():
-    assert mod.first_failure("The workflow x.yml failed in job j, step s.\nFailures: 1\nLast run: u\n")
-    assert not mod.first_failure("The workflow x.yml failed in job j, step s.\nFailures: 2\nLast run: u\n")
-    assert not mod.first_failure("Goal: x\nFiles: a.py") and not mod.first_failure(None)
+    def issue(body, title="Failing workflow: x.yml / j / s", labels=("prio:2",)):
+        return {"title": title, "body": body, "labels": [{"name": n} for n in labels]}
+
+    assert mod.first_failure(issue("The workflow x.yml failed in job j, step s.\nFailures: 1\nLast run: u\n"))
+    assert not mod.first_failure(issue("The workflow x.yml failed in job j, step s.\nFailures: 2\nLast run: u\n"))
+    assert not mod.first_failure(issue("Failures: 1", labels=("prio:1",)))  # red main: no second run may ever come
+    assert not mod.first_failure(issue("Goal: x\nFailures: 1\nFiles: a.py", title="V1-X: owner issue"))

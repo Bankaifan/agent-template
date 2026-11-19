@@ -137,6 +137,8 @@ def fallback(trusted, issues, closed, unhealthy, cap, dry, run):
         labels = stalled_dev.names(i)
         if not i["title"].startswith(fw.TITLE_PREFIX) or labels & {"agent:dev", "parked"} or i["number"] in closed:
             continue
+        if "prio:1" not in labels and re.search(r"^Failures: 1$", i.get("body") or "", re.MULTILINE):
+            continue  # one failed run is often a blip (prefilter.first_failure): wait for the second
         if dev >= cap:
             out.append(f"fallback: MAX_DEV {cap} reached, #{i['number']} waits")
             break
