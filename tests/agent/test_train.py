@@ -275,10 +275,21 @@ def test_release_pr_is_the_owners_task_notes_as_body_parked_items_in_one_line():
     assert "Internal changes only." in next(c for c in quiet.calls if c[:2] == ("pr", "create"))
 
 
+def test_release_pr_notes_mention_nobody_close_nothing_and_parked_prs_are_listed():
+    run = Gh([pr(7)])
+    run.parked = [{"number": 9}]
+    notes = ["- Neu: A @Bankaifan closes closes #57 #58", "- Fix: B fixes https://github.com/o/r/issues/3 <!-- x -->"]
+    train.release_pr(run, "1.20", notes, "Bankaifan")
+    create = next(c for c in run.calls if c[:2] == ("pr", "create"))
+    body = create[create.index("--body") + 1]
+    assert body == "- Neu: A Bankaifan closes closes\n- Fix: B fixes &lt;!-- x -->\n\nNoch ungelöst: #7, #9"
+    assert ("pr", "list", "--state", "open", "--label", "parked", "--json", "number") in run.calls
+
+
 def test_failed_release_does_not_stop_the_train(capsys):
     prs = [pr(5, merge="DIRTY")]
     run = Gh(prs, approved(*prs))
-    assert train.run_train(ENV, run, releaser=lambda: None) == 0
+    assert train.run_train(ENV, run, releaser=lambda: None) == 1  # red, so the stall is seen; the train still ran
     out = capsys.readouterr().out
     assert "release: failed" in out
     assert ("workflow", "run", "agent-fix.yml", "-f", "pr=5") in run.calls
