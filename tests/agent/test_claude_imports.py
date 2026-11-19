@@ -1,8 +1,8 @@
 """CLAUDE.md imports AGENTS.md and the optional AGENTS.project.md (design 0016 section 4.2)."""
 import json
+import pathlib
 
 import pytest
-import pathlib
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 
