@@ -85,7 +85,7 @@ def test_max_parallel_counts_overlap():
 
 def test_write_csv(tmp_path):
     path = tmp_path / "flow.csv"
-    flow.write_csv([flow.pr_row(PR404, EV404, RUNS404)], path)
+    flow.write_csv([flow.pr_row(PR404, EV404, RUNS404, MADE404)], path)
     lines = path.read_text(encoding="utf-8").splitlines()
     assert lines[0] == ",".join(flow.COLUMNS)
     assert lines[1].startswith("404,404,2026-11-12T10:30:00Z,5.0,15.0")
