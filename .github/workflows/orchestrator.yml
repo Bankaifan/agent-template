@@ -5,11 +5,9 @@ run-name: "${{ github.event_name == 'issues' && github.event.issue.title || gith
 # claude-code-action does not support `push`, so merges are seen through workflow_run of `validate`
 # (push on main, success). A merge that only touches HANDOVER.md exits early (no self-loop).
 # Candidate issues come from tools/trusted_issues.py, not from the prompt.
-# A label event (`approved` or `auto-ok`) starts it at once; tools/orchestrator_gate.py checks that Daniel set
-# the label and skips a run that follows another run within 3 minutes (one run per burst of labels).
+# No label starts it (decision 0017): outside issues and ideas become trusted slips through intake.yml.
 # Edits and comments by the author app (status issue updates, slips, failure reports) never start a run: each one waited
-# 60 s in the group and replaced a pending dispatch or label run, which then ended cancelled ("higher priority waiting request").
-# Skipped runs are expected: GitHub lists every label event, and the job-level `if` skips the ones that are not gated.
+# 60 s in the group and replaced a pending dispatch run, which then ended cancelled ("higher priority waiting request").
 # Design 0007 (Refs #125): more events (issues opened/edited/closed, comments, PRs, reviews) are accepted only when repo
 # variable ORCHESTRATOR_EVENTS is "on" (default off). Then every event run waits 60 s (burst), tools/orchestrator_gate.py
 # decides on live data and tools/prefilter.py maps the event to a reason; no model runs without a matching reason.
@@ -18,7 +16,7 @@ on:
     workflows: [validate]
     types: [completed]
   issues:
-    types: [opened, edited, closed, labeled]
+    types: [opened, edited, closed]
   issue_comment:
     types: [created]
   pull_request_target:  # zizmor: ignore[dangerous-triggers] the checkout is the default branch, PR code is never checked out or run; the gate checks the sender
@@ -34,12 +32,9 @@ jobs:
   orchestrate:
     if: >-
       vars.ORCHESTRATOR_ENABLED == 'true' &&
-      ((github.event_name == 'issues' &&
-        ((github.event.action == 'labeled' &&
-          contains(fromJSON('["approved","auto-ok"]'), github.event.label.name)) ||
-         (github.event.action != 'labeled' && vars.ORCHESTRATOR_EVENTS == 'on' &&
-          !(github.event.action == 'edited' &&
-            contains(fromJSON(format('["{0}","{0}[bot]"]', vars.AUTHOR_BOT)), github.event.sender.login))))) ||
+      ((github.event_name == 'issues' && vars.ORCHESTRATOR_EVENTS == 'on' &&
+        !(github.event.action == 'edited' &&
+          contains(fromJSON(format('["{0}","{0}[bot]"]', vars.AUTHOR_BOT)), github.event.sender.login))) ||
        (contains(fromJSON('["issue_comment","pull_request_target","pull_request_review"]'), github.event_name) &&
         vars.ORCHESTRATOR_EVENTS == 'on' &&
         !(github.event_name == 'issue_comment' &&
@@ -69,7 +64,7 @@ jobs:
           done
       # Burst debounce (design 0007 4.4): let the events of a burst land; the gate then skips this run if a newer one is pending.
       - name: Wait for the rest of a burst (event runs only)
-        if: github.event_name != 'schedule' && github.event_name != 'workflow_dispatch' && github.event_name != 'workflow_run' && !(github.event_name == 'issues' && github.event.action == 'labeled')
+        if: github.event_name != 'schedule' && github.event_name != 'workflow_dispatch' && github.event_name != 'workflow_run'
         run: sleep 60
       - id: app
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
@@ -84,15 +79,14 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
-      # Checked-out main only (no PR code). Label events: owner and debounce (tools/orchestrator_gate.py).
+      # Checked-out main only (no PR code). Repo events: sender, live check and debounce (tools/orchestrator_gate.py).
       # merges: skip when only HANDOVER.md changed. Schedule and dispatch always go on.
-      - name: Gate (label owner and debounce; merges that only touch HANDOVER.md)
+      - name: Gate (event sender and debounce; merges that only touch HANDOVER.md)
         id: gate
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           GH_REPO: ${{ github.repository }}
           CONTENTS_TOKEN: ${{ github.token }}  # read-only: the commit check of a merge (the app token has no contents scope)
-          LABEL: ${{ github.event.label.name }}
           SENDER: ${{ github.event.sender.login }}
           OWNER: ${{ vars.OWNER || github.repository_owner }}
           RUN_ID: ${{ github.run_id }}
@@ -204,14 +198,14 @@ jobs:
                When main is red (gh run list), the fix goes first.
                When a PR with `Refs #N` has merged, remove agent:dev from #N. Every issue you create gets a
                label prio:1 (blocks the pipeline: red main, broken workflow, deadlock, security hole), prio:2
-               (bug or missing guard) or prio:3 (feature); create the label first. Issues authored_by_owner and issues with approved=true before the rest; an issue
-               with auto_ok=true may be started by you, an `idea` with neither approved nor auto_ok never.
+               (bug or missing guard) or prio:3 (feature); create the label first. Issues authored_by_owner before the rest; an `idea` is never started
+               (intake.yml turns it into a slip issue first).
                Write a clear task slip as an issue comment
                (goal, files touched, acceptance criteria; slips must touch disjoint files), then add the labels:
                first model:sonnet (only for core, security or architecture work), then agent:dev last, so the
                model label is already set when the agent:dev run starts. Before the labels run
                `python3 tools/overlap.py --files <comma separated files of the slip> --issue <n>`; on exit 1 or 2
-               do not start the slip (it stays approved, retried next run). Never start more
+               do not start the slip (it is retried next run). Never start more
                issues than the free agent:dev slots. Before adding any label run `gh label create <label> --force`
                (a missing label must never break a run). Start nothing when free PR slots is 0.
                Design study first only if the issue changes who or what is trusted, token or app permissions,

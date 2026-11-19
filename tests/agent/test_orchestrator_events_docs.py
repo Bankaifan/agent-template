@@ -33,8 +33,8 @@ def test_adr_names_the_triggers_that_exist_in_the_workflow():
     for trigger in ("issue_comment", "pull_request_target", "pull_request_review"):
         assert f"  {trigger}:" in WORKFLOW, trigger
         assert f"`{trigger}`" in ADR, trigger
-    assert "types: [opened, edited, closed, labeled]" in WORKFLOW
-    assert "`issues` opened, edited, closed, labeled" in ADR
+    assert "types: [opened, edited, closed]" in WORKFLOW
+    assert "`issues` opened, edited, closed;" in ADR
 
 
 def test_switch_is_documented_where_operators_look():
