@@ -2,6 +2,8 @@ import importlib.util
 import json
 import pathlib
 
+import pytest
+
 _path = pathlib.Path(__file__).parent.parent.parent / "tools" / "ci" / "risk.py"
 _spec = importlib.util.spec_from_file_location("risk", _path)
 risk = importlib.util.module_from_spec(_spec)
