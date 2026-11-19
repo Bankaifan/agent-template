@@ -329,7 +329,7 @@ def main_is_green(main_runs):
 
 
 def rebase_candidates(prs, main_runs, pr_runs, owner):
-    """Own agent PRs, one commit by owner, not conflicting, whose newest validate failed while main was red."""
+    """Own agent PRs, every commit by owner, not conflicting, whose newest validate failed while main was red."""
     if not main_is_green(main_runs):
         return []
     out = []
@@ -337,7 +337,7 @@ def rebase_candidates(prs, main_runs, pr_runs, owner):
         commits = p.get("commits") or []
         if not is_agent_pr(p) or PARKED in names(p) or p.get("mergeStateStatus") not in ("BEHIND", "BLOCKED"):
             continue
-        if len(commits) != 1 or not all(same_login(a.get("login"), owner) for a in commits[0].get("authors", [])):
+        if not commits or not all(same_login(a.get("login"), owner) for c in commits for a in c.get("authors", [])):
             continue
         runs = [r for r in pr_runs(p["headRefOid"]) if r.get("conclusion")]
         if runs and runs[0]["conclusion"] == "failure" and main_was_red(main_runs, runs[0]["createdAt"]):
