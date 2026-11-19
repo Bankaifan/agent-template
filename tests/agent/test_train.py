@@ -374,6 +374,14 @@ def test_release_main_without_fragments_pushes_nothing(tmp_path):
     assert g(origin, "branch", "--list", "release/next") == ""
 
 
+def test_release_main_in_a_project_without_a_version_file_is_no_failure(tmp_path):
+    origin, work = origin_repo(tmp_path)
+    g(work, "rm", "-q", "VERSION")
+    merge_fragment(work, "10.md", "a change\n")
+    assert release_main(str(origin)) == ""  # "" = nothing to release; None would turn every train run red
+    assert g(origin, "branch", "--list", "release/next") == ""
+
+
 def test_release_main_refuses_a_bad_fragment_and_pushes_nothing(tmp_path):
     origin, work = origin_repo(tmp_path)
     merge_fragment(work, "10.md", "step: y\n")
