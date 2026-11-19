@@ -133,8 +133,8 @@ def release_main(remote, token="", base="main", notes=None):
             git(tmp, "init", "-q")
             git(tmp, "fetch", "-q", remote, f"+refs/heads/{base}:refs/remotes/origin/{base}")
             git(tmp, "checkout", "-q", "--detach", f"origin/{base}")
-            if not list(Path(tmp, "changelog.d").glob("[0-9]*.md")):
-                return ""
+            if not list(Path(tmp, "changelog.d").glob("[0-9]*.md")) or not Path(tmp, "VERSION").is_file():
+                return ""  # no fragments, or a project that keeps its version elsewhere: nothing to release by script
             old = Path(tmp, "VERSION").read_text(encoding="utf-8").strip()
             done = subprocess.run([sys.executable, "-I", str(RELEASE), tmp], check=False, env=env,
                                   capture_output=True, text=True)
