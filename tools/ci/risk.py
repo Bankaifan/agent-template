@@ -13,7 +13,7 @@ CLI:
                                  Also starts the status `security-review` (pending for agent PRs that need that review).
   risk.py wait NUMBER SHA        (env GH_TOKEN, GH_REPO, APPROVER_BOT) called by agent-review and agent-security-review; acts only
                                  when for SHA the approver approved, validate/agent-smoke are green, risk is complete and
-                                 `security-review` is success, and the PR waits for the owner (a code-owner path): label `needs-human`, request the owner's review, post the PR-specific German note once
+                                 `security-review` is success, and the PR waits for the owner (a code-owner path): request the owner's review once (no label, no note)
   risk.py verdict NUMBER SHA     publish the status `security-review` from the security reviewer's comment for SHA
 Runs from the default branch with the PR read through `gh`; PR code is never executed.
 """
@@ -22,9 +22,6 @@ import os
 import re
 import subprocess
 import sys
-
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-import liveness
 
 SECURITY_FILES = (".github/rulesets/", ".github/CODEOWNERS", "tools/trusted_issues.py", "tools/agent_guard.py",
                   "tools/exec_log.py", "tools/guard_mark.py",
@@ -170,32 +167,7 @@ def pr_paths(pages):
     return sorted({p for page in pages for f in page for p in (f.get("filename"), f.get("previous_filename")) if p})
 
 
-NOTE_MARK = "<!-- needs-human-note -->"
 GATE_CHECKS = ("validate", "agent-smoke")  # check runs that must be green; `risk` only has to be complete (owner gate)
-
-
-def first_lines(text, limit=3):
-    """First `limit` non-empty, non-heading, non-marker lines of a text, joined (plain summary of what a PR changes)."""
-    out = []
-    for line in (text or "").splitlines():
-        line = line.strip()
-        if line and not line.startswith(("#", "<!--", "Closes", "Refs")):
-            out.append(line)
-        if len(out) == limit:
-            break
-    return " ".join(out)
-
-
-def build_note(sha, level, summary, review):
-    """PR-specific German note: what changes, worst case, recommendation, one yes/no question. Marker is per head SHA."""
-    worst = ("ein Agent bekommt mehr Rechte oder eine Pruefung wird schwaecher" if level == "security"
-             else "eine Aenderung an der Agenten-Infrastruktur verhaelt sich falsch")
-    what = first_lines(summary) or "(keine Beschreibung im PR)"
-    why = first_lines(review, 2)
-    return (f"{NOTE_MARK[:-4]} {sha[:12]} -->\nHallo Daniel, alle Pruefungen fuer diesen PR sind fertig und gruen; nur dein Schritt fehlt "
-            f"(er aendert Dateien, die nur du freigeben darfst).\nWas der PR aendert: {what}\n"
-            f"Schlimmster Fall: {worst}; Zurueckdrehen ist per Revert moeglich.\n"
-            f"Empfehlung der Pruefer: Freigabe{' (' + why + ')' if why else ''}.\nFrage: Soll der PR gemergt werden (ja/nein)?")
 
 
 def checks_ready(check_runs, statuses):
@@ -236,7 +208,8 @@ def sync_labels(number, level, labels):
 
 
 def run_wait(number, sha, run=None):
-    """After the approver approved SHA: label `needs-human` and post the German note once if the PR waits for the owner."""
+    """After the approver approved SHA: request the owner's review if the PR waits for him (GitHub requires the code
+    owner's approval). No label, no note; an open request is not repeated."""
     run = run or gh
     repo, owner = os.environ["GH_REPO"], os.environ.get("OWNER", OWNER_DEFAULT)
     approver = os.environ.get("APPROVER_BOT", "")
@@ -261,16 +234,9 @@ def run_wait(number, sha, run=None):
     if pr.get("head", {}).get("sha") != sha:
         print("head moved: nothing to do")
         return 0
-    comments = [c for page in json.loads(run("api", "--paginate", "--slurp", f"repos/{repo}/issues/{number}/comments"))
-                for c in page]
-    if any(f"{NOTE_MARK[:-4]} {sha[:12]} -->" in (c.get("body") or "") for c in comments):
-        return 0  # idempotent: label, review request and note are already set for this head
-    subprocess.run(["gh", "label", "create", "needs-human", "--force"], check=False, capture_output=True)
-    run("pr", "edit", str(number), "--add-label", "needs-human")
-    if norm(pr.get("user", {}).get("login")) != norm(owner):  # a label alone is not in the owner's inbox
+    logins = [pr.get("user", {}).get("login"), *(u.get("login") for u in pr.get("requested_reviewers") or [])]
+    if not any(norm(x) == norm(owner) for x in logins):  # nobody reviews their own PR; one request per head is enough
         subprocess.run(["gh", "pr", "edit", str(number), "--add-reviewer", owner], check=False, capture_output=True)
-    review = mine[-1].get("body") or ""
-    liveness.post_comment("pr", number, build_note(sha, level, pr.get("body") or "", review), run)
     return 0
 
 
@@ -278,8 +244,6 @@ def run_pr(number):
     repo, owner = os.environ["GH_REPO"], os.environ.get("OWNER", OWNER_DEFAULT)
     pr = json.loads(gh("api", f"repos/{repo}/pulls/{number}"))
     if pr.get("state") == "closed":  # merged or closed: the PR no longer waits for anyone
-        if "needs-human" in [lb["name"] for lb in pr.get("labels", [])]:
-            gh("pr", "edit", str(number), "--remove-label", "needs-human")
         return 0
     sha, author = pr["head"]["sha"], pr["user"]["login"]
     try:
