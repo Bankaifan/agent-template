@@ -660,7 +660,7 @@ def test_only_harness_tool_names_reach_the_title():
     assert g.denied_tools(denial_text(DENIED, odd)) == ["Bash"]
 
 
-def test_denied_issue_escalation_waits_instead_of_needs_human(tmp_path, monkeypatch, upstream_env):
+def test_denied_issue_escalation_waits_instead_of_parking(tmp_path, monkeypatch, upstream_env):
     f = tmp_path / "exec.json"
     f.write_text(denial_text(DENIED))
     monkeypatch.setenv("EXEC_FILE", str(f))

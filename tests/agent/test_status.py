@@ -248,7 +248,7 @@ def test_workflows_never_ignore_limit_or_dev_on_pr():
     assert "dev-on-pr:" in dev and "github.event.issue.pull_request &&" in dev
 
 
-def test_conflict_prs_skip_needs_human_and_clean():
+def test_conflict_prs_skip_parked_and_clean():
     dirty = pr(1, mergeStateStatus="DIRTY")
     assert st.conflict_prs([dirty, pr(2), pr(3, mergeStateStatus="DIRTY", labels=["parked"])]) == [dirty]
 
@@ -559,7 +559,7 @@ def _files(*paths):
     return lambda p: list(paths)
 
 
-def test_green_approved_needs_human_pr_is_released_and_not_parked_again():
+def test_green_approved_parked_pr_is_released():
     # #456 / #464: round labels from a version clash and a rebase, then green and approved: label is stale
     for n in (456, 464):
         p = settled_pr(n)
@@ -568,7 +568,7 @@ def test_green_approved_needs_human_pr_is_released_and_not_parked_again():
     assert st.limit_prs([settled_pr(456, labels=("review:2",))], [], NOW) == []
 
 
-def test_needs_human_stays_when_not_settled():
+def test_parked_stays_when_not_settled():
     args = ("app/approver", None, CODEOWNERS, "Bankaifan", _files("tools/x.py"))
     assert st.parked_but_settled([settled_pr(reviewDecision="REVIEW_REQUIRED")], *args) == []
     assert st.parked_but_settled([settled_pr(statusCheckRollup=[{"name": "validate", "conclusion": "FAILURE"}])],
