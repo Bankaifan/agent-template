@@ -26,8 +26,8 @@ without talking and without waiting for him.
    risk `none`: it can never change workflows, tools, trust logic or CODEOWNERS paths. The labels `approved` and
    `auto-ok` are gone.
 6. **Labels.** A person never sets a label. Kept, all script-set: `agent:dev` (start a developer), `parked`,
-   `risk:*`, `prio:*`, `idea` and the round counters. Removed: `needs-human`, `approved`, `auto-ok`, `owner-answer`,
-   `agent:review`, `model:*`, `unblock:1` (derived from branch, slip and comments instead).
+   `risk:*`, `prio:*`, `idea`, `model:sonnet` and the round counters. Removed: `needs-human`, `approved`, `auto-ok`,
+   `owner-answer`, `agent:review`, `unblock:1` (derived from author and comments instead).
 7. **Cleaner.** A weekly role removes code, workflows, rules and text nobody needs, one small commit per removal,
    each with proof (references, `make check`) that nothing is lost.
 8. **Quiet.** Agents and scripts comment only when a later step or a person needs the text.
