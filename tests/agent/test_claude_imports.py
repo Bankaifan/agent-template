@@ -1,5 +1,7 @@
 """CLAUDE.md imports AGENTS.md and the optional AGENTS.project.md (design 0016 section 4.2)."""
 import json
+
+import pytest
 import pathlib
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
@@ -32,6 +34,7 @@ def test_project_sentence_lives_in_the_project_file():
     assert any(line.startswith("Project: ") and "<" not in line for line in lines)
 
 
+@pytest.mark.template_only  # docs/budgets.json is the template's; a project's copy is not synced
 def test_agents_md_is_within_its_size_cap():
     budgets = json.loads((ROOT / "docs" / "budgets.json").read_text(encoding="utf-8"))
     assert (ROOT / "AGENTS.md").stat().st_size <= budgets["files"]["AGENTS.md"]
