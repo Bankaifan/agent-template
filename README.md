@@ -29,6 +29,10 @@ Nobody is asked, mentioned or assigned for anything else, and a person never set
   `V<version>-<NAME>: <what it does>` (`tools/task_ids.py`, checked by CI). Many small commits, no squash.
 - The reviewer runs only on green CI (`workflow_run` of `validate`) and never runs PR code (it checks out `main`, reads the PR with `gh`).
   Fix rounds start automatically when the reviewer requests changes or CI is red (max 2), then the task restarts once.
+- The merge train (`tools/train.py`) lands approved PRs. `main` requires an up-to-date branch, so two or more ready
+  PRs with disjoint files land as one PR `Batch: #a, #b` on `agent/batch`: a script builds it, `tools/reapprove.py`
+  approves it only when every file is exactly what the approver approved in a member PR, and no model is involved.
+  A batch that fails is closed and its PRs land one by one (`docs/decisions/0018-batch-train.md`, `TRAIN_BATCH=off` disables it).
 - Stuck work is `parked` by script: no note, no mention. An unblocker (`.agents/roles/unblocker.md`, `unblocker.yml`,
   `docs/decisions/0010-unblocker.md`; `UNBLOCKER=off` disables it) looks at it first: a wrong assumption gets a correction
   and a restart, an infrastructure bug a `prio:1` issue. `tools/status.py` un-parks every parked item after a cool-down
