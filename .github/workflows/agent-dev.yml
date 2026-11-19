@@ -188,8 +188,10 @@ jobs:
             Act as the developer described in .agents/roles/developer.md and follow AGENTS.md.
             Task: GitHub issue #${{ env.ISSUE }} in ${{ github.repository }} (read it with gh issue view).
             Create branch agent/${{ env.ISSUE }}-<slug> from main, implement, run `make check` and the tests,
-            squash the branch into ONE commit authored by Daniel without a Co-authored-by trailer, push, and open a PR with
-            `gh pr create` (English ASCII title, body max 5 lines, "Closes #${{ env.ISSUE }}").
+            commit in small steps (about one file each, subject `V<VERSION>-<NAME>: <change>`, see the role; never squash),
+            push, and open a PR with `gh pr create` (title starts like the issue title, body max 5 lines, "Closes #${{ env.ISSUE }}").
+            Changelog fragment language: ${{ vars.OWNER_LANG || 'German' }}. No comments while you work. A denied tool call is
+            no reason to stop: do the task another way.
             No tool or AI attribution in commits, PR bodies or comments (no "Generated with", session link, Co-Authored-By, Claude-Session).
             The tools for `make check` (and the test dependencies) are already installed: run plain `make check`,
             never `pip install`. Use one simple command per Bash call (a pipe may end in head, tail, grep, sort, wc or jq); no `&&`, `;`, `$(...)` or redirects
