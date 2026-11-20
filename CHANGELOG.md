@@ -3,6 +3,11 @@
 ## [Unreleased]
 - README (EN and DE) and `docs/decisions/0007-template-sync.md`: six-step setup for the template sync, version gate, reuse by other projects.
 
+## [1.104] - 2026-11-20
+- Mehrere fertige Änderungen landen jetzt zusammen statt einzeln nacheinander: Der Merge-Zug fasst freigegebene Änderungen an unterschiedlichen Dateien in einem Sammel-PR zusammen und prüft sie einmal gemeinsam.
+- Projekte können Template-Releases wieder selbst übernehmen, auch wenn sich dabei Workflow-Dateien ändern; bisher scheiterte der Sync dann am Hochladen.
+- Eine zurückgestellte Aufgabe blockiert keine anderen Aufgaben mehr, die dieselben Dateien ändern.
+
 ## [1.103] - 2026-11-19
 - claude-code-action 1.0.276
 - Bootstrap-Doku zu Dependabot und projekteigenen Workflows bei managed_guard
