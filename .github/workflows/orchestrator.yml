@@ -81,9 +81,23 @@ jobs:
           fetch-depth: 0
       # Checked-out main only (no PR code). Repo events: sender, live check and debounce (tools/orchestrator_gate.py).
       # merges: skip when only HANDOVER.md changed. Schedule and dispatch always go on.
+      # A guard script (status run, failure watch) opens its issues under the author app. Without this the gate takes
+      # such an `opened` event for the orchestrator's own echo whenever any orchestrator run is near, and the issue
+      # waits for the next scheduled run. No git and no model here: the key only verifies the signature.
+      - name: Is the opened issue signed by a guard script
+        id: sig
+        if: github.event_name == 'issues' && github.event.action == 'opened'
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+          EVENT_ACTION: ${{ github.event.action }}
+          NUMBER: ${{ github.event.issue.number }}
+          GUARD_KEY: ${{ secrets.GUARD_KEY }}  # script step only, never a model step (tests/test_guard_mark.py)
+        run: echo "signed=$(python3 tools/orchestrator_gate.py signed)" >> "$GITHUB_OUTPUT"
       - name: Gate (event sender and debounce; merges that only touch HANDOVER.md)
         id: gate
         env:
+          SIGNED: ${{ steps.sig.outputs.signed }}
           GH_TOKEN: ${{ steps.app.outputs.token }}
           GH_REPO: ${{ github.repository }}
           CONTENTS_TOKEN: ${{ github.token }}  # read-only: the commit check of a merge (the app token has no contents scope)
