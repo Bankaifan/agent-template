@@ -3,6 +3,9 @@
 ## [Unreleased]
 - README (EN and DE) and `docs/decisions/0007-template-sync.md`: six-step setup for the template sync, version gate, reuse by other projects.
 
+## [1.107] - 2026-11-23
+- Der Test für die Variable VALIDATE_TIMEOUT prüft die Doku nur noch im Template; in Projekten schlug er fehl und blockierte den Sync.
+
 ## [1.106] - 2026-11-23
 - Das Zeitlimit der CI-Prüfung ist jetzt pro Projekt einstellbar (Variable VALIDATE_TIMEOUT, Standard 15 Minuten); ein am Limit abgebrochener Lauf ließ PRs ohne Review und ohne Fix-Runde liegen.
 - Der Merge-Train scheitert nicht mehr, wenn im Changelog-Ordner alte, anders benannte Dateien liegen; er behandelt sie als nichts zu veröffentlichen.
