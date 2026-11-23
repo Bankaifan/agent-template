@@ -3,6 +3,26 @@
 ## [Unreleased]
 - README (EN and DE) and `docs/decisions/0007-template-sync.md`: six-step setup for the template sync, version gate, reuse by other projects.
 
+## [1.105] - 2026-11-23
+- Ein kurzer Fehler der Modell-API im Orchestrator-Lauf lässt den Lauf nicht mehr fehlschlagen; der nächste Lauf versucht es erneut.
+- Der Orchestrator-Gate-Schritt bricht nicht mehr ab, wenn GitHub das Abfragen der Läufe wegen des API-Limits ablehnt, sondern überspringt das Ereignis.
+- Der Dispatcher schreibt beim Start eines Issues nur noch die Issue-Nummer ins Log, nicht mehr das Modell-Label.
+- Die wöchentliche Zusammenfassung läuft wieder durch und bricht nicht mehr nach 10 Minuten ab.
+- Ein Review- oder Fix-Lauf, der ohne Ergebnis endet, wird einmal automatisch wiederholt, bevor etwas geparkt wird.
+- Der Reviewer nutzt nur noch einzelne Befehle; zusammengesetzte Befehle wurden abgelehnt und führten zu stillen Läufen.
+- Der Merge-Train bringt Agent-Branches selbst per Rebase auf den Stand von main, entfernt dabei Merge-Commits und setzt die Commit-Titel auf die aktuelle Version.
+- Ein Merge-Commit von main in einem Agent-Branch macht die Formprüfung nicht mehr rot.
+- Ein neuer PR schließt einen älteren nur noch, wenn er dieselbe Arbeit enthält (dieselben Dateien oder die Zeile "Supersedes" mit der PR-Nummer).
+- Issues werden nach dem Merge ihres PRs automatisch geschlossen.
+- Neue Rolle Balancer: Verschiebt eine Änderung gemessene Balance-Werte, legt der Agent die neue Toleranz nach fester Regel selbst fest und begründet sie im PR.
+- Die wöchentliche Zusammenfassung wurde nach 10 Minuten vom Zeitlimit abgebrochen; das Limit von 30 Minuten (bereits gemergt) behebt das, andere Workflows brechen sie nicht ab.
+- Test sichert Zeitplan, manuellen Start und das 30-Minuten-Limit der wöchentlichen Zusammenfassung ab.
+- Ein offenes Issue, dessen Teilschritt schon gemergt ist, bekommt wieder einen Auftrag statt jeden Orchestrator-Lauf als stillen Lauf scheitern zu lassen.
+- Ein überfälliger geplanter Lauf wird zuerst automatisch gestartet; ein Issue entsteht nur noch, wenn das nicht hilft.
+- Ein vom Status-Lauf angelegtes Issue wird sofort bearbeitet und wartet nicht mehr bis zum nächsten geplanten Orchestrator-Lauf.
+- Ein Entwickler-Lauf ohne PR zu einem inzwischen geschlossenen Issue gilt nicht mehr als stiller Lauf und erzeugt kein Folge-Issue mehr.
+- Der Rollen-Vorschlag der Wochenzusammenfassung fasst unterschiedliche Fehlschläge nicht mehr fälschlich zu einer Fehlerklasse zusammen.
+
 ## [1.104] - 2026-11-20
 - Mehrere fertige Änderungen landen jetzt zusammen statt einzeln nacheinander: Der Merge-Zug fasst freigegebene Änderungen an unterschiedlichen Dateien in einem Sammel-PR zusammen und prüft sie einmal gemeinsam.
 - Projekte können Template-Releases wieder selbst übernehmen, auch wenn sich dabei Workflow-Dateien ändern; bisher scheiterte der Sync dann am Hochladen.
