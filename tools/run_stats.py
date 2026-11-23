@@ -129,15 +129,23 @@ def workflow_stats(runs, jobs_of, log_of, days=7, now=None):
 
 ERROR_RE = re.compile(r"error|exception|failed", re.IGNORECASE)
 STAMP_RE = re.compile(r"^\d{4}-\d\d-\d\dT[\d:.]+Z\s*")
+ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+ECHO = "\x1b[36;1m"  # the runner prints the script of a `run:` step in this colour before it runs it
+GENERIC_RE = re.compile(r"^##\[error\]Process completed with exit code \d+\.?$")
 
 
 def failure_class(log):
     """Normalized first error line of a failed model run (digits become #), or None. Limit or rate errors are not a
-    role failure and give None. Heuristic (design 0015): same text = same class."""
+    role failure and give None. Heuristic (design 0015): same text = same class.
+    Not an error line: the script text the runner echoes before a step (it holds every `echo "::error::..."` of the
+    step, so 21 unrelated failures became one class, #749) and the bare `Process completed with exit code N`."""
     if LIMIT_RE.search(log):
         return None
     for line in log.splitlines():
-        text = STAMP_RE.sub("", line.rsplit("\t", 1)[-1]).strip()
+        raw = STAMP_RE.sub("", line.rsplit("\t", 1)[-1])
+        text = ANSI_RE.sub("", raw).strip()
+        if raw.lstrip().startswith(ECHO) or GENERIC_RE.match(text):
+            continue
         if ERROR_RE.search(text):
             return re.sub(r"\d+", "#", text.lower())[:120]
     return None

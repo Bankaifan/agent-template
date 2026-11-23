@@ -205,6 +205,19 @@ def test_failure_class_normalizes_and_skips_limit_and_empty_logs():
     assert rs.failure_class("job\tstep\t2026-11-08T08:01:00Z all good\n") is None
 
 
+def test_failure_class_skips_the_echoed_script_and_the_bare_exit_code_line():
+    """agent-template #749: the runner echoes the script of a step before running it. Its `echo "::error::..."` text
+    was taken as the first error line, so 21 unrelated failed runs counted as one class."""
+    echo = ('orchestrate\tFail if a required repo variable is unset\t2026-11-23T14:11:40Z \x1b[36;1m  [ -n "${!n}" ] || '
+            '{ echo "::error::Repo variable $n is not set"; exit 1; }\x1b[0m\n')
+    exit_line = "orchestrate\tFail a silent run\t2026-11-23T14:12:39Z ##[error]Process completed with exit code 1.\n"
+    assert rs.failure_class(echo + exit_line) is None
+    real = "dev\tChecks\t2026-11-23T14:12:39Z \x1b[31mFAILED tests/test_x.py::test_y - AssertionError\x1b[0m\n"
+    assert rs.failure_class(echo + real + exit_line) == "failed tests/test_x.py::test_y - assertionerror"
+    assert rs.failure_class("job\tstep\t2026-11-23T14:12:39Z ##[error]Repo variable AUTHOR_BOT is not set\n") == (
+        "##[error]repo variable author_bot is not set")
+
+
 def test_three_same_failures_open_one_role_proposal(monkeypatch):
     only_claude(monkeypatch, ["agent-dev.yml"])
     calls = []
