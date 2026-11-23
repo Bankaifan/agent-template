@@ -186,6 +186,9 @@ jobs:
                script (tools/dispatch.py) starts the issues that hold a slip and removes agent:dev after a merge: you add no
                label and remove no agent:dev, you start nothing. You only write the slip comment (goal, a `Files:` line,
                a `Model: sonnet` or `Model: haiku` line, acceptance) for these issues without a slip: ${{ steps.pre.outputs.needs_slip }}
+               An issue in that list that already has a slip had its step merged and is still open: write the slip for
+               what is left of the issue; if nothing is left, write a slip whose goal is to confirm that (the
+               developer run then closes the issue).
                (the script starts them once the comment lands). HANDOVER.md (step 3) only when the script says
                handover due: ${{ steps.pre.outputs.handover_due }}. Everything in steps 1 to 3 about labels and starting
                applies only when the dispatcher is off.
