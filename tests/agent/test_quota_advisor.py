@@ -101,6 +101,21 @@ def test_fetch_all_filters_by_date_and_reads_failed_log():
     assert rs.ran_model(jobs_of(7))
 
 
+def test_fetch_all_reads_jobs_and_logs_of_a_run_once():
+    calls = []
+
+    def fake(*a):
+        calls.append(a)
+        if a[:2] == ("run", "list"):
+            return json.dumps([run_(7)])
+        if a[:2] == ("run", "view"):
+            return "log text"
+        return json.dumps({"jobs": MODEL})
+    _, jobs_of, log_of = rs.fetch_all(["scout.yml"], "2026-11-02", repo="o/r", run=fake)
+    jobs_of(7), jobs_of(7), log_of(7), log_of(7)
+    assert len(calls) == 3
+
+
 def test_queue_numbers_counts_slots_waiting_and_human_age():
     issues = [
         {"number": 1, "labels": [{"name": "agent:dev"}]},
