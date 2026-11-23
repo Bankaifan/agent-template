@@ -141,7 +141,12 @@ def main() -> int:
     kw = {}
     runs = []
     if event in EVENTS:
-        runs = fetch_runs(env.get("GH_REPO", ""))
+        try:
+            runs = fetch_runs(env.get("GH_REPO", ""))
+        except (subprocess.CalledProcessError, ValueError, OSError) as e:
+            print(f"cannot read the orchestrator runs, event skipped: {e}", file=sys.stderr)
+            print("false")
+            return 0
         kw = {"author_bot": env.get("AUTHOR_BOT", ""), "approver_bot": env.get("APPROVER_BOT", ""),
               "enabled": env.get("ORCHESTRATOR_EVENTS") == "on",
               "event_at": parse(env["EVENT_AT"]) if env.get("EVENT_AT") else None,
