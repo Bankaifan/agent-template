@@ -266,6 +266,15 @@ jobs:
             echo "branch=$(jq -r .headRefName <<<"$pr")"
             echo "sha=$(jq -r .headRefOid <<<"$pr")"
           } >> "$GITHUB_OUTPUT"
+      # The developer sometimes invents its own name for the PR; no agent may edit a title, and the form check then
+      # fails until the rounds run out. A script sets the task ID of the issue (tools/pr_title.py, from main).
+      - name: Give the PR the task ID of its issue (no model)
+        if: ${{ !cancelled() && steps.pr.outputs.num != '' }}
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ steps.pr.outputs.num }}
+        run: python3 "$RUNNER_TEMP/guard/tools/pr_title.py" fix "$PR" || echo "title not checked"
       # The CI trigger needs `actions: write`, which the model token no longer has: this short-lived token goes to that step only.
       - id: ci-app
         if: ${{ !cancelled() && steps.pr.outputs.num != '' }}

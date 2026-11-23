@@ -48,3 +48,11 @@ def test_a_run_without_a_pr_on_a_closed_issue_is_not_escalated():
     closed = 'if [ "$(gh issue view "$ISSUE" --json state --jq .state || true)" = CLOSED ]; then'
     assert closed in step and step.index(closed) < step.index("agent_guard.py\" silent dev")
     assert "nothing to escalate\"; exit 0" in step
+
+
+def test_the_pr_title_is_set_by_script_after_the_pr_is_found():
+    text = (ROOT / ".github" / "workflows" / "agent-dev.yml").read_text(encoding="utf-8")
+    step = text[text.index("Give the PR the task ID of its issue (no model)"):text.index("- id: ci-app")]
+    assert text.index("Find the open PR of this issue") < text.index("Give the PR the task ID of its issue")
+    assert "steps.pr.outputs.num != ''" in step and 'tools/pr_title.py" fix "$PR" || echo' in step
+    assert "GH_TOKEN: ${{ steps.app.outputs.token }}" in step and "GUARD_KEY" not in step
