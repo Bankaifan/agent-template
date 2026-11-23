@@ -125,6 +125,18 @@ def test_live_login_for_edited_or_closed_items_needs_only_existence():
     assert g.live_login("pull_request", "closed", ENV, fake_gh(None)) is None
 
 
+def test_main_skips_softly_when_the_run_list_is_rate_limited(monkeypatch, capsys):
+    def limited(repo):
+        raise g.subprocess.CalledProcessError(1, "gh", stderr="API rate limit exceeded")
+
+    monkeypatch.setattr(g.budget, "low", lambda *a: "")
+    monkeypatch.setattr(g, "fetch_runs", limited)
+    for k, v in {"EVENT": "pull_request_review", "SENDER": "Bankaifan", "RUN_ID": "5", "GH_REPO": "o/r"}.items():
+        monkeypatch.setenv(k, v)
+    assert g.main() == 0
+    assert capsys.readouterr().out.strip() == "false"
+
+
 def test_brake_comments_once():
     calls = []
 
