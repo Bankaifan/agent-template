@@ -14,7 +14,7 @@ point below. Name of the work: `NIGHT-RUN`.
    would open the runner's files to a judging model. The prompt and the role now say so, as the security review did.
 3. **Branches are rebased, never merged.** The train rebases the next PR itself (`tools/branch_repair.py`): straight
    line on main, merges of main dropped, every subject `V<VERSION>-<NAME>: ` with main's VERSION, one
-   `--force-with-lease` push. The update-branch API (rebase) is the fallback. An open agent PR whose subjects fail the
+   `--force-with-lease` push. `gh pr update-branch --rebase` is the fallback (the REST update-branch call only merges). An open agent PR whose subjects fail the
    form check is repaired the same way without a model. A `Merge branch 'main' into ...` commit is no form error.
 4. **A release does not turn open PRs red.** The form check accepts a subject of any version; the version in the
    subjects follows at the next rebase by rule 3.
