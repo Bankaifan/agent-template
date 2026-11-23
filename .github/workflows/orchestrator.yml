@@ -165,6 +165,7 @@ jobs:
       - id: claude
         uses: anthropics/claude-code-action@f3b070c88125d33dbae5653df5f143101d4ea9dc # v1.0.276
         if: steps.gate.outputs.skip != 'true' && steps.pre.outputs.work == 'true'
+        continue-on-error: true  # a transient API error (is_error after one turn) is tolerated by `Fail a silent run`
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
         with:
@@ -328,6 +329,7 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           EXEC_FILE: ${{ steps.claude.outputs.execution_file }}
           STARTED: ${{ steps.started.outputs.at }}
+          CLAUDE_OUTCOME: ${{ steps.claude.outcome }}
           STARTABLE: ${{ steps.pre.outputs.startable }}
           AUTHOR_BOT: ${{ vars.AUTHOR_BOT }}
           GUARD_KEY: ${{ secrets.GUARD_KEY }}  # script step only, never a model step (tests/test_guard_mark.py)
