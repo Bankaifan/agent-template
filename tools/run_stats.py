@@ -8,6 +8,7 @@ Denied tool calls (design 0017, step 1): run_stats.py denied [DAYS (default 7)] 
 DIR holds execution files named `<workflow file>__<createdAt>.json`, e.g. `agent-dev.yml__2026-11-10T08:00:00Z.json`.
 """
 import datetime
+import functools
 import json
 import pathlib
 import re
@@ -71,6 +72,7 @@ def format_stats(result):
 def jobs_getter(repo, run):
     slug = repo or "{owner}/{repo}"
 
+    @functools.cache
     def jobs_of(run_id):
         return json.loads(run("api", f"repos/{slug}/actions/runs/{run_id}/jobs", "--paginate",
                               "--jq", "{jobs: .jobs}")).get("jobs", [])
@@ -97,6 +99,7 @@ def fetch_all(files, since, repo=None, run=liveness.gh):
     runs = {f: json.loads(run("run", "list", "--workflow", f, *base, "--created", f">={since}",
                               "--limit", str(LIMIT), "--json", fields)) for f in files}
 
+    @functools.cache
     def log_of(run_id):
         return run("run", "view", str(run_id), *base, "--log-failed")
     return runs, jobs_getter(repo, run), log_of
