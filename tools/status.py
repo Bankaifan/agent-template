@@ -415,7 +415,7 @@ def release_settled(prs, approver, owner, run=gh):
 # --- un-park ----------------------------------------------------------------------------------
 
 COOL_H, COOL_MAX_H = 24, 7 * 24
-COUNTER = re.compile(r"review:[123]|round:.*|formfix|conflict:.*|restart:1|stalled:1|status:retriggered")
+COUNTER = re.compile(r"review:[123]|round:.*|formfix|conflict:.*|silent:.*|restart:1|stalled:1|status:retriggered")
 
 
 def cool_down_hours(n):
