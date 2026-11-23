@@ -3,6 +3,9 @@
 ## [Unreleased]
 - README (EN and DE) and `docs/decisions/0007-template-sync.md`: six-step setup for the template sync, version gate, reuse by other projects.
 
+## [1.108] - 2026-11-23
+- Der Rückfallweg des Merge-Trains aktualisiert Branches jetzt wirklich per Rebase; bisher entstand dabei ein Merge-Commit von main im Agent-Branch.
+
 ## [1.107] - 2026-11-23
 - Der Test für die Variable VALIDATE_TIMEOUT prüft die Doku nur noch im Template; in Projekten schlug er fehl und blockierte den Sync.
 
