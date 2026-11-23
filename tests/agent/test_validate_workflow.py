@@ -47,4 +47,9 @@ def test_the_validate_time_limit_is_a_repo_variable_with_the_old_default():
     root = Path(__file__).resolve().parent.parent.parent
     text = (root / ".github" / "workflows" / "validate.yml").read_text(encoding="utf-8")
     assert "timeout-minutes: ${{ fromJSON(vars.VALIDATE_TIMEOUT || '15') }}" in text
+
+
+@pytest.mark.template_only  # docs/variables.md is not a managed path: a downstream project does not get it by sync
+def test_the_validate_time_limit_is_documented():
+    root = Path(__file__).resolve().parent.parent.parent
     assert "`VALIDATE_TIMEOUT` | `15`" in (root / "docs" / "variables.md").read_text(encoding="utf-8")
