@@ -3,6 +3,10 @@
 ## [Unreleased]
 - README (EN and DE) and `docs/decisions/0007-template-sync.md`: six-step setup for the template sync, version gate, reuse by other projects.
 
+## [1.106] - 2026-11-23
+- Das Zeitlimit der CI-Prüfung ist jetzt pro Projekt einstellbar (Variable VALIDATE_TIMEOUT, Standard 15 Minuten); ein am Limit abgebrochener Lauf ließ PRs ohne Review und ohne Fix-Runde liegen.
+- Der Merge-Train scheitert nicht mehr, wenn im Changelog-Ordner alte, anders benannte Dateien liegen; er behandelt sie als nichts zu veröffentlichen.
+
 ## [1.105] - 2026-11-23
 - Ein kurzer Fehler der Modell-API im Orchestrator-Lauf lässt den Lauf nicht mehr fehlschlagen; der nächste Lauf versucht es erneut.
 - Der Orchestrator-Gate-Schritt bricht nicht mehr ab, wenn GitHub das Abfragen der Läufe wegen des API-Limits ablehnt, sondern überspringt das Ereignis.
