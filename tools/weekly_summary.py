@@ -348,7 +348,12 @@ def role_proposal_body(candidates, roles_text, today):
 
 
 def upsert_proposal(body, run=gh, title=PROPOSAL_TITLE):
-    """One open issue with `title`: updated if it exists, created otherwise."""
+    """One open issue with `title`: updated if it exists, created otherwise. REPORT_ISSUES=off: the text goes to the
+    run summary and an open issue with that title is closed."""
+    if liveness.reports_off():
+        liveness.write_summary(title, body)
+        liveness.retire_issue(title, run)
+        return
     found = json.loads(run("issue", "list", "--state", "open", "--search", f'"{title}" in:title',
                            "--json", "number,title"))
     found = [i for i in found if i["title"] == title]
@@ -382,22 +387,15 @@ def main() -> int:
     body = build_body(merged, human, keeper, ideas, today.isoformat(), status_stale_safe(),
                       failures=failure_watch_summary(gh, today, guard_mark.key_from_env()),
                       capacity=[model, queue_text, roles_text])
-    found = json.loads(gh("issue", "list", "--state", "open", "--search", f'"{TITLE}" in:title',
-                          "--json", "number,title"))
-    found = [i for i in found if i["title"] == TITLE]
-    if found:
-        number = str(found[0]["number"])
-        gh("issue", "edit", number, "--body", body)
-        print(f"updated #{number}")
-    else:
-        url = gh("issue", "create", "--title", TITLE, "--body", body).strip()
-        print(url)
-        number = url.rsplit("/", 1)[-1]
-    liveness.verify_body("issue", number, body, gh)
+    upsert_proposal(body, gh, TITLE)  # the summary itself: one issue updated in place, or the run summary
     if reasons:
         upsert_proposal(proposal_body(reasons, model, queue_text, today.isoformat(), roles_text))
+    elif liveness.reports_off():
+        liveness.retire_issue(PROPOSAL_TITLE, gh)
     if role_candidates:
         upsert_proposal(role_proposal_body(role_candidates, roles_text, today.isoformat()), gh, ROLE_PROPOSAL_TITLE)
+    elif liveness.reports_off():
+        liveness.retire_issue(ROLE_PROPOSAL_TITLE, gh)
     return 0
 
 
