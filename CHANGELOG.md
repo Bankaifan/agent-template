@@ -3,6 +3,9 @@
 ## [Unreleased]
 - README (EN and DE) and `docs/decisions/0007-template-sync.md`: six-step setup for the template sync, version gate, reuse by other projects.
 
+## [1.111] - 2026-11-24
+- Der Test zur gelockerten Ruleset-Regel prüft die Entscheidungsnotiz nur noch im Template; in Projekten schlug er fehl und blockierte den Sync.
+
 ## [1.110] - 2026-11-24
 - Ein Fix-Lauf zu einem PR, der währenddessen gemergt oder geschlossen wurde, gilt nicht mehr als stiller Lauf und erzeugt kein Folge-Issue mehr.
 - Der Rollen-Vorschlag zählt als Fehlerklasse nur noch echte Fehlermeldungen des Runners; Skript- und Prompt-Texte im Log wurden weiter fälschlich als Fehler gewertet.
