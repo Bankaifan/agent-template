@@ -461,4 +461,11 @@ jobs:
         run: |
           # Rule: the guard comes from main, this call from the PR branch. `silent` ignores extra trailing args and a
           # usage error escalates ("guard error"); only ever append args, never reorder or remove them.
+          # A PR that was merged or closed while this run worked has nothing left to fix: not a silent run
+          # (roblox_energy #387: merged a minute before the repeated run ended, the guard still opened a stuck issue).
+          # An unreadable state is not "closed": the guard then runs as before.
+          state="$(gh pr view "$PR" --json state --jq .state || true)"
+          if [ "$state" = MERGED ] || [ "$state" = CLOSED ]; then
+            echo "PR #$PR is $state: nothing to escalate"; exit 0
+          fi
           python3 "$RUNNER_TEMP/guard/tools/agent_guard.py" silent fix "$PR" "$HEAD_BEFORE" "$RUNNER_TEMP/body-before.txt"
