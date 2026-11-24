@@ -1,5 +1,7 @@
 # 0010 Merge train: strict status checks
 
+Superseded for the flag itself by decision 0020 (parallel merge); the train and the re-approval stay.
+
 Status: accepted by the owner decision of design 0003 section 9 (issue #154, Refs #124); live only once Daniel imports the file.
 
 Context: with `strict_required_status_checks_policy: false` a PR merged while behind `main`, so a semantic break between two green PRs reached `main` unchecked. The train (`tools/train.py`, `train.yml`) and the re-approval (`tools/reapprove.py`) are live (#150-#153) and ran without the flag.
