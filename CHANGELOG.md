@@ -3,6 +3,17 @@
 ## [Unreleased]
 - README (EN and DE) and `docs/decisions/0007-template-sync.md`: six-step setup for the template sync, version gate, reuse by other projects.
 
+## [1.110] - 2026-11-24
+- Ein Fix-Lauf zu einem PR, der währenddessen gemergt oder geschlossen wurde, gilt nicht mehr als stiller Lauf und erzeugt kein Folge-Issue mehr.
+- Der Rollen-Vorschlag zählt als Fehlerklasse nur noch echte Fehlermeldungen des Runners; Skript- und Prompt-Texte im Log wurden weiter fälschlich als Fehler gewertet.
+- Neue Variable REPORT_ISSUES: Mit dem Wert off entstehen keine Berichts-Issues mehr (Agent status, Weekly summary, Vorschläge); der Inhalt steht dann in der Zusammenfassung des Workflow-Laufs.
+- Der Merge-Train läuft jetzt sofort, wenn ein Review fertig ist; ein gerade freigegebener PR, der hinter main liegt, wartet nicht mehr bis zu 30 Minuten auf den nächsten Takt.
+- Canary-Issues starten jetzt sofort ohne vorgeschalteten Modell-Lauf.
+- Die PR-Obergrenze zählt nur noch PRs, die die Agenten selbst geöffnet haben; von Hand angelegte PRs blockieren den Start neuer Arbeit nicht mehr.
+- Aufträge über drei oder mehr Dateien bekommen von Anfang an das stärkere Modell.
+- Freigegebene PRs müssen nicht mehr auf dem neuesten Stand von main sein, um zu mergen; sie warten damit nicht mehr aufeinander. Die Regel wird erst wirksam, wenn das Ruleset neu importiert ist.
+- Ein Fehler, der sich in mehreren Modell-Läufen wiederholt, wird jetzt ein Arbeitsauftrag für die Agenten statt ein Rollen-Vorschlag, der auf eine Entscheidung wartet.
+
 ## [1.109] - 2026-11-24
 - Ein Agent-PR bekommt den Namen seines Issues jetzt per Skript in den Titel; ein vom Entwickler frei erfundener Titel ließ die Formprüfung scheitern, bis der PR geparkt wurde.
 - Ein Entwickler-Lauf, der feststellt, dass nichts zu bauen ist, meldet das jetzt mit einer Zeile Begründung; das gilt nicht mehr als stiller Lauf und erzeugt kein Folge-Issue.
