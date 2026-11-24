@@ -78,7 +78,7 @@ def verdict(pr, approver, run=agent_guard.gh):
 
 def red(pr, run=agent_guard.gh):
     labels = pr_labels(pr, run)
-    if STOP in labels or round_no(labels) >= MAX_ROUNDS:
+    if STOP in labels or round_no(labels) + 1 >= MAX_ROUNDS:  # the last round is a review, never a red head
         return "limit"
     streak = red_streak(labels)
     if streak >= STUCK_AFTER:
