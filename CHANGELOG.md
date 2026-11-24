@@ -3,6 +3,10 @@
 ## [Unreleased]
 - README (EN and DE) and `docs/decisions/0007-template-sync.md`: six-step setup for the template sync, version gate, reuse by other projects.
 
+## [1.109] - 2026-11-24
+- Ein Agent-PR bekommt den Namen seines Issues jetzt per Skript in den Titel; ein vom Entwickler frei erfundener Titel ließ die Formprüfung scheitern, bis der PR geparkt wurde.
+- Ein Entwickler-Lauf, der feststellt, dass nichts zu bauen ist, meldet das jetzt mit einer Zeile Begründung; das gilt nicht mehr als stiller Lauf und erzeugt kein Folge-Issue.
+
 ## [1.108] - 2026-11-23
 - Der Rückfallweg des Merge-Trains aktualisiert Branches jetzt wirklich per Rebase; bisher entstand dabei ein Merge-Commit von main im Agent-Branch.
 
