@@ -3,6 +3,11 @@
 ## [Unreleased]
 - README (EN and DE) and `docs/decisions/0007-template-sync.md`: six-step setup for the template sync, version gate, reuse by other projects.
 
+## [1.112] - 2026-11-24
+- Ein neuer Test führt die Testsuite in einem Baum aus, der nur die synchronisierten Pfade enthält; ein Test, der in Projekten scheitern würde, fällt damit schon im Template auf.
+- Ein Template-Sync-PR mit Aufgaben-ID-Titel (`V<Version>-TEMPLATE-SYNC: ...`) wird vom Schutz für verwaltete Dateien nun akzeptiert; die Doku nennt außerdem `--ignore=tests/agent` für Projekt-Testjobs.
+- Wird nur Titel oder Text eines PRs geändert, laufen nicht mehr alle Tests neu, sondern nur die Prüfungen, die diesen Text lesen; Voraussetzung ist ein bereits grüner Testlauf für denselben Stand.
+
 ## [1.111] - 2026-11-24
 - Der Test zur gelockerten Ruleset-Regel prüft die Entscheidungsnotiz nur noch im Template; in Projekten schlug er fehl und blockierte den Sync.
 
