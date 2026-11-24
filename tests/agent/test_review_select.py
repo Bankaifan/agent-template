@@ -116,3 +116,10 @@ def test_a_missing_diff_is_an_error_and_writes_no_selection(tmp_path, capsys):
     (tmp_path / "pr.diff").mkdir()  # unreadable
     assert rs.main(["review_select.py", str(tmp_path)]) == 1
     assert not (tmp_path / "reviewers.txt").exists()
+
+
+def test_a_git_quoted_path_header_is_read():
+    quoted = ('diff --git "a/tools/t\\303\\244st.py" "b/tools/t\\303\\244st.py"\n--- "a/tools/t\\303\\244st.py"\n'
+              '+++ "b/tools/t\\303\\244st.py"\n@@ -1 +1,3 @@\n x = 1\n+def f():\n+class X:\n')
+    assert rs.select(quoted) == [PTA, TDA]
+    assert rs.select(quoted.replace("tools/t", "docs/t")) == []
