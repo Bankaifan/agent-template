@@ -40,3 +40,5 @@ resolved.
 - Not verified end to end: that subagents start under `--setting-sources user`, and whether their turns count against
   `--max-turns` (raised from 20 to 30). The line `reviewers: ...` in every review shows what ran; if a subagent
   cannot be started, the lead does its check from the role file.
+- After an un-park of a PR without an issue only the last `review:N` heads of the review history are read; red
+  heads count into N, so old reviews can still be read in that rare case (it errs towards parking again).
