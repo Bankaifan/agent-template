@@ -28,7 +28,8 @@ Nobody is asked, mentioned or assigned for anything else, and a person never set
 - Names: every piece of work has one NAME. Issues and PRs are titled `V<major>-<NAME>: <summary>`, every commit
   `V<version>-<NAME>: <what it does>` (`tools/task_ids.py`, checked by CI). Many small commits, no squash.
 - The reviewer runs only on green CI (`workflow_run` of `validate`) and never runs PR code (it checks out `main`, reads the PR with `gh`).
-  Fix rounds start automatically when the reviewer requests changes or CI is red (max 2), then the task restarts once.
+  Fix rounds start automatically when the reviewer requests changes or CI is red and go on while each one resolves findings; the same finding still open after two fix
+  rounds in a row (or 8 rounds) restarts the task once. Specialist reviewers (`.agents/roles/`) run in parallel as subagents of the code reviewer.
 - The merge train (`tools/train.py`) lands approved PRs. `main` requires an up-to-date branch, so two or more ready
   PRs with disjoint files land as one PR `Batch: #a, #b` on `agent/batch`: a script builds it, `tools/reapprove.py`
   approves it only when every file is exactly what the approver approved in a member PR, and no model is involved.
@@ -195,7 +196,7 @@ Rationale: [docs/decisions/0007-template-sync.md](docs/decisions/0007-template-s
 
 - One agent run per issue or PR at a time (`concurrency` per number, never cancelled). GitHub cannot cap
   jobs across workflows without dropping queued runs, so the orchestrator keeps at most `MAX_DEV` (default 4) active `agent:dev` issues.
-- Rounds: labels `review:1`, `review:2` lead to a fix, `review:3` to one restart, then `parked` (2 fix rounds). A red CI counts as a round.
+- Rounds: labels `review:N`. Fix rounds continue while each one resolves findings; the same finding still open after two fix rounds in a row, or 8 rounds, sets `review:stop` and leads to one restart, then `parked`. A red CI counts as a round.
 - Dependabot runs get no repo secrets, so `dependabot-automerge.yml` uses `workflow_run` on `validate`.
 - Use private repos or keep `AUTHOR_BOT`/`APPROVER_BOT` set: the review workflow accepts bot-authored PRs.
 - `allowedTools` is not a security boundary (e.g. `Bash(git:*)` still allows a lot). The boundaries are the token rights of the two apps and the rulesets on `main` and, once imported, on agent branches (`agent-refs.json`).
