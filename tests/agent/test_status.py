@@ -711,6 +711,6 @@ def test_a_fresh_start_also_clears_the_silent_run_markers():
 
 def test_a_fresh_start_also_clears_the_stop_and_red_streak_labels():
     calls = []
-    labels = ("parked", "review:1", "review:10", "review:stop", "ci-red:1", "ci-red:2", "risk:infra", "prio:1")
+    labels = ("parked", "review:1", "review:10", "review:stop", "ci-red:1", "ci-red:2", "red:abc1234", "risk:infra", "prio:1")
     st.clear_labels("pr", {"number": 7, "labels": [{"name": n} for n in labels]}, lambda *a: calls.append(a))
     assert len(calls) == 1 and set(calls[0][4::2]) == set(labels) - {"risk:infra", "prio:1"}
