@@ -151,11 +151,11 @@ def failure_class(log):
     return None
 
 
-def failure_classes(runs, jobs_of, log_of, days=28, now=None):
-    """{failure class: number of failed model runs in the last `days` days}; runs: {workflow file: run list}."""
+def failure_class_runs(runs, jobs_of, log_of, days=28, now=None):
+    """{failure class: [failed model runs of the last `days` days, as listed]}; runs: {workflow file: run list}."""
     now = now or datetime.datetime.now(datetime.UTC)
     cutoff = now - datetime.timedelta(days=days)
-    counts = {}
+    found = {}
     for file_runs in runs.values():
         for run in file_runs:
             if parse_time(run["createdAt"]) < cutoff or run.get("conclusion") != "failure":
@@ -164,8 +164,13 @@ def failure_classes(runs, jobs_of, log_of, days=28, now=None):
                 continue
             cls = failure_class(log_of(run["databaseId"]))
             if cls:
-                counts[cls] = counts.get(cls, 0) + 1
-    return counts
+                found.setdefault(cls, []).append(run)
+    return found
+
+
+def failure_classes(runs, jobs_of, log_of, days=28, now=None):
+    """{failure class: number of failed model runs in the last `days` days}; runs: {workflow file: run list}."""
+    return {cls: len(hit) for cls, hit in failure_class_runs(runs, jobs_of, log_of, days, now).items()}
 
 
 def execution_entries(directory):

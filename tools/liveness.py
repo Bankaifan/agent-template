@@ -83,7 +83,7 @@ def write_summary(title, body, env=None):
 RETIRED_NOTE = "Report issues are switched off (REPORT_ISSUES=off): this report is in the run summary now."
 
 
-def retire_issue(title, run=gh, bot=""):
+def retire_issue(title, run=gh, bot="", note=RETIRED_NOTE):
     """Close the open report issue with this exact title (written by BOT when a name is given). Returns its number
     or None; a failure is not fatal, the next run tries again."""
     try:
@@ -92,7 +92,7 @@ def retire_issue(title, run=gh, bot=""):
         for i in found:
             login = ((i.get("author") or {}).get("login") or "").removeprefix("app/").removesuffix("[bot]").lower()
             if i.get("title") == title and (not bot or login == bot.removeprefix("app/").removesuffix("[bot]").lower()):
-                run("issue", "close", str(i["number"]), "--reason", "not planned", "--comment", RETIRED_NOTE)
+                run("issue", "close", str(i["number"]), "--reason", "not planned", "--comment", note)
                 return i["number"]
     except (subprocess.CalledProcessError, OSError, ValueError, KeyError, TypeError, AttributeError):
         return None

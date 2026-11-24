@@ -272,3 +272,61 @@ def test_app_token_can_read_actions_runs_and_logs():
     # gh run list, the jobs API and gh run view --log-failed need actions: read; without it the model section is "unknown"
     text = WORKFLOW_YML.read_text(encoding="utf-8")
     assert "permission-actions: read" in text
+
+
+def _class_runs(n, start=1):
+    return {"build failed: # tests": [{"databaseId": i, "createdAt": f"2026-11-0{i}T08:00:00Z"} for i in range(start, start + n)]}
+
+
+class Issues:
+    """Fake gh for repeat_issues: `known` is what the title search returns; creates are recorded."""
+
+    def __init__(self, known=()):
+        self.known, self.calls = list(known), []
+
+    def __call__(self, *args):
+        self.calls.append(args)
+        return json.dumps(self.known) if args[:2] == ("issue", "list") else ""
+
+    def creates(self):
+        return [c for c in self.calls if c[:2] == ("issue", "create")]
+
+
+def test_a_repeated_failure_class_becomes_a_signed_work_issue_for_the_agents():
+    """The Role proposal ended with "Daniel decides". A class that repeats is work: one signed issue the pipeline
+    trusts and starts, with fixed script text, the count and the run links, never the log text."""
+    run = Issues()
+    title = mod.repeat_title("build failed: # tests")
+    assert mod.repeat_issues(_class_runs(3), "k3y", run, "o/r") == [title]
+    create = run.creates()[0]
+    body = create[create.index("--body") + 1]
+    assert create[create.index("--title") + 1] == title and title.startswith("Repeated failure: ")
+    assert "build failed" not in title and "build failed" not in body  # log text is never signed
+    assert "3 failed model runs" in body and "https://github.com/o/r/actions/runs/3" in body
+    assert "Nobody decides this for you" in body and "Daniel" not in body
+    import guard_mark
+    import trusted_issues
+
+    assert guard_mark.verify(title, body, "k3y") and create[create.index("--label") + 1] == "prio:2"
+
+    issue = {"title": title, "body": body, "author": {"login": "bot[bot]"}, "labels": []}
+    assert trusted_issues.is_guard_issue(issue, "bot[bot]", "k3y")
+
+
+def test_no_second_issue_while_one_is_open_and_a_closed_one_needs_new_runs():
+    title = mod.repeat_title("build failed: # tests")
+    opened = Issues([{"number": 5, "title": title, "state": "OPEN", "closedAt": None}])
+    assert mod.repeat_issues(_class_runs(4), "k3y", opened, "o/r") == [] and opened.creates() == []
+    closed = [{"number": 5, "title": title, "state": "CLOSED", "closedAt": "2026-11-03T12:00:00Z"}]
+    assert mod.repeat_issues(_class_runs(5), "k3y", Issues(closed), "o/r") == []  # only runs 4 and 5 are newer
+    again = Issues(closed)
+    assert mod.repeat_issues(_class_runs(6), "k3y", again, "o/r") == [title]  # runs 4, 5 and 6
+    assert "3 failed model runs" in again.creates()[0][again.creates()[0].index("--body") + 1]
+    other = Issues([{"number": 9, "title": title + " and more", "state": "OPEN", "closedAt": None}])
+    assert mod.repeat_issues(_class_runs(3), "k3y", other, "o/r") == [title]  # only the exact title counts
+
+
+def test_without_the_guard_key_or_below_the_threshold_no_work_issue_is_written():
+    assert mod.repeat_issues(_class_runs(3), "", Issues(), "o/r") == []
+    assert mod.repeat_issues(_class_runs(2), "k3y", Issues(), "o/r") == []
+    assert "Daniel decides" not in mod.role_proposal_body([("x", 3)], "## Roles", "2026-11-24")
