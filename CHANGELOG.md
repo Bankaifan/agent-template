@@ -3,6 +3,9 @@
 ## [Unreleased]
 - README (EN and DE) and `docs/decisions/0007-template-sync.md`: six-step setup for the template sync, version gate, reuse by other projects.
 
+## [1.113] - 2026-11-24
+- Reviews laufen jetzt mit einem Code-Reviewer und passenden Spezial-Prüfern (verschluckte Fehler, fehlende Tests, neue Datenstrukturen); Fix-Runden gehen weiter, solange Befunde abgearbeitet werden, statt nach drei Reviews zu stoppen.
+
 ## [1.112] - 2026-11-24
 - Ein neuer Test führt die Testsuite in einem Baum aus, der nur die synchronisierten Pfade enthält; ein Test, der in Projekten scheitern würde, fällt damit schon im Template auf.
 - Ein Template-Sync-PR mit Aufgaben-ID-Titel (`V<Version>-TEMPLATE-SYNC: ...`) wird vom Schutz für verwaltete Dateien nun akzeptiert; die Doku nennt außerdem `--ignore=tests/agent` für Projekt-Testjobs.
