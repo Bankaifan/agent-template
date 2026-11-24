@@ -36,7 +36,7 @@ def added_lines(diff_text):
         if line.startswith("diff --git "):
             path, in_hunk = None, False
         elif not in_hunk and line.startswith("+++ "):
-            name = line[4:].split("\t")[0].strip()
+            name = line[4:].split("\t")[0].strip().strip('"')  # git quotes a path with special characters
             path = None if name == "/dev/null" else name.removeprefix("b/")
         elif line.startswith("@@"):
             in_hunk = True
