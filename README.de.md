@@ -24,7 +24,8 @@ Sonst wird niemand gefragt, erwähnt oder zugewiesen, und kein Mensch setzt ein 
 - Namen: jede Arbeit hat einen NAMEN. Issues und PRs heißen `V<major>-<NAME>: <Kurztext>`, jeder Commit
   `V<version>-<NAME>: <was er tut>`. Viele kleine Commits, kein Squash.
 - Der Reviewer läuft nur bei grüner CI und führt nie PR-Code aus. Fix-Runden starten automatisch bei `CHANGES_REQUESTED`
-  oder roter CI (max. 2), danach startet die Aufgabe einmal neu.
+  oder roter CI und laufen weiter, solange jede Runde Befunde erledigt; bleibt derselbe Befund nach zwei Fix-Runden in
+  Folge offen (oder nach 8 Runden), startet die Aufgabe einmal neu.
 - Der Merge-Train (`tools/train.py`) bringt freigegebene PRs nach `main`. Weil `main` einen aktuellen Branch verlangt,
   landen zwei oder mehr fertige PRs mit verschiedenen Dateien zusammen als ein PR `Batch: #a, #b` auf `agent/batch`:
   ein Skript baut ihn, `tools/reapprove.py` gibt ihn nur frei, wenn jede Datei genau dem entspricht, was der Approver
