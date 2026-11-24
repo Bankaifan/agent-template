@@ -177,7 +177,10 @@ def test_specialists_are_picked_by_script_between_the_delta_and_the_model():
     assert "continue-on-error" not in step and "||" not in step  # a missing diff fails the job, no empty selection
 
 
-def test_a_reviewed_head_ends_the_red_streak_without_blocking_the_review():
+def test_a_reviewed_head_ends_the_red_streak_and_a_failure_fails_the_step():
     block = TEXT[step_index("id: round"):step_index("id: reapprove")]
-    green = block.index('python3 tools/review_rounds.py green "$num" || echo "::warning::')
+    green = block.index('python3 tools/review_rounds.py green "$num"')
     assert block.index('guard round "$num" "$SHA"') < green < block.index('echo "pr=$num"')
+    line = block[green:block.index("\n", green)]
+    assert line == 'python3 tools/review_rounds.py green "$num"'  # no `||`: a stale streak would park the PR wrongly
+    assert "set -euo pipefail" in block[:green] or "set -e" in block[:green]
