@@ -290,46 +290,80 @@ def test_a_new_finding_every_round_runs_to_the_brake_and_stops_there():
 
 def test_red_heads_get_two_fixes_in_a_row_and_the_third_is_stuck():
     pr = FakePr()
-    assert rr.red(5, pr) == "fix" and pr.labels == {"review:1", "ci-red:1"}
-    assert rr.red(5, pr) == "fix" and pr.labels == {"review:1", "review:2", "ci-red:1", "ci-red:2"}
+    assert rr.red(5, sha(1), pr) == "fix" and pr.labels == {"review:1", "ci-red:1", "red:0000001"}
+    assert rr.red(5, sha(2), pr) == "fix"
+    assert pr.labels == {"review:1", "review:2", "ci-red:1", "ci-red:2", "red:0000002"}  # one head marker at a time
     before = set(pr.labels)
-    assert rr.red(5, pr) == "stuck" and pr.labels == before
+    assert rr.red(5, sha(3), pr) == "stuck" and pr.labels == before
+
+
+def test_a_second_red_run_on_the_same_head_counts_nothing():
+    pr = FakePr()
+    assert rr.red(5, sha(1), pr) == "fix"
+    before = set(pr.labels)
+    assert rr.red(5, sha(1), pr) == "fix" and rr.red(5, sha(1), pr) == "fix" and pr.labels == before
+    assert rr.red(5, sha(2), pr) == "fix" and rr.red(5, sha(2), pr) == "fix"  # also on the second head of a streak
+    assert pr.rounds() == ["review:1", "review:2"] and rr.red_streak(pr.labels) == 2
+    assert rr.red(5, sha(3), pr) == "stuck"
 
 
 def test_a_green_head_ends_the_red_streak():
     pr = FakePr()
-    rr.red(5, pr)
-    rr.red(5, pr)
+    rr.red(5, sha(1), pr)
+    rr.red(5, sha(2), pr)
     pr.labels.add("round:abc1234")
-    assert rr.green(5, pr) == ["ci-red:1", "ci-red:2"]
+    assert rr.green(5, pr) == ["ci-red:1", "ci-red:2", "red:0000002"]
     assert pr.labels == {"review:1", "review:2", "round:abc1234"}  # the rounds stay counted
-    assert rr.red(5, pr) == "fix" and pr.labels >= {"review:3", "ci-red:1"} and "ci-red:2" not in pr.labels
+    assert rr.red(5, sha(3), pr) == "fix" and pr.labels >= {"review:3", "ci-red:1"} and "ci-red:2" not in pr.labels
     calls = []
     assert rr.green(5, lambda *a: calls.append(a) or "review:1\nparked\n") == []
     assert [c[:2] for c in calls] == [("pr", "view")]  # nothing to remove: no edit
 
 
+def test_a_head_that_went_green_and_red_again_is_a_new_round():
+    pr = FakePr()
+    rr.red(5, sha(1), pr)
+    rr.green(5, pr)
+    assert rr.red(5, sha(1), pr) == "fix" and pr.rounds() == ["review:1", "review:2"]
+
+
 def test_red_stops_one_round_before_the_brake_so_the_last_round_is_a_review():
     pr = FakePr()
     pr.labels = {f"review:{i}" for i in range(1, g.MAX_ROUNDS - 1)}  # 6 rounds
-    assert rr.red(5, pr) == "fix" and g.round_no(pr.labels) == g.MAX_ROUNDS - 1
+    assert rr.red(5, sha(1), pr) == "fix" and g.round_no(pr.labels) == g.MAX_ROUNDS - 1
     rr.green(5, pr)
     before = set(pr.labels)
-    assert rr.red(5, pr) == "limit" and pr.labels == before  # round 8 would be a red head
+    assert rr.red(5, sha(2), pr) == "limit" and pr.labels == before  # round 8 would be a red head
     assert g.count_round(5, A, pr) == "counted" and g.round_no(pr.labels) == g.MAX_ROUNDS  # a review may still take it
 
 
 def test_red_changes_nothing_after_review_stop():
     pr = FakePr()
-    pr.labels = {"review:1", STOP}
-    assert rr.red(5, pr) == "limit" and pr.labels == {"review:1", STOP}
+    pr.labels = {"review:1", STOP, "red:0000001"}
+    for head in (sha(1), sha(2)):  # the stop label wins over the marker of a counted head
+        assert rr.red(5, head, pr) == "limit" and pr.labels == {"review:1", STOP, "red:0000001"}
 
 
 def test_red_and_reviewed_heads_share_the_round_counter():
     pr = FakePr()
     review_head(pr, A, "CHANGES_REQUESTED", changes("F1"))
-    assert rr.red(5, pr) == "fix" and pr.rounds() == ["review:1", "review:2"]
+    assert rr.red(5, B, pr) == "fix" and pr.rounds() == ["review:1", "review:2"]
     assert rr.verdict(5, APPROVER, pr) == "fix"
+
+
+def test_after_an_un_park_the_old_reviews_are_not_this_attempts_history():
+    pr = FakePr()
+    for i in (1, 2, 3):
+        review_head(pr, sha(i), "CHANGES_REQUESTED", changes("F1"))
+    assert rr.verdict(5, APPROVER, pr) == "stuck"
+    pr.labels.clear()  # un-park: the counters are cleared, the reviews stay
+    assert rr.verdict(5, APPROVER, pr) == "none"
+    review_head(pr, sha(4), "CHANGES_REQUESTED", changes("F1"))
+    assert rr.verdict(5, APPROVER, pr) == "fix"
+    review_head(pr, sha(5), "CHANGES_REQUESTED", changes("F1"))
+    assert rr.verdict(5, APPROVER, pr) == "fix"
+    review_head(pr, sha(6), "CHANGES_REQUESTED", changes("F1"))
+    assert rr.verdict(5, APPROVER, pr) == "stuck"  # three heads of the new attempt
 
 
 def cli(tmp_path, *args, fail=False):
@@ -351,18 +385,19 @@ def test_cli_stop_sets_the_label_and_green_clears_the_streak(tmp_path):
     assert done.returncode == 0 and "pr edit 5 --add-label review:stop" in log
     done, log = cli(tmp_path, "green", "5")
     assert done.returncode == 0 and done.stdout.strip() == "ci-red:1" and "pr edit 5 --remove-label ci-red:1" in log
-    done, log = cli(tmp_path, "red", "5")
-    assert done.stdout.strip() == "fix" and "pr edit 5 --add-label review:2 --add-label ci-red:2" in log
+    done, log = cli(tmp_path, "red", "5", "c" * 40)
+    assert done.stdout.strip() == "fix"
+    assert "pr edit 5 --add-label review:2 --add-label ci-red:2 --add-label red:ccccccc" in log
 
 
-@pytest.mark.parametrize("cmd", ["verdict", "red", "green", "stop"])
+@pytest.mark.parametrize("cmd", [["verdict", "5"], ["red", "5", A], ["green", "5"], ["stop", "5"]])
 def test_cli_gives_no_fallback_verdict_when_gh_fails(tmp_path, cmd):
-    done, _ = cli(tmp_path, cmd, "5", fail=True)
+    done, _ = cli(tmp_path, *cmd, fail=True)
     assert done.returncode != 0 and done.stdout.strip() == ""
 
 
 def test_cli_refuses_an_unknown_command_or_pr(tmp_path):
-    for args in (["park", "5"], ["verdict", "x"], ["verdict"]):
+    for args in (["park", "5"], ["verdict", "x"], ["verdict"], ["red", "5"], ["red", "5", "abc1234"], ["green", "5", A]):
         done, log = cli(tmp_path, *args)
         assert done.returncode != 0 and done.stdout.strip() == "" and log == ""
 
@@ -376,7 +411,27 @@ def test_agent_fix_sets_review_stop_before_the_hand_over():
 def test_agent_fix_lets_the_script_decide_and_fails_on_its_error():
     text = (ROOT / ".github/workflows/agent-fix.yml").read_text(encoding="utf-8")
     step = text[text.index("limit() {"):text.index("\n  fix:\n")]
-    for cmd in ("red", "verdict"):  # a plain assignment under `set -e`: a failing script fails the step, no default branch
-        assert f'\n            verdict=$(python3 tools/review_rounds.py {cmd} "$pr")\n' in step
+    # a plain assignment under `set -e`: a failing script fails the step, no default branch; red gets the run's head
+    for cmd in ('red "$pr" "$RUN_SHA"', 'verdict "$pr"'):
+        assert f'\n            verdict=$(python3 tools/review_rounds.py {cmd})\n' in step
+    assert "RUN_SHA: ${{ github.event.workflow_run.head_sha }}" in text
     assert "set -euo pipefail" in text[text.index("- id: round"):text.index("limit() {")]
     assert not re.search(r"review:\d", step)  # no round label is decided in the shell any more
+
+
+@pytest.mark.parametrize("stop_rc, restart_rc, code, parked", [(0, 0, 0, False), (1, 0, 1, False), (1, 1, 1, True), (0, 1, 0, True)])
+def test_agent_fix_hands_over_even_when_review_stop_cannot_be_set(tmp_path, stop_rc, restart_rc, code, parked):
+    """Runs the limit() function of the workflow with stubbed commands: the hand-over and fix=false always happen."""
+    text = (ROOT / ".github/workflows/agent-fix.yml").read_text(encoding="utf-8")
+    start = text.index("          limit() {")
+    func = text[start:text.index("\n          }\n", start) + len("\n          }\n")]
+    script = ("set -euo pipefail\n"
+              'python3() { echo "$2 $3" >> "$LOG"; case "$2" in stop) return "$STOP_RC" ;; limit) return "$RESTART_RC" ;; esac; }\n'
+              'guard() { echo "guard $1" >> "$LOG"; }\n' + func + "pr=5\nlimit\n")
+    env = {**os.environ, "LOG": str(tmp_path / "log"), "GITHUB_OUTPUT": str(tmp_path / "out"),
+           "STOP_RC": str(stop_rc), "RESTART_RC": str(restart_rc)}
+    done = subprocess.run(["bash", "-c", script], env=env, capture_output=True, text=True, check=False)
+    assert done.returncode == code, done.stderr
+    log = (tmp_path / "log").read_text(encoding="utf-8").splitlines()
+    assert log[:2] == ["stop 5", "limit 5"] and (log[2:] == ["guard park"]) is parked
+    assert (tmp_path / "out").read_text(encoding="utf-8") == "fix=false\n"
