@@ -28,3 +28,10 @@ Three points get it through. Do them in the same PR, after the setup in the READ
 
 Open: with this setup, project-only workflows get no automatic pin bumps; their actions are updated by hand.
 `tools/managed_guard.py` is not relaxed for this.
+
+## Project overrides of `validate.yml`
+
+A project test job that runs `pytest` must skip the template tests: `pytest --ignore=tests/agent`. The template
+`validate` job runs `tests/agent` with pending workflow patches applied; a project job does not apply them. A sync that
+ships workflow changes plus their tests then stays red until the patch is applied, and the security review and
+workflow-apply never start (deadlock seen in ha-luxtronik-shi#244).
