@@ -6,11 +6,14 @@
     ".agents/roles/developer.md": 4900,
     ".agents/roles/intake.md": 600,
     ".agents/roles/orchestrator.md": 9027,
-    ".agents/roles/reviewer.md": 2558,
+    ".agents/roles/pr-test-analyzer.md": 900,
+    ".agents/roles/reviewer.md": 3100,
     ".agents/roles/scout.md": 1309,
     ".agents/roles/security-reviewer.md": 1171,
+    ".agents/roles/silent-failure-hunter.md": 1000,
+    ".agents/roles/type-design-analyzer.md": 860,
     ".agents/roles/unblocker.md": 3068,
     "AGENTS.md": 5630
   },
-  "total": 31461
+  "total": 33000
 }
