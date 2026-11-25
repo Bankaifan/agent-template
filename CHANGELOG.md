@@ -3,6 +3,16 @@
 ## [Unreleased]
 - README (EN and DE) and `docs/decisions/0007-template-sync.md`: six-step setup for the template sync, version gate, reuse by other projects.
 
+## [1.114] - 2026-11-25
+- Scope-Test nur im Template ausführen
+- `make check` prüft jetzt die Typen unter `tools/` mit mypy und schlägt bei einem Typfehler fehl.
+- Ein voller Testlauf prüft jetzt, dass die Testabdeckung von tools/ nicht unter die gespeicherte Untergrenze fällt.
+- Die Prüfungen laufen in der CI als vier getrennte Jobs (Lint, Tests, Workflows, Repo-Regeln); ein rotes Ergebnis zeigt sofort, welcher Teil fehlgeschlagen ist.
+- Der Code-Review wartet jetzt auf die Spezialisten, bevor er sein Urteil abgibt, und ein stiller Lauf bleibt als Protokoll nachlesbar.
+- Ein wegen eines stillen Reviews geparkter PR wird jetzt neu geprüft, sobald sich agent-review.yml auf main geändert hat, statt 24 Stunden zu warten und neu zu starten.
+- Ein bereits geparktes Element wird nicht erneut geparkt: kein weiterer Kommentar, die Abkühlzeit verdoppelt sich nicht mehr bei jedem Aufruf.
+- Die Fehlerüberwachung meldet einen abgebrochenen Sicherheitsreview nicht mehr, wenn ein neuerer Lauf für denselben PR existiert.
+
 ## [1.113] - 2026-11-24
 - Reviews laufen jetzt mit einem Code-Reviewer und passenden Spezial-Prüfern (verschluckte Fehler, fehlende Tests, neue Datenstrukturen); Fix-Runden gehen weiter, solange Befunde abgearbeitet werden, statt nach drei Reviews zu stoppen.
 
