@@ -26,7 +26,7 @@ class Fake:
     def __init__(self):
         self.runs, self.jobs, self.issues, self.comments, self.calls = [], {}, {}, {}, []
         self.listed, self.timeline, self.pulls, self.logs = {}, [], [], {}
-        self.branch_prs = {}
+        self.branch_prs, self.pr_list_fails = {}, False
 
     def add_issue(self, title, body, state="OPEN", labels=()):
         n = len(self.issues) + 1
@@ -43,6 +43,8 @@ class Fake:
         if a[:2] == ("run", "view"):
             return self.logs.get(int(a[2]), "")
         if a[:2] == ("pr", "list"):
+            if self.pr_list_fails:
+                raise RuntimeError("gh pr list failed")
             return json.dumps([{"state": s} for s in self.branch_prs.get(a[3], [])])
         if a[0] == "label":
             return ""
@@ -600,6 +602,26 @@ def test_jobless_failure_by_the_author_app_on_an_open_branch_is_reported():
     jobless(f, 2, "Bankaifan", wf="orchestrator.yml")
     actions, _ = tick(f)
     assert actions == ["opened failure issue #1", "opened failure issue #2"]
+
+
+def test_jobless_failure_on_a_branch_without_a_pr_is_reported():
+    f = Fake()
+    jobless(f, 1, "bankaifan-agent-author[bot]", branch="agent/9-x")
+    assert tick(f)[0] == ["opened failure issue #1"]
+
+
+def test_jobless_failure_is_reported_when_the_pr_state_is_unreadable():
+    f = Fake()
+    f.pr_list_fails = True
+    jobless(f, 1, "bankaifan-agent-author[bot]", branch="agent/9-x")
+    assert tick(f)[0] == ["opened failure issue #1"]
+
+
+def test_failure_with_a_job_on_a_merged_pr_branch_is_still_reported():
+    f = Fake()
+    f.branch_prs["agent/9-x"] = ["MERGED"]
+    failing(f, 1, branch="agent/9-x")
+    assert tick(f)[0] == ["opened failure issue #1"]
 
 
 def test_failure_with_a_job_by_a_foreign_bot_is_still_reported():
