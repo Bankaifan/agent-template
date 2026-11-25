@@ -248,6 +248,33 @@ def test_security_review_cancelled_by_a_newer_run_is_expected():
     assert f.issues == {}
 
 
+def security_review_run(rid, title, conclusion="cancelled"):
+    r = mkrun(rid, "agent-security-review.yml", conclusion, "main")
+    r.update({"event": "workflow_run", "display_title": title})
+    return r
+
+
+def test_security_review_workflow_run_cancel_with_newer_run_of_same_pr_is_expected():
+    """Issue #811: run 45595674344 has head_branch main whatever PR it reviews; its group is the PR's branch."""
+    f = Fake()
+    f.runs.append(security_review_run(1, "security-review: V1-TYPE-CHECK: mypy"))
+    f.jobs[1] = {"jobs": [{"name": "security-review", "conclusion": "cancelled",
+                           "steps": [{"name": "Find the PR and its risk class", "conclusion": "cancelled"}]}]}
+    f.runs.append(security_review_run(2, "security-review: V1-TYPE-CHECK: mypy", "success"))
+    actions, _ = tick(f)
+    assert actions == [] and f.issues == {}
+
+
+def test_security_review_workflow_run_cancel_without_newer_run_of_same_pr_still_reports():
+    f = Fake()
+    f.runs.append(security_review_run(1, "security-review: V1-TYPE-CHECK: mypy"))
+    f.jobs[1] = {"jobs": [{"name": "security-review", "conclusion": "cancelled",
+                           "steps": [{"name": "Find the PR and its risk class", "conclusion": "cancelled"}]}]}
+    f.runs.append(security_review_run(2, "security-review: other PR", "success"))
+    tick(f)
+    assert len(f.issues) == 1
+
+
 def test_lone_security_review_cancel_still_opens_an_issue():
     f = Fake()
     cancelled(f, 1, wf="agent-security-review.yml", job="security-review", steps=("Run claude",), branch="main")
