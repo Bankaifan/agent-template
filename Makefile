@@ -12,6 +12,7 @@ SLOW_FILTER = $(if $(filter true,$(NIGHTLY_HEAVY_TESTS)),-m "not slow")
 .PHONY: check
 check:
 	@if [ -n "$$(git ls-files '*.py')" ]; then ruff check .; else echo "no Python files"; fi
+	@$(MAKE) --no-print-directory type-check
 	@$(MAKE) --no-print-directory unit-tests
 	@if [ -n "$$(git ls-files '.github/workflows/*.yml')" ]; then \
 		actionlint && zizmor --no-progress .github/workflows; else echo "no workflows"; fi
@@ -39,6 +40,10 @@ check-text:
 .PHONY: project-check
 project-check::
 	@:
+
+.PHONY: type-check
+type-check:
+	@if [ -n "$$(git ls-files 'tools/*.py')" ]; then mypy --config-file mypy.ini tools; else echo "no Python files in tools/"; fi
 
 .PHONY: unit-tests
 unit-tests:
