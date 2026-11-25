@@ -26,6 +26,7 @@ class Fake:
     def __init__(self):
         self.runs, self.jobs, self.issues, self.comments, self.calls = [], {}, {}, {}, []
         self.listed, self.timeline, self.pulls, self.logs = {}, [], [], {}
+        self.branch_prs = {}
 
     def add_issue(self, title, body, state="OPEN", labels=()):
         n = len(self.issues) + 1
@@ -41,6 +42,8 @@ class Fake:
             return json.dumps(self.listed.get(a[3], []))
         if a[:2] == ("run", "view"):
             return self.logs.get(int(a[2]), "")
+        if a[:2] == ("pr", "list"):
+            return json.dumps([{"state": s} for s in self.branch_prs.get(a[3], [])])
         if a[0] == "label":
             return ""
         if a[:2] == ("issue", "list"):
@@ -564,3 +567,43 @@ def test_turn_cap_reads_the_numbers_only():
     assert fw.turn_cap("agent-dev.yml", 2, "failure", f) == (70, 60)
     f.logs[3] = "Claude reported a successful result after 70 turns"
     assert fw.turn_cap("agent-dev.yml", 3, "failure", f) is None
+
+
+def jobless(f, rid, actor, branch="main", wf="risk.yml"):
+    run_obj = mkrun(rid, wf, branch=branch)
+    run_obj["triggering_actor"] = {"login": actor}
+    f.runs.append(run_obj)
+    f.jobs[rid] = {"jobs": []}
+
+
+def test_jobless_failure_by_a_foreign_bot_is_skipped_with_a_log_line():
+    f = Fake()
+    jobless(f, 1, "github-advanced-security[bot]", branch="agent/9-x")
+    actions, _ = tick(f)
+    assert f.creates() == []
+    assert actions == ["run 1: no job, foreign actor github-advanced-security_bot_: skipped"]
+
+
+def test_jobless_failure_on_a_merged_pr_branch_is_skipped():
+    f = Fake()
+    f.branch_prs["agent/9-x"] = ["MERGED"]
+    jobless(f, 1, "bankaifan-agent-author[bot]", branch="agent/9-x")
+    actions, _ = tick(f)
+    assert f.creates() == []
+    assert actions == ["run 1: no job, its PR is merged or closed: skipped"]
+
+
+def test_jobless_failure_by_the_author_app_on_an_open_branch_is_reported():
+    f = Fake()
+    f.branch_prs["agent/9-x"] = ["OPEN"]
+    jobless(f, 1, "bankaifan-agent-author[bot]", branch="agent/9-x")
+    jobless(f, 2, "Bankaifan", wf="orchestrator.yml")
+    actions, _ = tick(f)
+    assert actions == ["opened failure issue #1", "opened failure issue #2"]
+
+
+def test_failure_with_a_job_by_a_foreign_bot_is_still_reported():
+    f = Fake()
+    failing(f, 1)
+    f.runs[0]["triggering_actor"] = {"login": "github-advanced-security[bot]"}
+    assert tick(f)[0] == ["opened failure issue #1"]
