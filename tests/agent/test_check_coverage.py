@@ -1,6 +1,8 @@
 import importlib.util
 import json
 import pathlib
+import subprocess
+import sys
 
 import pytest
 
@@ -85,4 +87,3 @@ def test_measure_reads_the_total_of_real_coverage_data(tmp_path):
     assert mod.main(tmp_path) == 0
     _floor(tmp_path, 51)
     assert mod.main(tmp_path) == 1
-
