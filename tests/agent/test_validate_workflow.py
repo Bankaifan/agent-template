@@ -41,6 +41,8 @@ def test_validate_runs_make_check():
     assert "run: make check\n" in block("validate")
 
 
+# A project that overrides validate.yml gets the scope job only by a hand merge: the sync's make check runs before it.
+@pytest.mark.template_only
 def test_a_text_edit_runs_only_the_text_checks_when_the_head_is_already_green():
     """A PR title or body edit (scripts do that) started the whole suite again although the code did not change."""
     scope, job = block("scope"), block("validate")
