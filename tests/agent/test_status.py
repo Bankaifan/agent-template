@@ -221,7 +221,8 @@ class SilentGh:
         if args[0] == "api" and "commits?path=" in args[-1]:
             return json.dumps([{"commit": {"committer": {"date": self.workflow_at}}}])
         if args[0] == "api" and args[-1].endswith("/events"):
-            return json.dumps([[{"event": "labeled", "label": {"name": "parked"}, "created_at": self.parked_at}]])
+            times = self.parked_at if isinstance(self.parked_at, list) else [self.parked_at]
+            return json.dumps([[{"event": "labeled", "label": {"name": "parked"}, "created_at": t} for t in times]])
         return ""
 
     def changed(self):
@@ -242,13 +243,17 @@ def test_silent_parked_pr_is_unparked_when_the_review_workflow_changed():
     assert [lab["name"] for lab in p["labels"]] == ["review:2"]
 
 
-@pytest.mark.parametrize("case", ["no newer commit", "second silent park", "other reason", "head moved", "not parked",
-                                  "foreign branch"])
+@pytest.mark.parametrize("case", ["no newer commit", "second silent park", "equal timestamps", "other reason",
+                                  "head moved", "not parked", "foreign branch"])
 def test_silent_unpark_leaves_everything_else_alone(case):
     workflow_at, parked_at = "2026-11-25T09:30:51Z", "2026-11-25T08:35:59Z"
     p = silent_pr()
-    if case in ("no newer commit", "second silent park"):
+    if case == "no newer commit":
         parked_at = "2026-11-25T10:00:00Z"
+    if case == "second silent park":  # one park before the workflow commit, a newer one after it: max() decides
+        parked_at = ["2026-11-25T08:35:59Z", "2026-11-25T10:00:00Z"]
+    if case == "equal timestamps":
+        parked_at = workflow_at
     if case == "other reason":
         p = silent_pr(labels=("parked", "review:stop"))
     if case == "head moved":
