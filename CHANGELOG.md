@@ -3,6 +3,9 @@
 ## [Unreleased]
 - README (EN and DE) and `docs/decisions/0007-template-sync.md`: six-step setup for the template sync, version gate, reuse by other projects.
 
+## [1.115] - 2026-11-25
+- Die Fehlerüberwachung meldet Läufe ohne Job nicht mehr, wenn ein fremder Bot sie ausgelöst hat oder der zugehörige PR schon gemergt oder geschlossen ist.
+
 ## [1.114] - 2026-11-25
 - Scope-Test nur im Template ausführen
 - `make check` prüft jetzt die Typen unter `tools/` mit mypy und schlägt bei einem Typfehler fehl.
