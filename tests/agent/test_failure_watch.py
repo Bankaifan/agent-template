@@ -1,6 +1,7 @@
 """Failure watch module (design 0008, sections 4.1-4.5), driven by a stateful fake gh."""
 import datetime
 import json
+from urllib.parse import parse_qs, urlparse
 
 import failure_watch as fw
 import guard_mark
@@ -82,7 +83,8 @@ class Fake:
             return json.dumps(self.timeline)
         if "/pulls" in path:
             return json.dumps(self.pulls)
-        return json.dumps({"workflow_runs": self.runs})
+        want = parse_qs(urlparse(path).query).get("branch")
+        return json.dumps({"workflow_runs": [r for r in self.runs if not want or r["head_branch"] == want[0]]})
 
     def creates(self):
         return [a for a in self.calls if a[:2] == ("issue", "create")]
@@ -248,21 +250,34 @@ def test_security_review_cancelled_by_a_newer_run_is_expected():
     assert f.issues == {}
 
 
-def security_review_run(rid, title, conclusion="cancelled"):
-    r = mkrun(rid, "agent-security-review.yml", conclusion, "main")
+def security_review_run(rid, title, conclusion="cancelled", branch="main"):
+    r = mkrun(rid, "agent-security-review.yml", conclusion, branch)
     r.update({"event": "workflow_run", "display_title": title})
     return r
 
 
 def test_security_review_workflow_run_cancel_with_newer_run_of_same_pr_is_expected():
-    """Issue #811: run 45595674344 has head_branch main whatever PR it reviews; its group is the PR's branch."""
+    """Issue #811: the newer run of the same PR carries another head_branch, so only the display_title match
+    finds it (a branch lookup for main sees only the cancelled run)."""
     f = Fake()
     f.runs.append(security_review_run(1, "security-review: V1-TYPE-CHECK: mypy"))
     f.jobs[1] = {"jobs": [{"name": "security-review", "conclusion": "cancelled",
                            "steps": [{"name": "Find the PR and its risk class", "conclusion": "cancelled"}]}]}
-    f.runs.append(security_review_run(2, "security-review: V1-TYPE-CHECK: mypy", "success"))
+    f.runs.append(security_review_run(2, "security-review: V1-TYPE-CHECK: mypy", "success", "agent/x"))
+    assert fw.newer_run(f.runs[0], f) is True
     actions, _ = tick(f)
     assert actions == [] and f.issues == {}
+
+
+def test_security_review_workflow_run_cancel_without_titles_still_reports():
+    """Two untitled workflow_run runs must not match each other."""
+    f = Fake()
+    f.runs.append(security_review_run(1, None))
+    f.jobs[1] = {"jobs": [{"name": "security-review", "conclusion": "cancelled",
+                           "steps": [{"name": "Find the PR and its risk class", "conclusion": "cancelled"}]}]}
+    f.runs.append(security_review_run(2, None, "success", "agent/x"))
+    tick(f)
+    assert len(f.issues) == 1
 
 
 def test_security_review_workflow_run_cancel_without_newer_run_of_same_pr_still_reports():
