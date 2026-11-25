@@ -383,6 +383,20 @@ def test_a_failed_read_is_no_work_not_a_crash(monkeypatch, tmp_path, capsys):
     assert "HTTP 502" in capsys.readouterr().err
 
 
+def test_a_non_json_read_is_no_work_not_a_crash(monkeypatch, tmp_path, capsys):
+    """#616: gh returning something that is not JSON ends the step with work=false, startable=false, reason=read-error."""
+    fresh = load_with_env(monkeypatch, MAX_DEV="4")
+    out = tmp_path / "out"
+    monkeypatch.setattr(fresh, "gh", lambda *args: "<html>502 Bad Gateway</html>")
+    monkeypatch.setenv("TRUSTED", "[]")
+    monkeypatch.setenv("GITHUB_OUTPUT", str(out))
+    monkeypatch.delenv("EVENT", raising=False)
+    assert fresh.run("orchestrator") == 0
+    lines = dict(line.split("=", 1) for line in out.read_text().splitlines())
+    assert (lines["work"], lines["startable"], lines["reason"]) == ("false", "false", "read-error")
+    assert "unexpected output" in capsys.readouterr().err
+
+
 def test_a_failed_event_lookup_is_no_work(monkeypatch, tmp_path):
     """An issue_comment whose issue lookup fails (e.g. a payload the gh CLI cannot resolve) ends with work=false."""
     fresh = load_with_env(monkeypatch, MAX_DEV="4")
