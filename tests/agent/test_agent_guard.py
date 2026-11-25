@@ -593,6 +593,19 @@ def test_park_labels_and_comments_with_the_marker_and_asks_nobody():
     assert not any("--add-reviewer" in c or "--add-assignee" in c for c in r.calls) and "@" not in r.posted[0]["body"]
 
 
+def test_park_of_a_parked_item_is_a_no_op(capsys):
+    r = Recorder(replies={("pr", "view"): "agent:dev\nparked\n"})
+    g.park("pr", 5, "again", r)
+    assert r.posted == [] and not any("--add-label" in c for c in r.calls)
+    assert "already parked" in capsys.readouterr().out
+
+
+def test_park_after_unpark_counts_again():
+    r = Recorder(replies={("issue", "view"): "agent:dev\n"})
+    g.park("issue", 5, "second time", r)
+    assert ("issue", "edit", "5", "--add-label", "parked") in r.calls and len(r.posted) == 1
+
+
 # --- upstream issue for an allow-list miss (#416 goal 2, security requirements 3 to 5) ---
 
 GKEY = "k" * 40
