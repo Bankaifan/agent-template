@@ -13,13 +13,30 @@ SLOW_FILTER = $(if $(filter true,$(NIGHTLY_HEAVY_TESTS)),-m "not slow")
 # Without docs/coverage.json (downstream projects) the plain pytest run is used.
 COVERAGE_RUN = if [ -f docs/coverage.json ] && python3 -c "import coverage" 2>/dev/null; then coverage run --source=tools "$$(command -v pytest)" --timeout=60 -q $(SLOW_FILTER) && python3 tools/check/check_coverage.py; else pytest --timeout=60 -q $(SLOW_FILTER); fi
 
+# `check` is exactly the four targets below, in this order; validate.yml runs each as its own job.
 .PHONY: check
 check:
+	@$(MAKE) --no-print-directory check-lint
+	@$(MAKE) --no-print-directory check-tests
+	@$(MAKE) --no-print-directory check-workflows
+	@$(MAKE) --no-print-directory check-repo
+
+.PHONY: check-lint
+check-lint:
 	@if [ -n "$$(git ls-files '*.py')" ]; then ruff check .; else echo "no Python files"; fi
 	@$(MAKE) --no-print-directory type-check
+
+.PHONY: check-tests
+check-tests:
 	@$(MAKE) --no-print-directory unit-tests
+
+.PHONY: check-workflows
+check-workflows:
 	@if [ -n "$$(git ls-files '.github/workflows/*.yml')" ]; then \
 		actionlint && zizmor --no-progress .github/workflows; else echo "no workflows"; fi
+
+.PHONY: check-repo
+check-repo:
 	python3 tools/check/check_version.py
 	@if [ -n "$$PR_BASE_REF" ]; then python3 tools/check/check_version_bump.py "origin/$$PR_BASE_REF"; else echo "check_version_bump: skipped (no PR_BASE_REF)"; fi
 	python3 tools/check/check_pr_form.py
