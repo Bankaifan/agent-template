@@ -51,6 +51,23 @@ def test_security_wins_over_infra_in_any_order():
     assert risk.classify(b + a) == "security"
 
 
+def test_classify_paths_fallback_for_a_diff_the_api_refuses(capsys, monkeypatch):
+    assert risk.classify_paths(["src/app.py", "README.md", ""]) == "none"
+    assert risk.classify_paths(["src/app.py", "AGENTS.project.md", ".agents/roles/x.md"]) == "infra"
+    for p in (".github/workflows/a.yml", "tools/status.py", "AGENTS.md", ".github/CODEOWNERS", "Makefile"):
+        assert risk.classify_paths(["src/app.py", p]) == "security", p
+    import io
+    import sys
+    monkeypatch.setattr(sys, "stdin", io.StringIO("docs/a.md\nCLAUDE.md\n"))
+    assert risk.main(["risk.py", "classify-paths"]) == 0
+    assert capsys.readouterr().out.strip() == "infra"
+
+
+def test_workflow_falls_back_to_paths_when_the_diff_fails():
+    text = (pathlib.Path(__file__).parent.parent.parent / ".github" / "workflows" / "agent-security-review.yml").read_text()
+    assert "risk.py classify-paths" in text and 'if gh pr diff "$num"' in text
+
+
 def test_agents_md_limits_section_only():
     assert risk.limits_range(AGENTS) == (3, 7)
     # old line 5 is inside Limits (rule 2 changes), old line 9 is in "How to work"

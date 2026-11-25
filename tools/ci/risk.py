@@ -6,7 +6,8 @@ security: the diff touches workflow `permissions:`, `allowedTools`, `allowed_bot
 
 CLI:
   risk.py classify [AGENTS_MD]   read a unified diff on stdin, print the level (AGENTS_MD: base file for the Limits section)
-  risk.py pr NUMBER              (env GH_TOKEN, GH_REPO, optional OWNER, AUTHOR_BOT) label the PR, publish the check run
+  risk.py classify-paths         read changed paths on stdin (one per line), print the level; fallback for a diff too large for the API
+  risk.py pr NUMBER            (env GH_TOKEN, GH_REPO, optional OWNER, AUTHOR_BOT) label the PR, publish the check run
                                  `risk` (the job exits 0 either way; only the check run carries the gate). Only a PR that changes a file owned by OWNER in CODEOWNERS (the outsider boundary)
                                  waits for him: then `risk` fails until OWNER approved the head SHA. Every other `security`
                                  PR is gated by the AI security reviewer (status `security-review`) alone.
@@ -119,6 +120,20 @@ def classify(diff, agents_md=""):
                 old += 1
         else:
             old += 1
+    return level
+
+
+def classify_paths(paths):
+    """Level from changed paths alone, for a diff the API cannot return. Lines cannot be scanned, so a path whose
+    lines classify() would scan (and AGENTS.md, whose Limits section is unknown) counts as `security`."""
+    level = "none"
+    for p in (x.strip() for x in paths):
+        if not p:
+            continue
+        if p.startswith(SECURITY_FILES) or p == "AGENTS.md" or p.startswith(LINE_SCANNED):
+            return "security"
+        if p.startswith(INFRA_PATHS):
+            level = "infra"
     return level
 
 
@@ -345,6 +360,9 @@ def main(argv):
             with open(args[0], encoding="utf-8") as f:
                 agents = f.read()
         print(classify(sys.stdin.read(), agents))
+        return 0
+    if cmd == "classify-paths" and not args:
+        print(classify_paths(sys.stdin.read().splitlines()))
         return 0
     if cmd == "pr" and len(args) == 1:
         return run_pr(args[0])

@@ -1,0 +1,19 @@
+diff --git a/.github/workflows/agent-security-review.yml b/.github/workflows/agent-security-review.yml
+index 2dc52eb..64f2384 100644
+--- a/.github/workflows/agent-security-review.yml
++++ b/.github/workflows/agent-security-review.yml
+@@ -66,7 +66,13 @@ jobs:
+           num=$(jq -r .number <<<"$pr")
+           labels=",$(jq -r '[.labels[].name] | join(",")' <<<"$pr"),"
+           python3 tools/agent_guard.py agent-pr "$(jq -r .user.login <<<"$pr")" "$labels" || { echo "Not an agent PR"; skip; }
+-          level=$(gh pr diff "$num" | python3 tools/ci/risk.py classify AGENTS.md)
++          if gh pr diff "$num" > "$RUNNER_TEMP/pr.diff"; then
++            level=$(python3 tools/ci/risk.py classify AGENTS.md < "$RUNNER_TEMP/pr.diff")
++          else
++            echo "Diff not available (too large?): classifying from the changed paths"
++            level=$(gh api --paginate "repos/$GH_REPO/pulls/$num/files" --jq '.[] | .filename, (.previous_filename // empty)' \
++              | python3 tools/ci/risk.py classify-paths)
++          fi
+           echo "Risk class: $level"
+           if [ "$level" = "none" ]; then echo "No infrastructure change"; skip; fi
+           # validate can go green twice for one SHA: one security review per commit.
