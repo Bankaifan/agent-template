@@ -600,10 +600,18 @@ def test_park_of_a_parked_item_is_a_no_op(capsys):
     assert "already parked" in capsys.readouterr().out
 
 
-def test_park_after_unpark_counts_again():
-    r = Recorder(replies={("issue", "view"): "agent:dev\n"})
-    g.park("issue", 5, "second time", r)
-    assert ("issue", "edit", "5", "--add-label", "parked") in r.calls and len(r.posted) == 1
+def test_park_parks_once_and_logs_when_the_label_read_fails(capsys):
+    class FailingView(Recorder):
+        def __call__(self, *args):
+            if args[:2] == ("pr", "view") and "labels" in args:
+                self.calls.append(args)
+                raise subprocess.CalledProcessError(1, "gh")
+            return super().__call__(*args)
+
+    r = FailingView()
+    g.park("pr", 5, "read failed", r)
+    assert ("pr", "edit", "5", "--add-label", "parked") in r.calls and len(r.posted) == 1
+    assert "label read failed" in capsys.readouterr().out
 
 
 # --- upstream issue for an allow-list miss (#416 goal 2, security requirements 3 to 5) ---
