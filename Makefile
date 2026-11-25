@@ -9,6 +9,10 @@ SCOPE_FILES = $(filter-out ALL,$(SCOPE_OUT))
 # Slow tests are deselected only when NIGHTLY_HEAVY_TESTS is exactly "true" (they then run in the nightly workflow).
 SLOW_FILTER = $(if $(filter true,$(NIGHTLY_HEAVY_TESTS)),-m "not slow")
 
+# Scope ALL (full run): measure line coverage of tools/ and hold it to the floor in docs/coverage.json (check_coverage.py).
+# Without docs/coverage.json (downstream projects) the plain pytest run is used.
+COVERAGE_RUN = if [ -f docs/coverage.json ] && python3 -c "import coverage" 2>/dev/null; then coverage run --source=tools "$$(command -v pytest)" --timeout=60 -q $(SLOW_FILTER) && python3 tools/check/check_coverage.py; else pytest --timeout=60 -q $(SLOW_FILTER); fi
+
 .PHONY: check
 check:
 	@if [ -n "$$(git ls-files '*.py')" ]; then ruff check .; else echo "no Python files"; fi
@@ -47,7 +51,7 @@ type-check:
 
 .PHONY: unit-tests
 unit-tests:
-	@if [ -d tests ]; then $(if $(strip $(SCOPE_OUT)),pytest --timeout=60 -q $(SLOW_FILTER) $(SCOPE_FILES),echo "no tests in scope"); else echo "no tests/"; fi
+	@if [ -d tests ]; then $(if $(strip $(SCOPE_OUT)),$(if $(SCOPE_FILES),pytest --timeout=60 -q $(SLOW_FILTER) $(SCOPE_FILES) && python3 tools/check/check_coverage.py --scoped,$(COVERAGE_RUN)),echo "no tests in scope"); else echo "no tests/"; fi
 
 # Pull requests only: PR_BASE_REF is the base branch name (set by validate.yml); skipped when unset (local runs, pushes).
 .PHONY: test-evidence
