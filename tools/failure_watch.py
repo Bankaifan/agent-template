@@ -109,7 +109,8 @@ def signature(run_obj, run=liveness.gh):
 def newer_run(run_obj, run=liveness.gh, any_branch=False):
     """A later run of the same workflow file exists (same branch unless ANY_BRANCH), in any status (a queued one counts).
     A workflow_run run has head_branch = main whatever it reviews: its group is the triggering branch, so the same
-    display_title (the triggering PR's title) stands for the same group (#811)."""
+    display_title (the triggering PR's title) stands for the same group (#811). Known limit: runs of two PRs with
+    the same title suppress each other's cancel report (accepted, it only dedups a notification)."""
     by_title = run_obj.get("event") == "workflow_run" and not any_branch
     if any_branch or by_title:
         path = f"repos/{{owner}}/{{repo}}/actions/workflows/{quote(workflow_file(run_obj), safe='')}/runs?per_page=100"
