@@ -107,15 +107,25 @@ def signature(run_obj, run=liveness.gh):
 
 
 def newer_run(run_obj, run=liveness.gh, any_branch=False):
-    """A later run of the same workflow file exists (same branch unless ANY_BRANCH), in any status (a queued one counts)."""
-    if any_branch:
+    """A later run of the same workflow file exists (same branch unless ANY_BRANCH), in any status (a queued one counts).
+    A workflow_run run has head_branch = main whatever it reviews: its group is the triggering branch, so the same
+    display_title (the triggering PR's title) stands for the same group (#811)."""
+    by_title = run_obj.get("event") == "workflow_run" and not any_branch
+    if any_branch or by_title:
         path = f"repos/{{owner}}/{{repo}}/actions/workflows/{quote(workflow_file(run_obj), safe='')}/runs?per_page=100"
     else:
         branch = quote(run_obj.get("head_branch") or "", safe="")
         path = f"repos/{{owner}}/{{repo}}/actions/runs?branch={branch}&per_page=100"
     runs = _api(path, run).get("workflow_runs") or []
-    return any(o["id"] > run_obj["id"] and workflow_file(o) == workflow_file(run_obj)
-               and (any_branch or o.get("head_branch") == run_obj.get("head_branch")) for o in runs)
+
+    def same_group(o):
+        if any_branch:
+            return True
+        if by_title:
+            return bool(run_obj.get("display_title")) and o.get("display_title") == run_obj.get("display_title")
+        return o.get("head_branch") == run_obj.get("head_branch")
+
+    return any(o["id"] > run_obj["id"] and workflow_file(o) == workflow_file(run_obj) and same_group(o) for o in runs)
 
 
 def expected_cancel(run_obj, started, run=liveness.gh):
