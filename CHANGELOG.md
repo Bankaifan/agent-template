@@ -3,6 +3,15 @@
 ## [Unreleased]
 - README (EN and DE) and `docs/decisions/0007-template-sync.md`: six-step setup for the template sync, version gate, reuse by other projects.
 
+## [1.116] - 2026-11-25
+- Zählschritt des Orchestrators bricht bei GitHub-Lesefehlern nicht mehr ab
+- Der Template-Sync übernimmt Dateien eines neu verwalteten Pfads jetzt im selben Sync, statt sie auszulassen.
+- Ein Template-Sync installiert jetzt die Werkzeug-Versionen des neuen Template-Stands, damit der Check nicht mehr an einem neu hinzugekommenen Werkzeug scheitert.
+- Scheitert ein Template-Sync an den Prüfungen, entsteht dafür nur noch das Sync-Issue und keine zweite Fehlermeldung mehr.
+- Der Entwickler-Lauf zu einem Template-Sync-Issue darf jetzt 150 statt 60 Turns brauchen und endet dadurch nicht mehr jedes Mal rot.
+- Entparken nach stillem Review startet die Prüfung zuerst und entfernt die Labels danach, ein Fehlschlag wird beim nächsten Durchlauf wiederholt.
+- Fehlt das Coverage-Werkzeug, bricht der volle Testlauf jetzt ab, statt die Coverage-Schwelle still zu überspringen.
+
 ## [1.115] - 2026-11-25
 - Die Fehlerüberwachung meldet Läufe ohne Job nicht mehr, wenn ein fremder Bot sie ausgelöst hat oder der zugehörige PR schon gemergt oder geschlossen ist.
 
