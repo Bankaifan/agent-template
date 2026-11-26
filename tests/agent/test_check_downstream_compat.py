@@ -98,6 +98,15 @@ def test_outside_the_template_it_skips(tmp_path, monkeypatch, capsys):
     assert "skipped" in capsys.readouterr().out and not (tmp_path / "r.txt").exists()
 
 
+def test_a_synced_project_skips_although_it_has_managed_json(tmp_path, monkeypatch, capsys):
+    (tmp_path / ".agents").mkdir()
+    (tmp_path / ".agents" / "managed.json").write_text("{}")
+    (tmp_path / ".agents" / "template.json").write_text("{}")
+    monkeypatch.setattr(cdc, "ROOT", tmp_path)
+    assert cdc.main(["--out", str(tmp_path / "r.txt")]) == 0
+    assert "skipped" in capsys.readouterr().out and not (tmp_path / "r.txt").exists()
+
+
 def test_a_crashing_parser_is_reported_not_skipped(tmp_path):
     root = _repo(tmp_path, "raise RuntimeError('boom')\n")
     _script(root, "ruff==0.1")
