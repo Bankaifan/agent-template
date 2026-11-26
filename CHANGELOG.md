@@ -3,6 +3,9 @@
 ## [Unreleased]
 - README (EN and DE) and `docs/decisions/0007-template-sync.md`: six-step setup for the template sync, version gate, reuse by other projects.
 
+## [1.119] - 2026-11-26
+- Der Template-Sync liest die Tool-Versionen wieder, auch in Projekten mit älterem Sync-Stand.
+
 ## [1.118] - 2026-11-26
 - Der Template-Sync bricht nicht mehr ab, wenn der Runner ein neueres Python mitbringt.
 
