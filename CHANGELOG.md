@@ -3,6 +3,9 @@
 ## [Unreleased]
 - README (EN and DE) and `docs/decisions/0007-template-sync.md`: six-step setup for the template sync, version gate, reuse by other projects.
 
+## [1.118] - 2026-11-26
+- Der Template-Sync bricht nicht mehr ab, wenn der Runner ein neueres Python mitbringt.
+
 ## [1.117] - 2026-11-26
 - Der Automerge-Lauf meldet keinen Fehler mehr, wenn GitHub das Auto-Merge wegen eines instabilen PR-Status vorübergehend ablehnt.
 - Fehlt das Coverage-Werkzeug, bricht der volle Testlauf ab, wenn eine Coverage-Schwelle gesetzt ist, statt sie still zu überspringen.
