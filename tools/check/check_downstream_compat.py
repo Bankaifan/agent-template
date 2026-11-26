@@ -6,7 +6,8 @@ own (old) tools/template_sync.py on the new tools/ci/install_tools.sh and then i
 VERSION) on this tree's install_tools.sh, each in its own process with that release's tools/, and writes the
 requirements for the workflow's install step. A token an older parser refuses fails here, before the release.
 
-Runs only in the template (`.agents/managed.json` exists only there). Needs the full history (fetch-depth 0).
+Runs only in the template: skipped without `.agents/managed.json` and in a synced project (`.agents/template.json`).
+Needs the full history (fetch-depth 0).
 CLI: check_downstream_compat.py [--releases N] [--out requirements.txt]
 """
 import argparse
@@ -80,7 +81,7 @@ def main(argv=None):
     ap.add_argument("--releases", type=int, default=RELEASES)
     ap.add_argument("--out", help="write the requirements for the binary-only install check")
     args = ap.parse_args(argv)
-    if not (ROOT / ".agents" / "managed.json").is_file():
+    if not (ROOT / ".agents" / "managed.json").is_file() or (ROOT / ".agents" / "template.json").is_file():
         print("check_downstream_compat: not the template, skipped")
         return 0
     errors, reqs = check(ROOT, args.releases)
