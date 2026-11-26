@@ -98,6 +98,16 @@ def test_outside_the_template_it_skips(tmp_path, monkeypatch, capsys):
     assert "skipped" in capsys.readouterr().out and not (tmp_path / "r.txt").exists()
 
 
+def test_a_project_with_template_json_skips(tmp_path, monkeypatch, capsys):
+    root = _repo(tmp_path, STRICT)
+    (root / ".agents").mkdir()
+    (root / ".agents" / "managed.json").write_text("{}")
+    (root / ".agents" / "template.json").write_text("{}")
+    monkeypatch.setattr(cdc, "ROOT", root)
+    assert cdc.main([]) == 0
+    assert "skipped" in capsys.readouterr().out
+
+
 def test_a_crashing_parser_is_reported_not_skipped(tmp_path):
     root = _repo(tmp_path, "raise RuntimeError('boom')\n")
     _script(root, "ruff==0.1")
