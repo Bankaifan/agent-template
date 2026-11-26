@@ -19,7 +19,7 @@ if [ -f "$pins" ]; then
     printf -v "${line%%=*}" '%s' "${line#*=}"
   done < "$pins"
 fi
-pip install "ruff==$RUFF" "mypy==$MYPY" types-PyYAML "zizmor==$ZIZMOR" pytest pytest-timeout "coverage==$COVERAGE" pyyaml==6.0.3
+pip install "ruff==$RUFF" "mypy==$MYPY" types-PyYAML "zizmor==$ZIZMOR" pytest pytest-timeout "coverage==$COVERAGE" pyyaml==6.0.4
 for f in requirements.txt requirements_test.txt; do
   if [ -f "$f" ]; then pip install -r "$f"; fi
 done
