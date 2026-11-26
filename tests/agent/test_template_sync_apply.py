@@ -236,7 +236,7 @@ def test_tool_requirements_read_the_template_script_as_data():
     assert "mypy==1.18.2" in reqs and "types-PyYAML" in reqs and "ruff==0.17.4" in reqs
     assert sorted(reqs) == sorted(
         ["ruff==0.17.4", "mypy==1.18.2", "types-PyYAML", "zizmor==1.32.0", "pytest", "pytest-timeout",
-         "coverage==7.17.5", "pyyaml==6.0.3"])
+         "coverage==7.17.5", "pyyaml==6.0.4"])
 
 
 def test_the_template_script_uses_only_exact_pins_older_downstream_parsers_read():
