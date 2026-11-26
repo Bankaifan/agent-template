@@ -261,6 +261,10 @@ def test_the_template_script_uses_only_exact_pins_older_downstream_parsers_read(
         assert re.fullmatch(r"[A-Za-z][A-Za-z0-9_.-]*(==[0-9][0-9A-Za-z.]*)?", token), token
 
 
+def test_tool_requirements_accept_a_floor():
+    assert ts.tool_requirements('COVERAGE=7.6\npip install "coverage>=$COVERAGE" pytest\n') == ["coverage>=7.6", "pytest"]
+
+
 def test_tool_requirements_a_base_lacking_the_tool_gets_it_from_the_synced_script():
     assert "mypy==1.18.2" not in ts.tool_requirements(BASE_SCRIPT)
     assert "mypy==1.18.2" in ts.tool_requirements(THEIRS_SCRIPT)
