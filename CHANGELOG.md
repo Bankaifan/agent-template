@@ -3,6 +3,9 @@
 ## [Unreleased]
 - README (EN and DE) and `docs/decisions/0007-template-sync.md`: six-step setup for the template sync, version gate, reuse by other projects.
 
+## [1.121] - 2026-11-28
+- Der Downstream-Kompatibilitätscheck wird in Projekten jetzt übersprungen und schlägt dort nicht mehr fehl.
+
 ## [1.120] - 2026-11-26
 - Der Template-Sync scheitert nicht mehr an Workflow-Änderungen, die im Template noch auf Freigabe warten.
 
